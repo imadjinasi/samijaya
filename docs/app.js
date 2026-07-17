@@ -937,7 +937,7 @@ function renderCheckoutScreen() {
   html += '<div class="co-section-title"><span class="co-step">4</span>Metode Pengiriman</div>';
   html += '<div class="co-pill-group" id="co-shipping-pills">';
   html += '<button class="co-pill" data-method="AMBIL" onclick="selectShippingMethod(\'AMBIL\')">';
-  html += '📍 Ambil di Toko</button>';
+  html += '📍 Ambil Sendiri</button>';
   html += '<button class="co-pill" data-method="DIANTAR" onclick="selectShippingMethod(\'DIANTAR\')">';
   html += '🛵 Diantar</button>';
   html += '<button class="co-pill" data-method="OJOL" onclick="selectShippingMethod(\'OJOL\')">';
@@ -1069,8 +1069,10 @@ function selectShippingMethod(method) {
 
   if (method === 'DIANTAR') {
     setTimeout(function() {
-      // Inisialisasi map dengan debounce sedikit agar container sudah visible
-      if (typeof initDeliveryMap === 'function') {
+      // Inisialisasi map atau reset bound bila container sudah visible (ter-unhide)
+      if (typeof _map !== 'undefined' && _map && typeof _map.invalidateSize === 'function') {
+        _map.invalidateSize();
+      } else if (typeof initDeliveryMap === 'function') {
         initDeliveryMap('delivery-map-section', onPinMoved);
       }
     }, 100);
@@ -1096,7 +1098,7 @@ function renderShippingDetail(method) {
       }
     }
     html += '</select>';
-    html += '<div class="co-shipping-note">Estimasi siap 15–30 menit setelah pesanan dikonfirmasi.<br>Ongkir: Rp0 (ambil sendiri)</div>';
+    html += '<div class="co-shipping-note">Pesanan disiapkan setelah pembayaran dikonfirmasi. Silakan ambil pada jam operasional.</div>';
     var elSlot = document.getElementById('checkout-slots');
     if (elSlot) elSlot.style.display = 'none';
   } else if (method === 'DIANTAR') {
@@ -1137,7 +1139,7 @@ function renderShippingDetail(method) {
     var elSlot = document.getElementById('checkout-slots');
     if (elSlot) elSlot.style.display = 'block';
   } else if (method === 'OJOL') {
-    html += '<div class="co-shipping-note" style="opacity:1;font-size:0.85rem;">🏍️ Driver dipesan oleh pembeli.<br>Estimasi siap 15–30 menit. Ongkir: Rp0</div>';
+    html += '<div class="co-shipping-note" style="opacity:1;font-size:0.85rem;">🏍️ Pesan driver ojek online setelah pesanan dikonfirmasi Samijaya. Tidak ada ongkir dari kami.</div>';
     var elSlot = document.getElementById('checkout-slots');
     if (elSlot) elSlot.style.display = 'none';
   }
@@ -1357,12 +1359,25 @@ function updateCheckoutSummary() {
   var ongkirDisplay = '—';
   var method = checkoutState.metode_kirim;
 
+  var settings = (catalog && catalog.settings) ? catalog.settings : {};
+  var maxKm = Number(settings.ONGKIR_RADIUS_MAX_KM || 15);
+
   if (method === 'AMBIL' || method === 'OJOL') {
     ongkir = 0;
     ongkirDisplay = formatRupiah(0);
   } else if (method === 'DIANTAR') {
-    ongkir = checkoutState.ongkir || 0;
-    ongkirDisplay = (checkoutState.lat && checkoutState.lng) ? formatRupiah(ongkir) : '—';
+    if (checkoutState.lat && checkoutState.lng) {
+      if (checkoutState.jarak_km > maxKm) {
+        ongkir = 0; // JANGAN hitung biaya ongkir jika di luar batas
+        ongkirDisplay = '— (Di luar jangkauan)';
+      } else {
+        ongkir = checkoutState.ongkir || 0;
+        ongkirDisplay = formatRupiah(ongkir);
+      }
+    } else {
+      ongkir = 0;
+      ongkirDisplay = '—';
+    }
   }
 
   // Points calculation
