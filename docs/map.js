@@ -9,20 +9,18 @@ var _marker = null;
 var ORIGIN_FALLBACK = { lat: -6.7320, lng: 108.5523 };
 
 function initDeliveryMap(containerId, onPinMoved, initialLat, initialLng) {
-  var origin = getOriginLatLng();
-  var lat = initialLat || origin.lat;
-  var lng = initialLng || origin.lng;
+  var container = document.getElementById(containerId);
+  if (!container) return null;
 
   if (_map) {
-    _map.invalidateSize();
-    _map.setView([lat, lng], 15);
-    if (_marker) {
-      _marker.setLatLng([lat, lng]);
-    }
-    return _map;
+    _map.remove();
+    _map = null;
+    _marker = null;
   }
 
-  var container = document.getElementById(containerId);
+  var origin = getOriginLatLng(initialLat, initialLng);
+  var lat = initialLat || origin.lat;
+  var lng = initialLng || origin.lng;
   if (!container) return null;
 
   _map = L.map(containerId).setView([lat, lng], 15);
@@ -41,14 +39,28 @@ function initDeliveryMap(containerId, onPinMoved, initialLat, initialLng) {
   return _map;
 }
 
-function getOriginLatLng() {
+function getOriginLatLng(targetLat, targetLng) {
   if (typeof catalog !== 'undefined' && catalog && catalog.pickupLocations) {
+    var bestOrigin = null;
+    var minDistance = Infinity;
+
     for (var i = 0; i < catalog.pickupLocations.length; i++) {
       var loc = catalog.pickupLocations[i];
       if (loc.latitude && loc.longitude && (loc.latitude != 0 || loc.longitude != 0)) {
-        return { lat: Number(loc.latitude), lng: Number(loc.longitude) };
+        var oLat = Number(loc.latitude);
+        var oLng = Number(loc.longitude);
+        if (targetLat != null && targetLng != null) {
+          var d = haversineKm(oLat, oLng, targetLat, targetLng);
+          if (d < minDistance) {
+            minDistance = d;
+            bestOrigin = { lat: oLat, lng: oLng };
+          }
+        } else {
+          return { lat: oLat, lng: oLng };
+        }
       }
     }
+    if (bestOrigin) return bestOrigin;
   }
   return ORIGIN_FALLBACK;
 }

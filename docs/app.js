@@ -16,6 +16,8 @@ var checkoutState = {
   tgl_antar: '',
   metode_kirim: '',
   lokasi_pickup_id: '',
+  jam_pilih: '',
+  origin_terpilih: null,
   slot_id: '',
   metode_bayar: '',
   pakai_poin: false,
@@ -25,7 +27,7 @@ var checkoutState = {
   label_alamat: '',
   detail_alamat: '',
   jarak_km: 0,
-  ongkir: 0,
+  ongkir: null,
   address_id: ''
 };
 
@@ -837,6 +839,8 @@ function resetCheckoutState() {
     tgl_antar: '',
     metode_kirim: '',
     lokasi_pickup_id: '',
+    jam_pilih: '',
+    origin_terpilih: null,
     slot_id: '',
     metode_bayar: '',
     pakai_poin: false,
@@ -846,7 +850,7 @@ function resetCheckoutState() {
     label_alamat: '',
     detail_alamat: '',
     jarak_km: 0,
-    ongkir: 0,
+    ongkir: null,
     address_id: ''
   };
 }
@@ -946,26 +950,9 @@ function renderCheckoutScreen() {
   html += '<div id="co-shipping-detail"></div>';
   html += '</div>';
 
-  // === 5. SLOT PENGIRIMAN ===
-  html += '<div class="co-section" id="checkout-slots">';
-  html += '<div class="co-section-title"><span class="co-step">5</span>Slot Pengiriman</div>';
-  html += '<div class="co-pill-group" id="co-slot-pills">';
-  var slots = (catalog && catalog.deliverySlots) ? catalog.deliverySlots : [];
-  for (var s = 0; s < slots.length; s++) {
-    var sl = slots[s];
-    if (String(sl.status).toLowerCase() === 'aktif' || String(sl.status) === '1' || sl.status === true) {
-      html += '<button class="co-pill co-slot-pill" data-slotid="' + escHtml(sl.slot_id) + '" onclick="selectSlot(\'' + escHtml(sl.slot_id) + '\')">';
-      html += escHtml(sl.jam_mulai) + ' – ' + escHtml(sl.jam_selesai);
-      html += '</button>';
-    }
-  }
-  html += '</div>';
-  html += '<div class="co-slot-note">Waktu bersifat estimasi dan dapat disesuaikan Samijaya.</div>';
-  html += '</div>';
-
-  // === 6. PEMBAYARAN ===
+  // === 5. PEMBAYARAN ===
   html += '<div class="co-section" id="checkout-payment">';
-  html += '<div class="co-section-title"><span class="co-step">6</span>Pembayaran</div>';
+  html += '<div class="co-section-title"><span class="co-step">5</span>Pembayaran</div>';
   html += '<div class="co-pill-group" id="co-payment-pills">';
   html += '<button class="co-pill" data-pay="COD" onclick="selectPayment(\'COD\')">💵 COD</button>';
   html += '<button class="co-pill" data-pay="TRANSFER" onclick="selectPayment(\'TRANSFER\')">🏦 Transfer</button>';
@@ -973,11 +960,11 @@ function renderCheckoutScreen() {
   html += '<div id="co-payment-detail"></div>';
   html += '</div>';
 
-  // === 7. GUNAKAN POIN ===
+  // === 6. GUNAKAN POIN ===
   var pointMinRedeem = Number(settings.POINT_MIN_REDEEM || 0);
   var poinDisabled = poin < pointMinRedeem || poin <= 0;
   html += '<div class="co-section" id="checkout-points">';
-  html += '<div class="co-section-title"><span class="co-step">7</span>Gunakan Poin</div>';
+  html += '<div class="co-section-title"><span class="co-step">6</span>Gunakan Poin</div>';
   html += '<div class="co-points-wrap">';
   html += '<div class="co-points-check">';
   html += '<input type="checkbox" id="co-use-points" ' + (poinDisabled ? 'disabled' : '') + ' onchange="onTogglePoints(this.checked)">';
@@ -1053,10 +1040,12 @@ function selectShippingMethod(method) {
   method = method.trim();
   checkoutState.metode_kirim = method;
   checkoutState.lokasi_pickup_id = '';
+  checkoutState.jam_pilih = '';
+  checkoutState.slot_id = '';
   checkoutState.address_id = '';
   checkoutState.lat = '';
   checkoutState.lng = '';
-  checkoutState.ongkir = 0;
+  checkoutState.ongkir = null;
   checkoutState.jarak_km = 0;
 
   // Highlight pill
@@ -1069,13 +1058,10 @@ function selectShippingMethod(method) {
 
   if (method === 'DIANTAR') {
     setTimeout(function() {
-      // Inisialisasi map atau reset bound bila container sudah visible (ter-unhide)
-      if (typeof _map !== 'undefined' && _map && typeof _map.invalidateSize === 'function') {
-        _map.invalidateSize();
-      } else if (typeof initDeliveryMap === 'function') {
+      if (typeof initDeliveryMap === 'function') {
         initDeliveryMap('delivery-map-section', onPinMoved);
       }
-    }, 100);
+    }, 120);
   }
 
   updateCheckoutSummary();
@@ -1086,9 +1072,11 @@ function renderShippingDetail(method) {
   if (!container) return;
   var html = '<div class="co-shipping-detail">';
 
-  if (method === 'AMBIL') {
+  if (method === 'AMBIL' || method === 'OJOL') {
     var locations = (catalog && catalog.pickupLocations) ? catalog.pickupLocations : [];
-    html += '<select id="co-pickup-select" onchange="onPickupChange(this.value)">';
+    html += '<div style="margin-top:10px; margin-bottom:10px;">';
+    html += '<label class="co-label" style="display:block; margin-bottom:5px;">Pilih Lokasi</label>';
+    html += '<select id="co-pickup-select" class="co-date-input" onchange="onPickupChange(this.value)">';
     html += '<option value="">— Pilih lokasi —</option>';
     for (var i = 0; i < locations.length; i++) {
       var loc = locations[i];
@@ -1098,16 +1086,26 @@ function renderShippingDetail(method) {
       }
     }
     html += '</select>';
-    html += '<div class="co-shipping-note">Pesanan disiapkan setelah pembayaran dikonfirmasi. Silakan ambil pada jam operasional.</div>';
-    var elSlot = document.getElementById('checkout-slots');
-    if (elSlot) elSlot.style.display = 'none';
+    html += '</div>';
+
+    html += '<div id="co-time-container" style="display:none; margin-bottom:10px;">';
+    var timeLabel = method === 'AMBIL' ? 'Jam ambil' : 'Jam jemput driver';
+    html += '<label class="co-label" style="display:block; margin-bottom:5px;">' + timeLabel + '</label>';
+    html += '<input type="time" id="co-pickup-time" onchange="onPickupTimeChange(this.value)" class="co-date-input">';
+    html += '<div id="co-time-error" style="color:var(--danger); font-size:0.85rem; margin-top:5px;"></div>';
+    html += '</div>';
+
+    var note = method === 'AMBIL' 
+      ? 'Pesanan disiapkan setelah pembayaran dikonfirmasi. Datang pada jam yang dipilih.'
+      : 'Pesan driver ojek online untuk menjemput di lokasi & jam yang dipilih. Tidak ada ongkir dari Samijaya.';
+    html += '<div class="co-shipping-note" style="opacity:1;font-size:0.85rem;">' + note + '</div>';
   } else if (method === 'DIANTAR') {
     var member = session.member || {};
     var addresses = member.addresses || session.addresses || [];
 
     html += '<div id="delivery-address-selection">';
     if (addresses && addresses.length > 0) {
-      html += '<select id="co-address-select" onchange="onSavedAddressChange(this.value)">';
+      html += '<select id="co-address-select" class="co-date-input" style="margin-bottom:10px;" onchange="onSavedAddressChange(this.value)">';
       html += '<option value="">— Pilih alamat tersimpan —</option>';
       for (var i = 0; i < addresses.length; i++) {
         html += '<option value="' + addresses[i].address_id + '">' + escHtml(addresses[i].label + ' - ' + addresses[i].detail) + '</option>';
@@ -1141,12 +1139,22 @@ function renderShippingDetail(method) {
     html += '</div>'; // delivery-address-selection
 
     html += '<div class="co-shipping-note" id="co-ongkir-note">Ongkir: —</div>';
-    var elSlot = document.getElementById('checkout-slots');
-    if (elSlot) elSlot.style.display = 'block';
-  } else if (method === 'OJOL') {
-    html += '<div class="co-shipping-note" style="opacity:1;font-size:0.85rem;">🏍️ Pesan driver ojek online setelah pesanan dikonfirmasi Samijaya. Tidak ada ongkir dari kami.</div>';
-    var elSlot = document.getElementById('checkout-slots');
-    if (elSlot) elSlot.style.display = 'none';
+    
+    html += '<div style="margin-top: 15px; border-top: 1px dashed var(--border); padding-top: 15px;">';
+    html += '<div class="co-section-title" style="font-size:1rem; margin-bottom:10px;">Pilih Slot Waktu</div>';
+    html += '<div class="co-pill-group" id="co-slot-pills">';
+    var slots = (catalog && catalog.deliverySlots) ? catalog.deliverySlots : [];
+    for (var s = 0; s < slots.length; s++) {
+      var sl = slots[s];
+      if (String(sl.status).toLowerCase() === 'aktif' || String(sl.status) === '1' || sl.status === true) {
+        html += '<button class="co-pill co-slot-pill" data-slotid="' + escHtml(sl.slot_id) + '" onclick="selectSlot(\'' + escHtml(sl.slot_id) + '\')">';
+        html += escHtml(sl.jam_mulai) + ' – ' + escHtml(sl.jam_selesai);
+        html += '</button>';
+      }
+    }
+    html += '</div>';
+    html += '<div class="co-slot-note" style="font-size:0.85rem; color:#666; text-align:center; margin-top:5px;">Waktu bersifat estimasi dan dapat disesuaikan Samijaya.</div>';
+    html += '</div>';
   }
 
   html += '</div>';
@@ -1155,7 +1163,49 @@ function renderShippingDetail(method) {
 
 function onPickupChange(val) {
   checkoutState.lokasi_pickup_id = val;
+  var timeContainer = document.getElementById('co-time-container');
+  if (val) {
+    if (timeContainer) timeContainer.style.display = 'block';
+  } else {
+    if (timeContainer) timeContainer.style.display = 'none';
+  }
+  validatePickupTime();
   updateCheckoutSummary();
+}
+
+function onPickupTimeChange(val) {
+  checkoutState.jam_pilih = val;
+  validatePickupTime();
+  updateCheckoutSummary();
+}
+
+function validatePickupTime() {
+  var errEl = document.getElementById('co-time-error');
+  if (!errEl) return true;
+  if (!checkoutState.lokasi_pickup_id || !checkoutState.jam_pilih) {
+    errEl.textContent = '';
+    return true;
+  }
+  var loc = null;
+  if (catalog && catalog.pickupLocations) {
+    for (var i = 0; i < catalog.pickupLocations.length; i++) {
+      if (catalog.pickupLocations[i].lokasi_id === checkoutState.lokasi_pickup_id) {
+        loc = catalog.pickupLocations[i];
+        break;
+      }
+    }
+  }
+  if (loc && loc.jam_buka && loc.jam_tutup) {
+    var jBuka = loc.jam_buka;
+    var jTutup = loc.jam_tutup;
+    var jPilih = checkoutState.jam_pilih;
+    if (jPilih < jBuka || jPilih > jTutup) {
+      errEl.textContent = 'Di luar jam operasional ' + escHtml(loc.nama) + ' (' + jBuka + '–' + jTutup + ')';
+      return false;
+    }
+  }
+  errEl.textContent = '';
+  return true;
 }
 
 function onSavedAddressChange(val) {
@@ -1167,10 +1217,10 @@ function onSavedAddressChange(val) {
       if (typeof initDeliveryMap === 'function') {
         initDeliveryMap('delivery-map-section', onPinMoved);
       }
-    }, 100);
+    }, 120);
     checkoutState.lat = '';
     checkoutState.lng = '';
-    checkoutState.ongkir = 0;
+    checkoutState.ongkir = null;
     updateCheckoutSummary();
   } else if (val !== '') {
     newAddressContainer.classList.add('hidden');
@@ -1194,7 +1244,7 @@ function onSavedAddressChange(val) {
     checkoutState.address_id = '';
     checkoutState.lat = '';
     checkoutState.lng = '';
-    checkoutState.ongkir = 0;
+    checkoutState.ongkir = null;
     updateCheckoutSummary();
   }
 }
@@ -1312,16 +1362,30 @@ function onAddressDetailChange() {
 function calculateOngkir() {
   if (typeof haversineKm !== 'function' || typeof hitungOngkir !== 'function' || typeof getOriginLatLng !== 'function') return;
   
-  var origin = getOriginLatLng();
+  var origin = getOriginLatLng(checkoutState.lat, checkoutState.lng);
+  checkoutState.origin_terpilih = origin;
+  
   var lurus = haversineKm(origin.lat, origin.lng, checkoutState.lat, checkoutState.lng);
   var hasil = hitungOngkir(lurus);
   
   checkoutState.jarak_km = hasil.jarak_km;
-  checkoutState.ongkir = hasil.ongkir;
+  
+  var settings = (catalog && catalog.settings) ? catalog.settings : {};
+  var maxKm = Number(settings.ONGKIR_RADIUS_MAX_KM || 15);
   
   var note = document.getElementById('co-ongkir-note');
-  if (note) {
-    note.innerHTML = 'Jarak: ' + hasil.jarak_km + ' km. Ongkir: ' + formatRupiah(hasil.ongkir);
+  if (hasil.jarak_km > maxKm) {
+    checkoutState.ongkir = null;
+    if (note) {
+      note.innerHTML = 'Jarak: ' + hasil.jarak_km + ' km. Ongkir: — (Di luar jangkauan)';
+      note.style.color = 'var(--danger)';
+    }
+  } else {
+    checkoutState.ongkir = hasil.ongkir;
+    if (note) {
+      note.innerHTML = 'Jarak: ' + hasil.jarak_km + ' km. Ongkir: ' + formatRupiah(hasil.ongkir);
+      note.style.color = 'inherit';
+    }
   }
   
   updateCheckoutSummary();
@@ -1410,11 +1474,11 @@ function updateCheckoutSummary() {
     ongkirDisplay = formatRupiah(0);
   } else if (method === 'DIANTAR') {
     if (checkoutState.lat && checkoutState.lng) {
-      if (checkoutState.jarak_km > maxKm) {
-        ongkir = 0; // JANGAN hitung biaya ongkir jika di luar batas
-        ongkirDisplay = '— (Di luar jangkauan)';
+      if (checkoutState.ongkir === null) {
+        ongkir = 0;
+        ongkirDisplay = '—';
       } else {
-        ongkir = checkoutState.ongkir || 0;
+        ongkir = checkoutState.ongkir;
         ongkirDisplay = formatRupiah(ongkir);
       }
     } else {
@@ -1480,7 +1544,14 @@ function updateCheckoutValidation() {
   if (!checkoutState.tgl_antar) missing.push('Tanggal pengantaran');
   if (checkoutState.tgl_antar && isDateHoliday(checkoutState.tgl_antar)) missing.push('Tanggal yang dipilih adalah hari libur');
   if (!checkoutState.metode_kirim) missing.push('Metode pengiriman');
-  if (checkoutState.metode_kirim === 'AMBIL' && !checkoutState.lokasi_pickup_id) missing.push('Lokasi pickup');
+  if (checkoutState.metode_kirim === 'AMBIL' || checkoutState.metode_kirim === 'OJOL') {
+    if (!checkoutState.lokasi_pickup_id) missing.push('Lokasi pengambilan');
+    if (!checkoutState.jam_pilih) {
+      missing.push('Jam ' + (checkoutState.metode_kirim === 'AMBIL' ? 'ambil' : 'jemput'));
+    } else if (!validatePickupTime()) {
+      missing.push('Jam di luar operasional lokasi');
+    }
+  }
   if (checkoutState.metode_kirim === 'DIANTAR') {
     if (!checkoutState.lat || !checkoutState.lng) {
       missing.push('Titik lokasi pengantaran belum dipilih');
@@ -1490,7 +1561,7 @@ function updateCheckoutValidation() {
     var maxKm = Number(settings.ONGKIR_RADIUS_MAX_KM || 15);
     var minOrder = Number(settings.MIN_ORDER_DELIVERY || 0);
     
-    if (checkoutState.lat && checkoutState.lng && checkoutState.jarak_km > maxKm) {
+    if (checkoutState.lat && checkoutState.lng && checkoutState.ongkir === null) {
       missing.push('Di luar jangkauan antar (maks ' + maxKm + ' km)');
     }
     
