@@ -59,6 +59,24 @@ body {
   padding-top: var(--header-h);
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
+  position: relative;
+}
+
+/* Subtle diagonal texture on cream background */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      135deg,
+      transparent,
+      transparent 8px,
+      rgba(216, 193, 164, 0.035) 8px,
+      rgba(216, 193, 164, 0.035) 9px
+    );
 }
 
 a { color: var(--espresso); text-decoration: none; }
@@ -86,7 +104,7 @@ h1, h2, h3, .font-serif {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  padding: 0 16px;
 }
 
 .header-left {
@@ -97,6 +115,106 @@ h1, h2, h3, .font-serif {
 .header-logo-img {
   height: 28px;
   width: auto;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Header auth — "Masuk" button or logged-in chip */
+.btn-header-login {
+  padding: 6px 16px;
+  border: 1.2px solid var(--latte);
+  border-radius: var(--r-pill);
+  color: var(--cream);
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: transparent;
+  white-space: nowrap;
+  transition: all var(--ease);
+}
+
+.btn-header-login:hover {
+  background: rgba(255,255,255,0.1);
+  border-color: var(--cream);
+}
+
+/* Logged in chip */
+.header-user-chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.header-user-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border: 1.2px solid rgba(216, 193, 164, 0.35);
+  border-radius: var(--r-pill);
+  color: var(--cream);
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: transparent;
+  white-space: nowrap;
+  transition: all var(--ease);
+  max-width: 200px;
+}
+
+.header-user-btn:hover {
+  background: rgba(255,255,255,0.08);
+}
+
+.header-user-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+.header-user-poin {
+  opacity: 0.7;
+  font-weight: 400;
+}
+
+/* Dropdown */
+.header-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--white);
+  border-radius: var(--r-input);
+  box-shadow: 0 8px 30px rgba(52, 33, 28, 0.15);
+  padding: 6px 0;
+  min-width: 140px;
+  z-index: 110;
+  animation: dropdownFade 0.15s ease;
+}
+
+.header-dropdown.hidden {
+  display: none;
+}
+
+@keyframes dropdownFade {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.header-dropdown button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 18px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--espresso);
+  transition: background var(--ease);
+}
+
+.header-dropdown button:hover {
+  background: var(--cream);
 }
 
 .header-cart-btn {
@@ -131,24 +249,29 @@ h1, h2, h3, .font-serif {
 .cart-badge.hidden { display: none; }
 
 /* ============================================================
-   HERO / LOGIN
+   HERO — clean, spacious, with watermark
    ============================================================ */
 #hero-section {
   position: relative;
   background: var(--cream);
-  padding: 40px 24px 32px;
+  padding: 56px 24px 48px;
   overflow: hidden;
+  /* Watermark mascot as background — fully visible, never cropped */
+  background-image: url('assets/logo-dark.png');
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+  background-size: 160px auto;
 }
 
-.watermark-mascot {
+/* Tint overlay to reduce watermark to ~5% opacity
+   (background-image doesn't support opacity, so we layer a pseudo-element) */
+#hero-section::before {
+  content: '';
   position: absolute;
-  bottom: -30px;
-  right: -30px;
-  width: 220px;
-  height: auto;
-  opacity: 0.045;
+  inset: 0;
+  background: var(--cream);
+  opacity: 0.94;
   pointer-events: none;
-  user-select: none;
 }
 
 .hero-content {
@@ -157,109 +280,22 @@ h1, h2, h3, .font-serif {
 }
 
 .hero-heading {
-  font-size: 1.75rem;
-  line-height: 1.25;
+  font-size: 1.85rem;
+  line-height: 1.2;
   color: var(--espresso);
-  margin-bottom: 24px;
+  margin-bottom: 12px;
 }
 
 .hero-heading span {
   color: var(--brown);
 }
 
-/* Login form */
-.login-label {
-  display: block;
-  font-size: 0.82rem;
-  font-weight: 500;
+.hero-tagline {
+  font-size: 0.88rem;
+  font-weight: 400;
   color: var(--brown);
-  margin-bottom: 8px;
+  opacity: 0.6;
   letter-spacing: 0.01em;
-}
-
-.login-form-row {
-  display: flex;
-  gap: 10px;
-}
-
-.login-form-row input {
-  flex: 1;
-  min-width: 0;
-  padding: 12px 18px;
-  border: 1.5px solid var(--latte);
-  border-radius: var(--r-pill);
-  font-size: 0.95rem;
-  background: var(--white);
-  color: var(--espresso);
-  outline: none;
-  transition: border-color var(--ease);
-}
-
-.login-form-row input:focus {
-  border-color: var(--brown);
-}
-
-.btn-primary {
-  padding: 12px 28px;
-  border-radius: var(--r-pill);
-  background: var(--espresso);
-  color: var(--cream);
-  font-weight: 600;
-  font-size: 0.9rem;
-  white-space: nowrap;
-  transition: background var(--ease), transform var(--ease);
-}
-
-.btn-primary:hover {
-  background: var(--brown);
-}
-
-.btn-primary:active {
-  transform: scale(0.97);
-}
-
-/* Logged in state */
-.login-bar-info {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex: 1;
-  gap: 12px;
-}
-
-.member-greeting {
-  font-family: 'DM Serif Display', serif;
-  font-size: 1.1rem;
-  color: var(--espresso);
-}
-
-.member-poin {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--latte);
-  color: var(--espresso);
-  font-weight: 600;
-  font-size: 0.78rem;
-  padding: 4px 12px;
-  border-radius: var(--r-pill);
-  margin-left: 8px;
-}
-
-.btn-logout {
-  padding: 6px 16px;
-  border: 1.5px solid var(--latte);
-  border-radius: var(--r-pill);
-  color: var(--brown);
-  font-size: 0.8rem;
-  font-weight: 600;
-  transition: all var(--ease);
-}
-
-.btn-logout:hover {
-  background: var(--espresso);
-  color: var(--cream);
-  border-color: var(--espresso);
 }
 
 /* ============================================================
@@ -699,6 +735,55 @@ h1, h2, h3, .font-serif {
 }
 
 /* ============================================================
+   LOGIN MODAL
+   ============================================================ */
+.login-modal-label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--brown);
+  margin-bottom: 8px;
+}
+
+.login-modal-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.login-modal-row input {
+  width: 100%;
+  padding: 14px 18px;
+  border: 1.5px solid var(--latte);
+  border-radius: var(--r-pill);
+  font-size: 0.95rem;
+  background: var(--white);
+  color: var(--espresso);
+  outline: none;
+  transition: border-color var(--ease);
+}
+
+.login-modal-row input:focus {
+  border-color: var(--brown);
+}
+
+.btn-login-submit {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: var(--r-pill);
+  background: var(--espresso);
+  color: var(--cream);
+  font-weight: 700;
+  font-size: 1rem;
+  transition: background var(--ease);
+}
+
+.btn-login-submit:hover {
+  background: var(--brown);
+}
+
+/* ============================================================
    CART MODAL
    ============================================================ */
 .cart-list {
@@ -1103,6 +1188,10 @@ h1, h2, h3, .font-serif {
 .footer-socials a {
   color: var(--latte);
   transition: color var(--ease);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
 }
 
 .footer-socials a:hover {
@@ -1127,6 +1216,11 @@ h1, h2, h3, .font-serif {
 
   .feature-item {
     flex: 1 1 25%;
+  }
+
+  #hero-section {
+    background-size: 200px auto;
+    background-position: right 24px center;
   }
 }
 
@@ -1155,6 +1249,12 @@ h1, h2, h3, .font-serif {
 
   .hero-heading {
     font-size: 2.2rem;
+  }
+
+  #hero-section {
+    padding: 64px 32px 56px;
+    background-size: 240px auto;
+    background-position: right 40px center;
   }
 
   /* Switch product list → grid */
@@ -1274,5 +1374,9 @@ h1, h2, h3, .font-serif {
 
   .hero-heading {
     font-size: 2.5rem;
+  }
+
+  #hero-section {
+    background-size: 280px auto;
   }
 }

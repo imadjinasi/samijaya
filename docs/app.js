@@ -176,29 +176,78 @@ function renderHeader() {
   } else {
     badge.classList.add('hidden');
   }
-  renderLoginBar();
+  renderHeaderAuth();
 }
 
-// === RENDER: LOGIN BAR (inside hero) ===
-function renderLoginBar() {
-  var bar = document.getElementById('login-bar');
+// === RENDER: HEADER AUTH (replaces old renderLoginBar) ===
+function renderHeaderAuth() {
+  var authEl = document.getElementById('header-auth');
+  if (!authEl) return;
+
   if (session.token && session.member) {
-    bar.innerHTML =
-      '<div class="login-bar-info">' +
-        '<div>' +
-          '<span class="member-greeting">Halo ' + escHtml(session.member.nama) + '</span>' +
-          '<span class="member-poin">' + Number(session.member.total_poin || 0) + ' poin</span>' +
+    // Logged in: show chip with name + poin
+    var nama = escHtml(session.member.nama);
+    var poin = Number(session.member.total_poin || 0);
+    authEl.innerHTML =
+      '<div class="header-user-chip">' +
+        '<button class="header-user-btn" onclick="toggleUserDropdown()">' +
+          '<span class="header-user-name">' + nama + '</span>' +
+          '<span class="header-user-poin">• ' + poin + ' poin</span>' +
+        '</button>' +
+        '<div class="header-dropdown hidden" id="header-dropdown">' +
+          '<button onclick="logout()">Keluar</button>' +
         '</div>' +
-        '<button class="btn-logout" onclick="logout()">Keluar</button>' +
       '</div>';
   } else {
-    bar.innerHTML =
-      '<label class="login-label" for="login-hp">Masukkan Nomor WhatsApp</label>' +
-      '<div class="login-form-row">' +
-        '<input type="tel" id="login-hp" placeholder="08xxxxxxxxxx" maxlength="15">' +
-        '<button class="btn-primary btn-login" onclick="handleCheckMember()">Lanjut</button>' +
-      '</div>';
+    // Not logged in: show "Masuk" button
+    authEl.innerHTML =
+      '<button class="btn-header-login" onclick="showLoginModal()">Masuk</button>';
   }
+}
+
+// Toggle user dropdown
+function toggleUserDropdown() {
+  var dd = document.getElementById('header-dropdown');
+  if (!dd) return;
+  dd.classList.toggle('hidden');
+
+  // Close dropdown when clicking outside
+  if (!dd.classList.contains('hidden')) {
+    setTimeout(function () {
+      function closeHandler(e) {
+        if (!dd.contains(e.target) && !e.target.closest('.header-user-btn')) {
+          dd.classList.add('hidden');
+          document.removeEventListener('click', closeHandler);
+        }
+      }
+      document.addEventListener('click', closeHandler);
+    }, 0);
+  }
+}
+
+// === LOGIN MODAL ===
+function showLoginModal() {
+  var modal = document.getElementById('login-modal');
+  modal.classList.remove('hidden');
+
+  var box = modal.querySelector('.modal-sheet');
+  var html = '<div class="modal-handle"></div>';
+  html += '<button class="modal-close" onclick="closeLoginModal()">&times;</button>';
+  html += '<div class="modal-title">Masuk / Daftar</div>';
+  html += '<div class="login-modal-row">';
+  html += '<label class="login-modal-label" for="login-hp">Nomor WhatsApp</label>';
+  html += '<input type="tel" id="login-hp" placeholder="08xxxxxxxxxx" maxlength="15">';
+  html += '<button class="btn-login-submit" onclick="handleCheckMember()">Lanjut</button>';
+  html += '</div>';
+
+  box.innerHTML = html;
+
+  var hpInput = document.getElementById('login-hp');
+  if (hpInput) hpInput.focus();
+}
+
+function closeLoginModal() {
+  document.getElementById('login-modal').classList.add('hidden');
 }
 
 // === RENDER: BANNERS ===
@@ -453,6 +502,8 @@ function handleCheckMember() {
     showToast('Masukkan nomor HP');
     return;
   }
+  // Close login modal before proceeding
+  closeLoginModal();
   requestOtpFlow(hp);
 }
 
@@ -758,7 +809,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     }
   }
 
-  // Render header & login bar
+  // Render header & auth
   renderHeader();
 
   // Muat cart dari localStorage
