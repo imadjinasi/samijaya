@@ -58,7 +58,7 @@ async function searchPlacePhoton(query) {
   var url = 'https://photon.komoot.io/api/?q=' + encodeURIComponent(query) + '&lat=' + origin.lat + '&lon=' + origin.lng + '&limit=5&lang=id';
   try {
     var res = await fetch(url);
-    if (!res.ok) return [];
+    if (!res.ok) throw new Error("Photon Error");
     var data = await res.json();
     var results = [];
     if (data && data.features) {
@@ -76,9 +76,33 @@ async function searchPlacePhoton(query) {
         });
       }
     }
-    return results;
+    
+    if (results.length > 0) {
+      console.log("Photon search success:", results);
+      return results;
+    } else {
+      throw new Error("Photon empty result");
+    }
   } catch (e) {
-    return [];
+    console.log("Photon fallback to Nominatim:", e.message);
+    // Fallback to Nominatim
+    var nomUrl = 'https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(query) + '&limit=5&countrycodes=id';
+    try {
+      var nomRes = await fetch(nomUrl);
+      if (!nomRes.ok) return [];
+      var nomData = await nomRes.json();
+      var nomResults = [];
+      for (var j = 0; j < nomData.length; j++) {
+        nomResults.push({
+          label: nomData[j].display_name,
+          lat: parseFloat(nomData[j].lat),
+          lng: parseFloat(nomData[j].lon)
+        });
+      }
+      return nomResults;
+    } catch (err) {
+      return [];
+    }
   }
 }
 

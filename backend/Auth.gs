@@ -203,9 +203,6 @@ function authVerifyOtp(payload) {
       return { ok: false, error: 'OTP salah atau sudah kedaluwarsa', code: 'OTP_INVALID' };
     }
 
-    // Tandai otp_used = 1
-    updateRowById('Sessions', 'token', matchRow.token, { otp_used: 1 });
-
     // Cek apakah member sudah terdaftar
     var members = readAll('Members');
     var member = null;
@@ -235,6 +232,9 @@ function authVerifyOtp(payload) {
       };
       appendRowObj('Members', member);
     }
+    
+    // Tandai otp_used = 1 HANYA JIKA lolos pengecekan di atas
+    updateRowById('Sessions', 'token', matchRow.token, { otp_used: 1 });
 
     // Update member_id dan session_expires_at di row Sessions
     var sessionExpiresAt = new Date(now.getTime() + (sessionValidDays * 24 * 60 * 60 * 1000)).toISOString();

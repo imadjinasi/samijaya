@@ -711,7 +711,7 @@ async function handleVerifyOtp(no_hp, nama) {
       }
     } else if (res.code === 'NAMA_REQUIRED') {
       closeOtpModal();
-      showRegisterModal(no_hp);
+      showRegisterModal(no_hp, otp);
     } else {
       document.getElementById('otp-error').textContent = res.error || 'OTP salah';
       if (btn) btn.disabled = false;
@@ -724,9 +724,12 @@ async function handleVerifyOtp(no_hp, nama) {
 }
 
 // === REGISTER MODAL ===
-function showRegisterModal(no_hp) {
+function showRegisterModal(no_hp, otp) {
   var modal = document.getElementById('register-modal');
   modal.classList.remove('hidden');
+
+  var btn = document.getElementById('btn-register');
+  if (btn) btn.setAttribute('onclick', "handleRegister('" + escHtml(no_hp) + "', '" + escHtml(otp) + "')");
 
   var box = modal.querySelector('.modal-sheet');
   var html = '<div class="modal-handle"></div>';
@@ -751,7 +754,7 @@ function closeRegisterModal() {
   document.getElementById('register-modal').classList.add('hidden');
 }
 
-async function handleRegister(no_hp) {
+async function handleRegister(no_hp, otp) {
   var nama = document.getElementById('register-nama').value.trim();
   if (!nama) {
     document.getElementById('register-error').textContent = 'Nama wajib diisi';
@@ -764,19 +767,25 @@ async function handleRegister(no_hp) {
 
   showLoading();
   try {
-    // Request OTP lagi untuk proses pendaftaran
-    var res = await api('requestOtp', { no_hp: no_hp, nama: nama });
+    // Reuse the OTP by verifying directly
+    var res = await api('verifyOtp', { no_hp: no_hp, otp: otp, nama: nama });
     hideLoading();
 
     if (res.ok) {
+      session.token = res.data.token;
+      session.member = res.data.member;
+      saveSession();
       closeRegisterModal();
-      showOtpModalWithName(no_hp, nama);
-    } else if (res.code === 'OTP_COOLDOWN') {
-      var wait = (res.data && res.data.wait_seconds) || 120;
-      closeRegisterModal();
-      showOtpModalWithName(no_hp, nama, wait);
+      renderHeader();
+      showToast('Selamat datang, ' + session.member.nama + '!');
+      if (_pendingCheckout) {
+        _pendingCheckout = false;
+        if (cart.length > 0) {
+          setTimeout(function() { openCheckoutScreen(); }, 400);
+        }
+      }
     } else {
-      document.getElementById('register-error').textContent = res.error || 'Gagal';
+      document.getElementById('register-error').textContent = res.error || 'Gagal registrasi';
       if (btn) btn.disabled = false;
     }
   } catch (e) {
@@ -1087,7 +1096,9 @@ function renderShippingDetail(method) {
       }
     }
     html += '</select>';
-    html += '<div class="co-shipping-note">Ongkir: Rp0 (ambil sendiri)</div>';
+    html += '<div class="co-shipping-note">Estimasi siap 15–30 menit setelah pesanan dikonfirmasi.<br>Ongkir: Rp0 (ambil sendiri)</div>';
+    var elSlot = document.getElementById('checkout-slots');
+    if (elSlot) elSlot.style.display = 'none';
   } else if (method === 'DIANTAR') {
     var member = session.member || {};
     var addresses = member.addresses || session.addresses || [];
@@ -1123,8 +1134,12 @@ function renderShippingDetail(method) {
     html += '</div>'; // delivery-address-selection
 
     html += '<div class="co-shipping-note" id="co-ongkir-note">Ongkir: —</div>';
+    var elSlot = document.getElementById('checkout-slots');
+    if (elSlot) elSlot.style.display = 'block';
   } else if (method === 'OJOL') {
-    html += '<div class="co-shipping-note" style="opacity:1;font-size:0.85rem;">🏍️ Driver dipesan oleh pembeli. Ongkir: Rp0</div>';
+    html += '<div class="co-shipping-note" style="opacity:1;font-size:0.85rem;">🏍️ Driver dipesan oleh pembeli.<br>Estimasi siap 15–30 menit. Ongkir: Rp0</div>';
+    var elSlot = document.getElementById('checkout-slots');
+    if (elSlot) elSlot.style.display = 'none';
   }
 
   html += '</div>';
@@ -1317,7 +1332,7 @@ function renderPaymentDetail(method) {
     html += '<div class="co-bank-info">';
     if (bank) html += '<strong>' + escHtml(bank) + '</strong><br>';
     if (nomor) html += 'No. Rek: ' + escHtml(nomor) + '<br>';
-    if (nama) html += 'a/n ' + escHtml(nama);
+    if (nama) html += 'a.n. ' + escHtml(nama);
     html += '</div>';
   }
 
@@ -1425,8 +1440,8 @@ function updateCheckoutValidation() {
     if (subtotal < minOrder) {
       missing.push('Minimal order untuk diantar ' + formatRupiah(minOrder));
     }
+    if (!checkoutState.slot_id) missing.push('Slot pengiriman');
   }
-  if (!checkoutState.slot_id) missing.push('Slot pengiriman');
   if (!checkoutState.metode_bayar) missing.push('Metode pembayaran');
 
   var msgEl = document.getElementById('co-validation-msg');

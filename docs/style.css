@@ -1994,6 +1994,8 @@ h1, h2, h3, .font-serif {
   font-size: 0.85rem;
   color: var(--espresso);
   transition: background var(--ease);
+  white-space: normal;
+  word-break: break-word;
 }
 
 .search-result-item:last-child {
@@ -2002,6 +2004,18 @@ h1, h2, h3, .font-serif {
 
 .search-result-item:hover {
   background: var(--cream);
+}
+
+select {
+  max-width: 100%;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.co-pill {
+  white-space: normal;
+  word-break: break-word;
 }
 
 .address-form {

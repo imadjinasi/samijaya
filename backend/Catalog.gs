@@ -83,12 +83,27 @@ function catalogGetCatalog() {
   }
   products.sort(function (a, b) { return Number(a.urutan) - Number(b.urutan); });
 
+  var ssTz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+  function toHHMM(v) {
+    if (v instanceof Date) return Utilities.formatDate(v, ssTz, "HH:mm");
+    if (typeof v === 'string') return v;
+    return "";
+  }
+  function toYMD(v) {
+    if (v instanceof Date) return Utilities.formatDate(v, ssTz, "yyyy-MM-dd");
+    if (typeof v === 'string') return v;
+    return "";
+  }
+
   // --- PickupLocations ---
   var allPickup = readAll('PickupLocations');
   var pickupLocations = [];
   for (var i = 0; i < allPickup.length; i++) {
     if (String(allPickup[i].status) === 'aktif') {
-      pickupLocations.push(allPickup[i]);
+      var loc = allPickup[i];
+      loc.jam_buka = toHHMM(loc.jam_buka);
+      loc.jam_tutup = toHHMM(loc.jam_tutup);
+      pickupLocations.push(loc);
     }
   }
 
@@ -97,7 +112,10 @@ function catalogGetCatalog() {
   var deliverySlots = [];
   for (var i = 0; i < allSlots.length; i++) {
     if (String(allSlots[i].status) === 'aktif') {
-      deliverySlots.push(allSlots[i]);
+      var slot = allSlots[i];
+      slot.jam_mulai = toHHMM(slot.jam_mulai);
+      slot.jam_selesai = toHHMM(slot.jam_selesai);
+      deliverySlots.push(slot);
     }
   }
 
@@ -111,7 +129,9 @@ function catalogGetCatalog() {
     var tgl = new Date(allHolidays[i].tanggal);
     tgl.setHours(0, 0, 0, 0);
     if (tgl.getTime() >= todayMs) {
-      holidays.push(allHolidays[i]);
+      var hol = allHolidays[i];
+      hol.tanggal = toYMD(hol.tanggal);
+      holidays.push(hol);
     }
   }
 
