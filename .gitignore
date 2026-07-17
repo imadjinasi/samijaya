@@ -1,0 +1,7 @@
+﻿node_modules/
+.clasprc.json
+backend/.clasp.json
+*.log
+.DS_Store
+.env
+SETUP-PRIVATE.md
