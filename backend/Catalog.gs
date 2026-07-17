@@ -83,14 +83,13 @@ function catalogGetCatalog() {
   }
   products.sort(function (a, b) { return Number(a.urutan) - Number(b.urutan); });
 
-  var ssTz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
   function toHHMM(v) {
-    if (v instanceof Date) return Utilities.formatDate(v, ssTz, "HH:mm");
+    if (v instanceof Date) return Utilities.formatDate(v, "Asia/Jakarta", "HH:mm");
     if (typeof v === 'string') return v;
     return "";
   }
   function toYMD(v) {
-    if (v instanceof Date) return Utilities.formatDate(v, ssTz, "yyyy-MM-dd");
+    if (v instanceof Date) return Utilities.formatDate(v, "Asia/Jakarta", "yyyy-MM-dd");
     if (typeof v === 'string') return v;
     return "";
   }

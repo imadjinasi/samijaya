@@ -1124,6 +1124,11 @@ function renderShippingDetail(method) {
     html += '<div id="co-search-results" class="search-results hidden"></div>';
     html += '</div>';
     
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      html += '<button type="button" id="btn-use-location" class="btn-use-location" onclick="handleUseMyLocation()">📍 Gunakan lokasi saya</button>';
+      html += '<div id="location-error-msg" style="display:none; font-size:0.8rem; color:var(--danger); margin-bottom:8px;"></div>';
+    }
+    
     html += '<div id="delivery-map-section" class="map-container"></div>';
 
     html += '<div class="address-form">';
@@ -1230,6 +1235,44 @@ function onSelectSearchResult(lat, lng, label) {
   }
   
   updateDeliveryLocation(lat, lng);
+}
+
+function handleUseMyLocation() {
+  if (!navigator.geolocation) return;
+  var btn = document.getElementById('btn-use-location');
+  var errMsg = document.getElementById('location-error-msg');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Mencari lokasi…';
+  }
+  if (errMsg) errMsg.style.display = 'none';
+
+  navigator.geolocation.getCurrentPosition(
+    function(pos) {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '📍 Gunakan lokasi saya';
+      }
+      var lat = pos.coords.latitude;
+      var lng = pos.coords.longitude;
+      
+      if (typeof initDeliveryMap === 'function') {
+        initDeliveryMap('delivery-map-section', onPinMoved, lat, lng);
+      }
+      updateDeliveryLocation(lat, lng);
+    },
+    function(err) {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '📍 Gunakan lokasi saya';
+      }
+      if (errMsg) {
+        errMsg.textContent = 'Tidak bisa mengambil lokasi. Pilih manual di peta atau cari alamat.';
+        errMsg.style.display = 'block';
+      }
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+  );
 }
 
 var _reverseGeocodeTimer = null;
