@@ -158,6 +158,14 @@ function getCartCount() {
   return count;
 }
 
+// === SVG ICONS (inline, stroke, no library) ===
+var ICON = {
+  plus: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+  minus: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+  trash: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>',
+  bottle: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="10" y="6" width="12" height="22" rx="3"/><line x1="10" y1="12" x2="22" y2="12"/><path d="M13 6V4h6v2"/></svg>'
+};
+
 // === RENDER: HEADER ===
 function renderHeader() {
   var count = getCartCount();
@@ -171,23 +179,24 @@ function renderHeader() {
   renderLoginBar();
 }
 
-// === RENDER: LOGIN BAR ===
+// === RENDER: LOGIN BAR (inside hero) ===
 function renderLoginBar() {
   var bar = document.getElementById('login-bar');
   if (session.token && session.member) {
     bar.innerHTML =
       '<div class="login-bar-info">' +
         '<div>' +
-          '<span class="member-greeting">Halo ' + escHtml(session.member.nama) + '</span> ' +
-          '<span class="member-poin">• ' + Number(session.member.total_poin || 0) + ' poin</span>' +
+          '<span class="member-greeting">Halo ' + escHtml(session.member.nama) + '</span>' +
+          '<span class="member-poin">' + Number(session.member.total_poin || 0) + ' poin</span>' +
         '</div>' +
         '<button class="btn-logout" onclick="logout()">Keluar</button>' +
       '</div>';
   } else {
     bar.innerHTML =
-      '<div class="login-bar-form">' +
-        '<input type="tel" id="login-hp" placeholder="Masukkan No. HP" maxlength="15">' +
-        '<button onclick="handleCheckMember()">Cek</button>' +
+      '<label class="login-label" for="login-hp">Masukkan Nomor WhatsApp</label>' +
+      '<div class="login-form-row">' +
+        '<input type="tel" id="login-hp" placeholder="08xxxxxxxxxx" maxlength="15">' +
+        '<button class="btn-primary btn-login" onclick="handleCheckMember()">Lanjut</button>' +
       '</div>';
   }
 }
@@ -317,7 +326,7 @@ function renderProducts(products) {
     if (p.foto_url) {
       imgHtml = '<img src="' + escHtml(p.foto_url) + '" alt="' + escHtml(p.nama) + '" loading="lazy">';
     } else {
-      imgHtml = '<div class="product-img-placeholder">☕</div>';
+      imgHtml = '<div class="product-img-placeholder">' + ICON.bottle + '</div>';
     }
 
     var badgeHtml = '';
@@ -330,14 +339,14 @@ function renderProducts(products) {
       '<div class="product-card" data-category="' + escHtml(p.kategori_id || '') + '" data-name="' + escHtml(p.nama) + '" data-pid="' + escHtml(p.product_id) + '">' +
         '<div class="product-img-wrap">' +
           imgHtml +
-          badgeHtml +
         '</div>' +
+        badgeHtml +
         '<div class="product-info">' +
           '<div class="product-name">' + escHtml(p.nama) + '</div>' +
           '<div class="product-desc">' + escHtml(p.deskripsi || '') + '</div>' +
           '<div class="product-price">' + formatRupiah(p.harga) + '</div>' +
-          '<button class="btn-add" onclick="onAddToCart(\'' + escHtml(p.product_id) + '\')">Tambah</button>' +
         '</div>' +
+        '<button class="btn-add" onclick="onAddToCart(\'' + escHtml(p.product_id) + '\')" aria-label="Tambah ' + escHtml(p.nama) + '">' + ICON.plus + '</button>' +
       '</div>';
   }
   grid.innerHTML = html;
@@ -372,8 +381,7 @@ function renderCartBottomBar() {
   bar.classList.remove('hidden');
   bar.innerHTML =
     '<div class="cart-bar-info">' +
-      '<div>Keranjang (' + count + ' item)</div>' +
-      '<div class="cart-bar-total">' + formatRupiah(total) + '</div>' +
+      '<div>' + count + ' item • ' + formatRupiah(total) + '</div>' +
     '</div>' +
     '<button class="btn-view-cart" onclick="openCartModal()">Lihat Keranjang</button>';
 }
@@ -389,10 +397,11 @@ function closeCartModal() {
 }
 
 function renderCartModal() {
-  var container = document.querySelector('#cart-modal .modal-box');
+  var container = document.querySelector('#cart-modal .modal-sheet');
   if (!container) return;
 
-  var html = '<button class="modal-close" onclick="closeCartModal()">&times;</button>';
+  var html = '<div class="modal-handle"></div>';
+  html += '<button class="modal-close" onclick="closeCartModal()">&times;</button>';
   html += '<div class="modal-title">Keranjang Belanja</div>';
 
   if (cart.length === 0) {
@@ -408,14 +417,14 @@ function renderCartModal() {
       '<div class="cart-item">' +
         '<div class="cart-item-info">' +
           '<div class="cart-item-name">' + escHtml(item.nama) + '</div>' +
-          '<div class="cart-item-price">' + formatRupiah(item.harga) + ' × ' + item.qty + ' = ' + formatRupiah(item.harga * item.qty) + '</div>' +
+          '<div class="cart-item-price">' + formatRupiah(item.harga) + ' × ' + item.qty + '</div>' +
         '</div>' +
         '<div class="cart-item-qty">' +
-          '<button onclick="updateQty(\'' + escHtml(item.product_id) + '\', -1)">−</button>' +
+          '<button onclick="updateQty(\'' + escHtml(item.product_id) + '\', -1)">' + ICON.minus + '</button>' +
           '<span>' + item.qty + '</span>' +
-          '<button onclick="updateQty(\'' + escHtml(item.product_id) + '\', 1)">+</button>' +
+          '<button onclick="updateQty(\'' + escHtml(item.product_id) + '\', 1)">' + ICON.plus + '</button>' +
         '</div>' +
-        '<button class="cart-item-remove" onclick="removeFromCart(\'' + escHtml(item.product_id) + '\')" title="Hapus">🗑</button>' +
+        '<button class="cart-item-remove" onclick="removeFromCart(\'' + escHtml(item.product_id) + '\')" title="Hapus">' + ICON.trash + '</button>' +
       '</div>';
   }
   html += '</div>';
@@ -470,10 +479,11 @@ function showOtpModal(no_hp, cooldownSeconds) {
   var modal = document.getElementById('otp-modal');
   modal.classList.remove('hidden');
 
-  var box = modal.querySelector('.modal-box');
-  var html = '<button class="modal-close" onclick="closeOtpModal()">&times;</button>';
+  var box = modal.querySelector('.modal-sheet');
+  var html = '<div class="modal-handle"></div>';
+  html += '<button class="modal-close" onclick="closeOtpModal()">&times;</button>';
   html += '<div class="modal-title">Verifikasi OTP</div>';
-  html += '<p style="text-align:center;font-size:0.85rem;color:#757575;margin-bottom:16px;">OTP telah dikirim ke admin. Tanyakan OTP Anda.</p>';
+  html += '<p class="otp-subtitle">OTP telah dikirim ke admin. Tanyakan OTP Anda.</p>';
 
   // 6 digit inputs
   html += '<div class="otp-input-wrap" id="otp-inputs">';
@@ -549,7 +559,7 @@ function startOtpCooldown(seconds, no_hp) {
       timerEl.innerHTML = 'Kirim ulang dalam <strong>' + m + ':' + (s < 10 ? '0' : '') + s + '</strong>';
       remaining--;
     } else {
-      timerEl.innerHTML = '<button style="background:none;border:none;color:#FF6F00;font-weight:700;cursor:pointer;font-size:0.85rem;" onclick="resendOtp(\'' + escHtml(no_hp) + '\')">Kirim Ulang OTP</button>';
+      timerEl.innerHTML = '<button onclick="resendOtp(\'' + escHtml(no_hp) + '\')">Kirim Ulang OTP</button>';
       clearInterval(_otpCooldownTimer);
       _otpCooldownTimer = null;
     }
@@ -631,8 +641,9 @@ function showRegisterModal(no_hp) {
   var modal = document.getElementById('register-modal');
   modal.classList.remove('hidden');
 
-  var box = modal.querySelector('.modal-box');
-  var html = '<button class="modal-close" onclick="closeRegisterModal()">&times;</button>';
+  var box = modal.querySelector('.modal-sheet');
+  var html = '<div class="modal-handle"></div>';
+  html += '<button class="modal-close" onclick="closeRegisterModal()">&times;</button>';
   html += '<div class="modal-title">Daftar Member Baru</div>';
   html += '<div class="register-form">';
   html += '<label>Nama Lengkap</label>';
@@ -692,10 +703,11 @@ function showOtpModalWithName(no_hp, nama, cooldownSeconds) {
   var modal = document.getElementById('otp-modal');
   modal.classList.remove('hidden');
 
-  var box = modal.querySelector('.modal-box');
-  var html = '<button class="modal-close" onclick="closeOtpModal()">&times;</button>';
+  var box = modal.querySelector('.modal-sheet');
+  var html = '<div class="modal-handle"></div>';
+  html += '<button class="modal-close" onclick="closeOtpModal()">&times;</button>';
   html += '<div class="modal-title">Verifikasi OTP</div>';
-  html += '<p style="text-align:center;font-size:0.85rem;color:#757575;margin-bottom:16px;">OTP baru dikirim untuk pendaftaran <strong>' + escHtml(nama) + '</strong></p>';
+  html += '<p class="otp-subtitle">OTP baru dikirim untuk pendaftaran <strong>' + escHtml(nama) + '</strong></p>';
 
   html += '<div class="otp-input-wrap" id="otp-inputs">';
   for (var i = 0; i < 6; i++) {
