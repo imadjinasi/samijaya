@@ -66,6 +66,9 @@ function doPost(e) {
       case 'getMe':
         result = authGetMe(payload, token);
         break;
+      case 'getCatalog':
+        result = catalogGetCatalog();
+        break;
 
       default:
         result = { ok: false, error: 'Unknown action: ' + action, code: 'UNKNOWN_ACTION' };
