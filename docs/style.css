@@ -1380,3 +1380,556 @@ h1, h2, h3, .font-serif {
     background-size: 280px auto;
   }
 }
+
+/* ============================================================
+   CHECKOUT SCREEN — full overlay
+   ============================================================ */
+.checkout-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+  background: var(--cream);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  animation: checkoutSlideUp 0.35s ease;
+}
+
+.checkout-overlay.hidden {
+  display: none;
+}
+
+@keyframes checkoutSlideUp {
+  from { transform: translateY(100%); opacity: 0.8; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* Checkout inner wrapper */
+.checkout-inner {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 0 20px 120px;
+}
+
+/* Checkout header bar */
+.checkout-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--cream);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0 12px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 20px;
+}
+
+.checkout-back-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--white);
+  border: 1.5px solid var(--line);
+  color: var(--espresso);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all var(--ease);
+}
+
+.checkout-back-btn:hover {
+  background: var(--espresso);
+  color: var(--cream);
+  border-color: var(--espresso);
+}
+
+.checkout-header-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.15rem;
+  color: var(--espresso);
+}
+
+/* Section blocks */
+.co-section {
+  background: var(--white);
+  border-radius: var(--r-card);
+  padding: 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 12px rgba(52, 33, 28, 0.04);
+}
+
+.co-section-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1rem;
+  color: var(--espresso);
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.co-section-title .co-step {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--espresso);
+  color: var(--cream);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Collapsible order summary */
+.co-summary-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  color: var(--espresso);
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+
+.co-summary-toggle .co-toggle-arrow {
+  transition: transform 0.2s ease;
+  font-size: 0.75rem;
+  opacity: 0.5;
+}
+
+.co-summary-toggle.open .co-toggle-arrow {
+  transform: rotate(180deg);
+}
+
+.co-summary-items {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.co-summary-items.collapsed {
+  display: none;
+}
+
+.co-summary-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--brown);
+}
+
+.co-summary-row .item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.co-summary-row .item-sub {
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--espresso);
+}
+
+.co-subtotal-row {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 10px;
+  margin-top: 8px;
+  border-top: 1px solid var(--line);
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: var(--espresso);
+}
+
+/* Customer info */
+.co-customer-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.co-customer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+}
+
+.co-customer-row .co-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--brown);
+  opacity: 0.6;
+  min-width: 52px;
+}
+
+.co-customer-row .co-value {
+  color: var(--espresso);
+  font-weight: 500;
+}
+
+/* Date input */
+.co-date-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.co-date-label {
+  font-size: 0.78rem;
+  color: var(--brown);
+  opacity: 0.7;
+}
+
+.co-date-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1.5px solid var(--latte);
+  border-radius: var(--r-input);
+  background: var(--white);
+  color: var(--espresso);
+  font-size: 0.92rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color var(--ease);
+}
+
+.co-date-input:focus {
+  border-color: var(--espresso);
+}
+
+.co-date-error {
+  color: var(--danger);
+  font-size: 0.78rem;
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+/* Pill selector (shipping, slots, payment) */
+.co-pill-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.co-pill {
+  padding: 10px 18px;
+  border: 1.5px solid var(--latte);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--brown);
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: all var(--ease);
+  cursor: pointer;
+}
+
+.co-pill:hover {
+  border-color: var(--brown);
+  color: var(--espresso);
+}
+
+.co-pill.active {
+  background: var(--espresso);
+  color: var(--cream);
+  border-color: var(--espresso);
+}
+
+/* Shipping detail area */
+.co-shipping-detail {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.co-shipping-detail select {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1.5px solid var(--latte);
+  border-radius: var(--r-input);
+  background: var(--white);
+  color: var(--espresso);
+  font-size: 0.88rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color var(--ease);
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23503229' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+  padding-right: 40px;
+}
+
+.co-shipping-detail select:focus {
+  border-color: var(--espresso);
+}
+
+.co-shipping-note {
+  font-size: 0.78rem;
+  color: var(--brown);
+  opacity: 0.6;
+  margin-top: 8px;
+  line-height: 1.4;
+}
+
+.co-shipping-placeholder {
+  padding: 16px;
+  background: rgba(216, 193, 164, 0.15);
+  border-radius: var(--r-input);
+  text-align: center;
+  color: var(--brown);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+/* Delivery map placeholder container */
+#delivery-map-section {
+  margin-top: 12px;
+  min-height: 0;
+}
+
+/* Slot pills — smaller */
+.co-slot-pill {
+  padding: 8px 14px;
+  font-size: 0.78rem;
+}
+
+.co-slot-note {
+  font-size: 0.72rem;
+  color: var(--brown);
+  opacity: 0.5;
+  margin-top: 10px;
+  line-height: 1.4;
+  font-style: italic;
+}
+
+/* Payment info block */
+.co-payment-detail {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.co-transfer-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.co-qris-wrap {
+  text-align: center;
+}
+
+.co-qris-wrap img {
+  max-width: 200px;
+  margin: 0 auto;
+  border-radius: var(--r-input);
+  border: 1px solid var(--line);
+}
+
+.co-qris-label {
+  font-size: 0.75rem;
+  color: var(--brown);
+  opacity: 0.6;
+  margin-top: 6px;
+}
+
+.co-bank-info {
+  background: rgba(216, 193, 164, 0.12);
+  padding: 14px 16px;
+  border-radius: var(--r-input);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--espresso);
+}
+
+.co-bank-info strong {
+  font-weight: 700;
+}
+
+/* Points checkbox */
+.co-points-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.co-points-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.co-points-check input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--espresso);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.co-points-check label {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--espresso);
+  cursor: pointer;
+}
+
+.co-points-check input[type="checkbox"]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.co-points-check input[type="checkbox"]:disabled + label {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.co-points-detail {
+  font-size: 0.78rem;
+  color: var(--brown);
+  opacity: 0.7;
+  line-height: 1.4;
+}
+
+.co-points-min-note {
+  font-size: 0.75rem;
+  color: var(--danger);
+  opacity: 0.8;
+}
+
+/* Cost summary — sticky bottom */
+.co-cost-summary {
+  background: var(--white);
+  border-radius: var(--r-card);
+  padding: 20px;
+  box-shadow: 0 -4px 20px rgba(52, 33, 28, 0.06);
+  position: sticky;
+  bottom: 0;
+  z-index: 6;
+  margin-top: 8px;
+}
+
+.co-cost-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.85rem;
+  color: var(--brown);
+  padding: 4px 0;
+}
+
+.co-cost-row.total {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--espresso);
+  padding-top: 10px;
+  margin-top: 6px;
+  border-top: 1.5px solid var(--espresso);
+}
+
+.co-cost-row .co-cost-val {
+  font-weight: 600;
+  color: var(--espresso);
+}
+
+.co-cost-row .co-cost-val.discount {
+  color: var(--success);
+}
+
+.co-cost-row .co-cost-val.pending {
+  color: var(--latte);
+  font-style: italic;
+}
+
+#btn-create-order {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: var(--r-pill);
+  background: var(--espresso);
+  color: var(--cream);
+  font-weight: 700;
+  font-size: 1rem;
+  margin-top: 14px;
+  transition: background var(--ease);
+  cursor: pointer;
+}
+
+#btn-create-order:disabled {
+  background: var(--latte);
+  color: var(--brown);
+  cursor: not-allowed;
+}
+
+.co-submit-note {
+  font-size: 0.72rem;
+  color: var(--brown);
+  opacity: 0.5;
+  text-align: center;
+  margin-top: 8px;
+}
+
+/* Validation indicator */
+.co-validation-msg {
+  font-size: 0.78rem;
+  color: var(--danger);
+  padding: 10px 0 0;
+}
+
+.co-validation-msg ul {
+  margin: 4px 0 0 16px;
+  padding: 0;
+  list-style: disc;
+}
+
+.co-validation-msg li {
+  margin-bottom: 2px;
+}
+
+/* ============================================================
+   CHECKOUT RESPONSIVE
+   ============================================================ */
+@media (min-width: 480px) {
+  .checkout-inner {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .co-pill-group {
+    gap: 10px;
+  }
+}
+
+@media (min-width: 768px) {
+  .checkout-inner {
+    max-width: 560px;
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+
+  .checkout-header {
+    padding-top: 24px;
+  }
+
+  .co-section {
+    padding: 24px;
+  }
+
+  .co-cost-summary {
+    padding: 24px;
+  }
+}

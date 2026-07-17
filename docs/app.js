@@ -11,6 +11,15 @@ var _bannerInterval = null;
 var _bannerIndex = 0;
 var _activeCategory = null; // null = Semua
 var _otpCooldownTimer = null;
+var _pendingCheckout = false;
+var checkoutState = {
+  tgl_antar: '',
+  metode_kirim: '',
+  lokasi_pickup_id: '',
+  slot_id: '',
+  metode_bayar: '',
+  pakai_poin: false
+};
 
 // === API HELPER ===
 async function api(action, payload) {
@@ -490,7 +499,19 @@ function renderCartModal() {
 }
 
 function handleCheckout() {
-  showToast('Fitur checkout segera hadir!');
+  if (cart.length === 0) {
+    showToast('Keranjang kosong');
+    return;
+  }
+  // Gate: must be logged in
+  if (!session.token || !session.member) {
+    _pendingCheckout = true;
+    closeCartModal();
+    showLoginModal();
+    return;
+  }
+  closeCartModal();
+  openCheckoutScreen();
 }
 
 // === AUTH UI ===
@@ -673,6 +694,13 @@ async function handleVerifyOtp(no_hp, nama) {
       closeOtpModal();
       renderHeader();
       showToast('Selamat datang, ' + session.member.nama + '!');
+      // Continue to checkout if pending
+      if (_pendingCheckout) {
+        _pendingCheckout = false;
+        if (cart.length > 0) {
+          setTimeout(function() { openCheckoutScreen(); }, 400);
+        }
+      }
     } else if (res.code === 'NAMA_REQUIRED') {
       closeOtpModal();
       showRegisterModal(no_hp);
@@ -784,6 +812,429 @@ function logout() {
   localStorage.removeItem('sj_session');
   renderHeader();
   showToast('Berhasil keluar');
+}
+
+// === CHECKOUT SCREEN ===
+function resetCheckoutState() {
+  checkoutState = {
+    tgl_antar: '',
+    metode_kirim: '',
+    lokasi_pickup_id: '',
+    slot_id: '',
+    metode_bayar: '',
+    pakai_poin: false
+  };
+}
+
+function openCheckoutScreen() {
+  resetCheckoutState();
+  renderCheckoutScreen();
+  document.getElementById('checkout-screen').classList.remove('hidden');
+  document.getElementById('checkout-screen').scrollTop = 0;
+  // Prevent body scroll
+  document.body.style.overflow = 'hidden';
+}
+
+function closeCheckoutScreen() {
+  document.getElementById('checkout-screen').classList.add('hidden');
+  document.body.style.overflow = '';
+  // Re-open cart modal
+  openCartModal();
+}
+
+function renderCheckoutScreen() {
+  var el = document.getElementById('checkout-screen');
+  var member = session.member || {};
+  var settings = (catalog && catalog.settings) ? catalog.settings : {};
+  var poin = Number(member.total_poin || 0);
+  var subtotal = getCartTotal();
+  var count = getCartCount();
+
+  // Today as YYYY-MM-DD
+  var today = new Date();
+  var todayStr = today.getFullYear() + '-' +
+    String(today.getMonth() + 1).padStart(2, '0') + '-' +
+    String(today.getDate()).padStart(2, '0');
+
+  var html = '<div class="checkout-inner">';
+
+  // === HEADER ===
+  html += '<div class="checkout-header">';
+  html += '<button class="checkout-back-btn" onclick="closeCheckoutScreen()" aria-label="Kembali">';
+  html += '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>';
+  html += '</button>';
+  html += '<div class="checkout-header-title">Checkout</div>';
+  html += '</div>';
+
+  // === 1. ORDER SUMMARY ===
+  html += '<div class="co-section" id="checkout-order-summary">';
+  html += '<div class="co-section-title"><span class="co-step">1</span>Ringkasan Pesanan</div>';
+  html += '<button class="co-summary-toggle open" onclick="toggleOrderSummary()">';
+  html += '<span>' + count + ' item · ' + formatRupiah(subtotal) + '</span>';
+  html += '<span class="co-toggle-arrow">▼</span>';
+  html += '</button>';
+  html += '<div class="co-summary-items" id="co-summary-items">';
+  for (var i = 0; i < cart.length; i++) {
+    var item = cart[i];
+    html += '<div class="co-summary-row">';
+    html += '<span class="item-name">' + escHtml(item.nama) + ' × ' + item.qty + '</span>';
+    html += '<span class="item-sub">' + formatRupiah(item.harga * item.qty) + '</span>';
+    html += '</div>';
+  }
+  html += '<div class="co-subtotal-row">';
+  html += '<span>Subtotal</span>';
+  html += '<span>' + formatRupiah(subtotal) + '</span>';
+  html += '</div>';
+  html += '</div>'; // co-summary-items
+  html += '</div>'; // co-section
+
+  // === 2. CUSTOMER DATA ===
+  html += '<div class="co-section" id="checkout-customer">';
+  html += '<div class="co-section-title"><span class="co-step">2</span>Data Customer</div>';
+  html += '<div class="co-customer-info">';
+  html += '<div class="co-customer-row"><span class="co-label">Nama</span><span class="co-value">' + escHtml(member.nama || '-') + '</span></div>';
+  html += '<div class="co-customer-row"><span class="co-label">HP</span><span class="co-value">' + escHtml(member.no_hp || '-') + '</span></div>';
+  html += '</div>';
+  html += '</div>';
+
+  // === 3. TANGGAL PENGANTARAN ===
+  html += '<div class="co-section" id="checkout-date">';
+  html += '<div class="co-section-title"><span class="co-step">3</span>Tanggal Pengantaran</div>';
+  html += '<div class="co-date-wrap">';
+  html += '<label class="co-date-label" for="co-date-input">Tanggal Pengantaran (bukan tanggal order)</label>';
+  html += '<input type="date" id="co-date-input" class="co-date-input" min="' + todayStr + '" onchange="onCheckoutDateChange(this.value)">';
+  html += '<div class="co-date-error" id="co-date-error"></div>';
+  html += '</div>';
+  html += '</div>';
+
+  // === 4. METODE PENGIRIMAN ===
+  html += '<div class="co-section" id="checkout-shipping">';
+  html += '<div class="co-section-title"><span class="co-step">4</span>Metode Pengiriman</div>';
+  html += '<div class="co-pill-group" id="co-shipping-pills">';
+  html += '<button class="co-pill" data-method="AMBIL" onclick="selectShippingMethod(\'AMBIL\')">';
+  html += '📍 Ambil di Toko</button>';
+  html += '<button class="co-pill" data-method="DIANTAR" onclick="selectShippingMethod(\'DIANTAR\')">';
+  html += '🛵 Diantar</button>';
+  html += '<button class="co-pill" data-method="OJOL" onclick="selectShippingMethod(\'OJOL\')">';
+  html += '📱 Ojol</button>';
+  html += '</div>';
+  html += '<div id="co-shipping-detail"></div>';
+  html += '</div>';
+
+  // === 5. SLOT PENGIRIMAN ===
+  html += '<div class="co-section" id="checkout-slots">';
+  html += '<div class="co-section-title"><span class="co-step">5</span>Slot Pengiriman</div>';
+  html += '<div class="co-pill-group" id="co-slot-pills">';
+  var slots = (catalog && catalog.deliverySlots) ? catalog.deliverySlots : [];
+  for (var s = 0; s < slots.length; s++) {
+    var sl = slots[s];
+    if (String(sl.status).toLowerCase() === 'aktif' || String(sl.status) === '1' || sl.status === true) {
+      html += '<button class="co-pill co-slot-pill" data-slotid="' + escHtml(sl.slot_id) + '" onclick="selectSlot(\'' + escHtml(sl.slot_id) + '\')">';
+      html += escHtml(sl.jam_mulai) + ' – ' + escHtml(sl.jam_selesai);
+      html += '</button>';
+    }
+  }
+  html += '</div>';
+  html += '<div class="co-slot-note">Waktu bersifat estimasi dan dapat disesuaikan Samijaya.</div>';
+  html += '</div>';
+
+  // === 6. PEMBAYARAN ===
+  html += '<div class="co-section" id="checkout-payment">';
+  html += '<div class="co-section-title"><span class="co-step">6</span>Pembayaran</div>';
+  html += '<div class="co-pill-group" id="co-payment-pills">';
+  html += '<button class="co-pill" data-pay="COD" onclick="selectPayment(\'COD\')">💵 COD</button>';
+  html += '<button class="co-pill" data-pay="TRANSFER" onclick="selectPayment(\'TRANSFER\')">🏦 Transfer</button>';
+  html += '</div>';
+  html += '<div id="co-payment-detail"></div>';
+  html += '</div>';
+
+  // === 7. GUNAKAN POIN ===
+  var pointMinRedeem = Number(settings.POINT_MIN_REDEEM || 0);
+  var poinDisabled = poin < pointMinRedeem || poin <= 0;
+  html += '<div class="co-section" id="checkout-points">';
+  html += '<div class="co-section-title"><span class="co-step">7</span>Gunakan Poin</div>';
+  html += '<div class="co-points-wrap">';
+  html += '<div class="co-points-check">';
+  html += '<input type="checkbox" id="co-use-points" ' + (poinDisabled ? 'disabled' : '') + ' onchange="onTogglePoints(this.checked)">';
+  html += '<label for="co-use-points">Gunakan poin (' + poin + ' poin)</label>';
+  html += '</div>';
+  if (poinDisabled && poin > 0 && pointMinRedeem > 0) {
+    html += '<div class="co-points-min-note">Minimal ' + pointMinRedeem + ' poin untuk menukar.</div>';
+  }
+  if (poin <= 0) {
+    html += '<div class="co-points-detail">Anda belum memiliki poin.</div>';
+  }
+  html += '<div class="co-points-detail" id="co-points-info"></div>';
+  html += '</div>';
+  html += '</div>';
+
+  // === 8. RINGKASAN BIAYA ===
+  html += '<div class="co-cost-summary" id="checkout-cost-summary">';
+  html += '<div class="co-cost-row"><span>Subtotal produk</span><span class="co-cost-val" id="co-cost-subtotal">' + formatRupiah(subtotal) + '</span></div>';
+  html += '<div class="co-cost-row"><span>Ongkir</span><span class="co-cost-val" id="co-cost-ongkir">—</span></div>';
+  html += '<div class="co-cost-row" id="co-cost-poin-row" style="display:none"><span>Potongan poin</span><span class="co-cost-val discount" id="co-cost-poin">-Rp0</span></div>';
+  html += '<div class="co-cost-row total"><span>TOTAL</span><span class="co-cost-val" id="co-cost-total">' + formatRupiah(subtotal) + '</span></div>';
+  html += '<button id="btn-create-order" disabled>Buat Pesanan</button>';
+  html += '<div class="co-submit-note">Submit aktif setelah langkah berikutnya.</div>';
+  html += '<div class="co-validation-msg" id="co-validation-msg"></div>';
+  html += '</div>';
+
+  html += '</div>'; // checkout-inner
+
+  el.innerHTML = html;
+  updateCheckoutSummary();
+}
+
+function toggleOrderSummary() {
+  var btn = document.querySelector('.co-summary-toggle');
+  var items = document.getElementById('co-summary-items');
+  if (!btn || !items) return;
+  btn.classList.toggle('open');
+  items.classList.toggle('collapsed');
+}
+
+// === DATE ===
+function onCheckoutDateChange(val) {
+  checkoutState.tgl_antar = val;
+  var errEl = document.getElementById('co-date-error');
+  if (!errEl) return;
+
+  // Check holidays
+  if (val && catalog && catalog.holidays) {
+    for (var h = 0; h < catalog.holidays.length; h++) {
+      var hDate = String(catalog.holidays[h].tanggal || '').trim();
+      if (hDate === val) {
+        var ket = catalog.holidays[h].keterangan || 'Libur';
+        errEl.textContent = 'Tanggal libur (' + ket + '), pilih tanggal lain.';
+        updateCheckoutSummary();
+        return;
+      }
+    }
+  }
+  errEl.textContent = '';
+  updateCheckoutSummary();
+}
+
+function isDateHoliday(val) {
+  if (!val || !catalog || !catalog.holidays) return false;
+  for (var h = 0; h < catalog.holidays.length; h++) {
+    if (String(catalog.holidays[h].tanggal || '').trim() === val) return true;
+  }
+  return false;
+}
+
+// === SHIPPING METHOD ===
+function selectShippingMethod(method) {
+  method = method.trim();
+  checkoutState.metode_kirim = method;
+  checkoutState.lokasi_pickup_id = '';
+
+  // Highlight pill
+  var pills = document.querySelectorAll('#co-shipping-pills .co-pill');
+  pills.forEach(function(p) {
+    p.classList.toggle('active', p.getAttribute('data-method').trim() === method);
+  });
+
+  renderShippingDetail(method);
+  updateCheckoutSummary();
+}
+
+function renderShippingDetail(method) {
+  var container = document.getElementById('co-shipping-detail');
+  if (!container) return;
+  var html = '<div class="co-shipping-detail">';
+
+  if (method === 'AMBIL') {
+    var locations = (catalog && catalog.pickupLocations) ? catalog.pickupLocations : [];
+    html += '<select id="co-pickup-select" onchange="onPickupChange(this.value)">';
+    html += '<option value="">— Pilih lokasi —</option>';
+    for (var i = 0; i < locations.length; i++) {
+      var loc = locations[i];
+      if (String(loc.status).toLowerCase() === 'aktif' || String(loc.status) === '1' || loc.status === true) {
+        var label = escHtml(loc.nama) + ' (' + escHtml(loc.jam_buka || '') + '–' + escHtml(loc.jam_tutup || '') + ')';
+        html += '<option value="' + escHtml(loc.lokasi_id) + '">' + label + '</option>';
+      }
+    }
+    html += '</select>';
+    html += '<div class="co-shipping-note">Ongkir: Rp0 (ambil sendiri)</div>';
+  } else if (method === 'DIANTAR') {
+    html += '<div class="co-shipping-placeholder">Peta & alamat akan aktif di langkah berikutnya.</div>';
+    html += '<div id="delivery-map-section"></div>';
+    html += '<div class="co-shipping-note">Ongkir: —</div>';
+  } else if (method === 'OJOL') {
+    html += '<div class="co-shipping-note" style="opacity:1;font-size:0.85rem;">🏍️ Driver dipesan oleh pembeli. Ongkir: Rp0</div>';
+  }
+
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function onPickupChange(val) {
+  checkoutState.lokasi_pickup_id = val;
+  updateCheckoutSummary();
+}
+
+// === SLOT ===
+function selectSlot(slotId) {
+  checkoutState.slot_id = slotId;
+  var pills = document.querySelectorAll('#co-slot-pills .co-pill');
+  pills.forEach(function(p) {
+    p.classList.toggle('active', p.getAttribute('data-slotid') === slotId);
+  });
+  updateCheckoutSummary();
+}
+
+// === PAYMENT ===
+function selectPayment(method) {
+  checkoutState.metode_bayar = method;
+  var pills = document.querySelectorAll('#co-payment-pills .co-pill');
+  pills.forEach(function(p) {
+    p.classList.toggle('active', p.getAttribute('data-pay') === method);
+  });
+  renderPaymentDetail(method);
+  updateCheckoutSummary();
+}
+
+function renderPaymentDetail(method) {
+  var container = document.getElementById('co-payment-detail');
+  if (!container) return;
+
+  if (method !== 'TRANSFER') {
+    container.innerHTML = '';
+    return;
+  }
+
+  var settings = (catalog && catalog.settings) ? catalog.settings : {};
+  var html = '<div class="co-payment-detail"><div class="co-transfer-info">';
+
+  // QRIS
+  var qrisId = String(settings.QRIS_FILE_ID || '').trim();
+  if (qrisId) {
+    html += '<div class="co-qris-wrap">';
+    html += '<img src="https://drive.google.com/thumbnail?id=' + escHtml(qrisId) + '&sz=w400" alt="QRIS" loading="lazy">';
+    html += '<div class="co-qris-label">Scan QRIS</div>';
+    html += '</div>';
+  }
+
+  // Bank info
+  var bank = String(settings.REKENING_BANK || '').trim();
+  var nomor = String(settings.REKENING_NOMOR || '').trim();
+  var nama = String(settings.REKENING_NAMA || '').trim();
+  if (bank || nomor || nama) {
+    html += '<div class="co-bank-info">';
+    if (bank) html += '<strong>' + escHtml(bank) + '</strong><br>';
+    if (nomor) html += 'No. Rek: ' + escHtml(nomor) + '<br>';
+    if (nama) html += 'a/n ' + escHtml(nama);
+    html += '</div>';
+  }
+
+  if (!qrisId && !bank && !nomor && !nama) {
+    html += '<div class="co-shipping-note" style="opacity:1">Info rekening belum tersedia. Hubungi toko.</div>';
+  }
+
+  html += '</div></div>';
+  container.innerHTML = html;
+}
+
+// === POINTS ===
+function onTogglePoints(checked) {
+  checkoutState.pakai_poin = checked;
+  updateCheckoutSummary();
+}
+
+// === LIVE COST SUMMARY ===
+function updateCheckoutSummary() {
+  var subtotal = getCartTotal();
+  var ongkir = 0;
+  var ongkirDisplay = '—';
+  var method = checkoutState.metode_kirim;
+
+  if (method === 'AMBIL' || method === 'OJOL') {
+    ongkir = 0;
+    ongkirDisplay = formatRupiah(0);
+  } else if (method === 'DIANTAR') {
+    ongkir = 0;
+    ongkirDisplay = '—';
+  }
+
+  // Points calculation
+  var poinUsed = 0;
+  var member = session.member || {};
+  var poin = Number(member.total_poin || 0);
+  var settings = (catalog && catalog.settings) ? catalog.settings : {};
+  var pointMinRedeem = Number(settings.POINT_MIN_REDEEM || 0);
+
+  if (checkoutState.pakai_poin && poin >= pointMinRedeem && poin > 0) {
+    // 1 poin = Rp1
+    var maxDiscount = subtotal + ongkir; // don't go below 0
+    poinUsed = Math.min(poin, maxDiscount);
+  }
+
+  var total = subtotal + ongkir - poinUsed;
+  if (total < 0) total = 0;
+
+  // Update DOM
+  var elSubtotal = document.getElementById('co-cost-subtotal');
+  var elOngkir = document.getElementById('co-cost-ongkir');
+  var elPoinRow = document.getElementById('co-cost-poin-row');
+  var elPoin = document.getElementById('co-cost-poin');
+  var elTotal = document.getElementById('co-cost-total');
+  var elPointsInfo = document.getElementById('co-points-info');
+
+  if (elSubtotal) elSubtotal.textContent = formatRupiah(subtotal);
+  if (elOngkir) {
+    elOngkir.textContent = ongkirDisplay;
+    if (method === 'DIANTAR') {
+      elOngkir.classList.add('pending');
+    } else {
+      elOngkir.classList.remove('pending');
+    }
+  }
+
+  if (poinUsed > 0) {
+    if (elPoinRow) elPoinRow.style.display = '';
+    if (elPoin) elPoin.textContent = '-' + formatRupiah(poinUsed);
+    if (elPointsInfo) {
+      elPointsInfo.textContent = 'Dipakai: ' + poinUsed + ' poin. Sisa: ' + (poin - poinUsed) + ' poin.';
+    }
+  } else {
+    if (elPoinRow) elPoinRow.style.display = 'none';
+    if (elPoin) elPoin.textContent = '-Rp0';
+    if (elPointsInfo) elPointsInfo.textContent = '';
+  }
+
+  if (elTotal) elTotal.textContent = formatRupiah(total);
+
+  // Validation
+  updateCheckoutValidation();
+}
+
+function updateCheckoutValidation() {
+  var missing = [];
+  if (!checkoutState.tgl_antar) missing.push('Tanggal pengantaran');
+  if (checkoutState.tgl_antar && isDateHoliday(checkoutState.tgl_antar)) missing.push('Tanggal yang dipilih adalah hari libur');
+  if (!checkoutState.metode_kirim) missing.push('Metode pengiriman');
+  if (checkoutState.metode_kirim === 'AMBIL' && !checkoutState.lokasi_pickup_id) missing.push('Lokasi pickup');
+  if (!checkoutState.slot_id) missing.push('Slot pengiriman');
+  if (!checkoutState.metode_bayar) missing.push('Metode pembayaran');
+
+  var msgEl = document.getElementById('co-validation-msg');
+  if (msgEl) {
+    if (missing.length > 0) {
+      var ul = '<ul>';
+      for (var i = 0; i < missing.length; i++) {
+        ul += '<li>' + escHtml(missing[i]) + '</li>';
+      }
+      ul += '</ul>';
+      msgEl.innerHTML = 'Belum lengkap:' + ul;
+    } else {
+      msgEl.innerHTML = '';
+    }
+  }
+
+  // Button always disabled in 4a
+  var btn = document.getElementById('btn-create-order');
+  if (btn) btn.disabled = true;
 }
 
 // === INIT ===
