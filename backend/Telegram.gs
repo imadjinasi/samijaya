@@ -304,9 +304,9 @@ function handleTelegramWebhook(update) {
       // Command lain
       if (text.indexOf('/') === 0) {
         if (isAdmin(chatId)) {
-          tgSend(chatId, 'ℹ️ Perintah belum tersedia.');
+          handleAdminCommand(chatId, text);
         } else {
-          tgSend(chatId, '❓ Perintah tidak dikenal.');
+          tgSend(chatId, '❓ Perintah tidak dikenal. Anda bukan admin.');
         }
         return { ok: true };
       }
@@ -508,3 +508,420 @@ function handleTelegramWebhook(update) {
     return { ok: true }; // Tetap ok agar Telegram tidak retry terus
   }
 }
+
+// ============================================================
+// 10. handleAdminCommand(chatId, text)
+// ============================================================
+/**
+ * Dispatcher untuk berbagai perintah admin via Telegram.
+ *
+ * @param {string} chatId 
+ * @param {string} text 
+ */
+function handleAdminCommand(chatId, text) {
+  var parts = text.split(/\s+/);
+  var cmd = parts[0].toLowerCase();
+  var args = parts.slice(1);
+
+  function esc(str) {
+    return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function getJktDateStr(date) {
+    return Utilities.formatDate(date, 'Asia/Jakarta', 'yyyy-MM-dd');
+  }
+
+  if (cmd === '/help') {
+    var msg = '🛠 <b>Daftar Perintah Admin</b>\n\n'
+      + '/pending — daftar order berjalan\n'
+      + '/order &lt;ID&gt; — detail lengkap sebuah order\n'
+      + '/omzet — omzet hari ini\n'
+      + '/laporan harian — omzet 7 hari terakhir\n'
+      + '/laporan bulanan — omzet 4 minggu terakhir\n'
+      + '/tutuptoko — set toko tutup sementara\n'
+      + '/bukatoko — buka kembali toko\n'
+      + '/tutupslot &lt;id&gt; — nonaktifkan slot antar\n'
+      + '/bukaslot &lt;id&gt; — aktifkan slot antar\n'
+      + '/produk &lt;id&gt; on|off — ubah ketersediaan produk\n'
+      + '/banner &lt;id&gt; on|off — ubah status banner\n'
+      + '/clearcache — hapus cache settings & katalog';
+    tgSend(chatId, msg);
+    return;
+  }
+
+  if (cmd === '/pending') {
+    var orders = readAll('Orders');
+    var pendingList = [];
+    // Urutkan dari yang terbaru
+    orders.sort(function(a, b) {
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+
+    for (var i = 0; i < orders.length; i++) {
+      var st = String(orders[i].status);
+      if (st === 'MENUNGGU' || st === 'DIPROSES' || st === 'SIAP') {
+        pendingList.push(orders[i]);
+      }
+    }
+
+    if (pendingList.length === 0) {
+      tgSend(chatId, 'ℹ️ Tidak ada order berjalan.');
+      return;
+    }
+
+    var lines = ['🛒 <b>Daftar Order Berjalan</b>\n'];
+    var max = Math.min(pendingList.length, 20);
+    for (var j = 0; j < max; j++) {
+      var o = pendingList[j];
+      lines.push('<code>' + o.order_id + '</code> • ' + esc(o.nama) + ' • ' + o.metode_kirim + ' • Rp' + Number(o.total).toLocaleString('id') + ' • ' + o.status);
+    }
+    if (pendingList.length > 20) {
+      lines.push('\n<i>(Menampilkan 20 order terbaru dari ' + pendingList.length + ')</i>');
+    }
+    tgSend(chatId, lines.join('\n'));
+    return;
+  }
+
+  if (cmd === '/order') {
+    if (args.length < 1) {
+      tgSend(chatId, '⚠️ Format: /order &lt;ORDER_ID&gt;');
+      return;
+    }
+    var oid = args[0].toUpperCase();
+    var orders = readAll('Orders');
+    var order = null;
+    for (var i = 0; i < orders.length; i++) {
+      if (String(orders[i].order_id) === oid) {
+        order = orders[i];
+        break;
+      }
+    }
+    if (!order) {
+      tgSend(chatId, '❌ Order tidak ditemukan.');
+      return;
+    }
+
+    var orderItems = readAll('OrderItems');
+    var itemsHtml = '';
+    for (var k = 0; k < orderItems.length; k++) {
+      if (String(orderItems[k].order_id) === oid) {
+        itemsHtml += esc(orderItems[k].nama_snapshot) + ' × ' + orderItems[k].qty + ' = Rp' + Number(orderItems[k].subtotal).toLocaleString('id') + '\n';
+      }
+    }
+
+    var tl = '';
+    try {
+      var tArr = JSON.parse(order.timeline_json);
+      for (var t = 0; t < tArr.length; t++) {
+        var jkt = Utilities.formatDate(new Date(tArr[t].at), 'Asia/Jakarta', 'dd-MM-yy HH:mm');
+        tl += jkt + ' : ' + tArr[t].status + '\n';
+      }
+    } catch (e) { tl = '-'; }
+
+    var msg = '📄 <b>Detail Order ' + oid + '</b>\n\n'
+      + '👤 Nama: ' + esc(order.nama) + '\n'
+      + '📞 HP: ' + esc(order.no_hp) + '\n'
+      + '📦 Metode: ' + esc(order.metode_kirim) + '\n'
+      + '📅 Tgl Antar: ' + esc(order.tgl_antar) + '\n'
+      + '📍 Alamat/Tujuan: ' + esc(order.alamat_snapshot) + '\n\n'
+      + '<b>Daftar Item:</b>\n'
+      + (itemsHtml || '(kosong)\n')
+      + '\n💰 Subtotal: Rp' + Number(order.subtotal).toLocaleString('id') + '\n'
+      + '🚚 Ongkir: Rp' + Number(order.ongkir || 0).toLocaleString('id') + '\n'
+      + '🎁 Poin: -Rp' + Number(order.poin_dipakai || 0).toLocaleString('id') + '\n'
+      + '💳 <b>Total: Rp' + Number(order.total).toLocaleString('id') + '</b> (' + esc(order.metode_bayar) + ')\n\n'
+      + '📝 Catatan: ' + esc(order.catatan_customer || '-') + '\n'
+      + '⚙️ Catatan Admin: ' + esc(order.catatan_admin || '-') + '\n\n'
+      + '<b>Status Saat Ini:</b> ' + order.status + '\n'
+      + '<b>Timeline:</b>\n<pre>' + tl + '</pre>';
+      
+    tgSend(chatId, msg);
+    return;
+  }
+
+  if (cmd === '/omzet') {
+    var today = getJktDateStr(new Date());
+    var orders = readAll('Orders');
+    var count = 0;
+    var sumSub = 0, sumOngkir = 0, sumPoin = 0, sumTotal = 0;
+    
+    for (var i = 0; i < orders.length; i++) {
+      var d = getJktDateStr(new Date(orders[i].created_at));
+      if (d === today && String(orders[i].status) !== 'BATAL') {
+        count++;
+        sumSub += Number(orders[i].subtotal) || 0;
+        sumOngkir += Number(orders[i].ongkir) || 0;
+        sumPoin += Number(orders[i].poin_dipakai) || 0;
+        sumTotal += Number(orders[i].total) || 0;
+      }
+    }
+
+    if (count === 0) {
+      tgSend(chatId, 'ℹ️ Belum ada order hari ini.');
+      return;
+    }
+
+    var msg = '📈 <b>Omzet Hari Ini (' + today + ')</b>\n\n'
+      + 'Jumlah Order: ' + count + '\n'
+      + 'Subtotal Produk: Rp' + sumSub.toLocaleString('id') + '\n'
+      + 'Ongkir: Rp' + sumOngkir.toLocaleString('id') + '\n'
+      + 'Poin Dipakai: -Rp' + sumPoin.toLocaleString('id') + '\n'
+      + '<b>Omzet Total: Rp' + sumTotal.toLocaleString('id') + '</b>';
+      
+    tgSend(chatId, msg);
+    return;
+  }
+
+  if (cmd === '/laporan') {
+    var jenis = args[0] ? args[0].toLowerCase() : '';
+    if (jenis !== 'harian' && jenis !== 'bulanan') {
+      tgSend(chatId, '⚠️ Format: /laporan harian | /laporan bulanan');
+      return;
+    }
+
+    var orders = readAll('Orders');
+    var now = new Date();
+    // Normalisasi offset ke Asia/Jakarta 
+    var jktOffset = 7 * 60 * 60 * 1000;
+    var utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    var nowJkt = new Date(utc + jktOffset);
+
+    if (jenis === 'harian') {
+      var daysData = {};
+      var totalOrder = 0;
+      var totalOmzet = 0;
+      
+      // Init 7 hari ke belakang (termasuk hari ini)
+      for (var d = 0; d < 7; d++) {
+        var dt = new Date(nowJkt.getTime() - (d * 24 * 60 * 60 * 1000));
+        var dStr = getJktDateStr(dt);
+        daysData[dStr] = { count: 0, omzet: 0 };
+      }
+      
+      for (var i = 0; i < orders.length; i++) {
+        var oDt = new Date(orders[i].created_at);
+        var oUtc = oDt.getTime() + (oDt.getTimezoneOffset() * 60000);
+        var oJkt = new Date(oUtc + jktOffset);
+        var oStr = getJktDateStr(oJkt);
+        
+        if (daysData[oStr] && String(orders[i].status) !== 'BATAL') {
+          daysData[oStr].count++;
+          daysData[oStr].omzet += (Number(orders[i].total) || 0);
+          totalOrder++;
+          totalOmzet += (Number(orders[i].total) || 0);
+        }
+      }
+
+      var tbl = 'Tanggal    | Jml | Omzet\n';
+      tbl    += '-------------------------\n';
+      var keys = Object.keys(daysData).sort(); // lama ke baru
+      for (var k = 0; k < keys.length; k++) {
+        var kd = keys[k].substring(5); // MM-DD
+        var c = String(daysData[keys[k]].count);
+        while (c.length < 3) c = c + ' ';
+        tbl += kd + ' | ' + c + ' | ' + daysData[keys[k]].omzet.toLocaleString('id') + '\n';
+      }
+      tbl += '-------------------------\n';
+      tbl += 'TOTAL      | ' + totalOrder + ' | ' + totalOmzet.toLocaleString('id');
+
+      tgSend(chatId, '📊 <b>Laporan Harian (7 Hari)</b>\n<pre>' + tbl + '</pre>');
+      return;
+    }
+
+    if (jenis === 'bulanan') {
+      var weeksData = [];
+      // Cari Senin dari minggu ini
+      var currentDay = nowJkt.getDay(); // 0=Minggu, 1=Senin
+      var diffToMonday = currentDay === 0 ? 6 : currentDay - 1;
+      var currentMonday = new Date(nowJkt.getTime() - (diffToMonday * 24 * 60 * 60 * 1000));
+      currentMonday.setHours(0,0,0,0);
+      
+      // Init 4 minggu ke belakang
+      for (var w = 3; w >= 0; w--) {
+        var wStart = new Date(currentMonday.getTime() - (w * 7 * 24 * 60 * 60 * 1000));
+        var wEnd = new Date(wStart.getTime() + (6 * 24 * 60 * 60 * 1000));
+        weeksData.push({
+          start: wStart,
+          end: wEnd,
+          label: getJktDateStr(wStart).substring(5) + ' s/d ' + getJktDateStr(wEnd).substring(5),
+          count: 0,
+          omzet: 0
+        });
+      }
+
+      var totalOrder = 0;
+      var totalOmzet = 0;
+
+      for (var i = 0; i < orders.length; i++) {
+        var oDt = new Date(orders[i].created_at);
+        var oUtc = oDt.getTime() + (oDt.getTimezoneOffset() * 60000);
+        var oJkt = new Date(oUtc + jktOffset);
+        
+        if (String(orders[i].status) === 'BATAL') continue;
+        
+        for (var w = 0; w < weeksData.length; w++) {
+          if (oJkt >= weeksData[w].start && oJkt <= new Date(weeksData[w].end.getTime() + 86399999)) {
+            weeksData[w].count++;
+            weeksData[w].omzet += (Number(orders[i].total) || 0);
+            totalOrder++;
+            totalOmzet += (Number(orders[i].total) || 0);
+            break;
+          }
+        }
+      }
+
+      var tbl = 'Minggu              | Jml | Omzet\n';
+      tbl    += '---------------------------------\n';
+      for (var w = 0; w < weeksData.length; w++) {
+        var l = weeksData[w].label;
+        while (l.length < 19) l += ' ';
+        var c = String(weeksData[w].count);
+        while (c.length < 3) c += ' ';
+        tbl += l + ' | ' + c + ' | ' + weeksData[w].omzet.toLocaleString('id') + '\n';
+      }
+      tbl += '---------------------------------\n';
+      tbl += 'TOTAL               | ' + totalOrder + ' | ' + totalOmzet.toLocaleString('id');
+
+      tgSend(chatId, '📊 <b>Laporan Bulanan (4 Minggu)</b>\n<pre>' + tbl + '</pre>');
+      return;
+    }
+  }
+
+  if (cmd === '/tutuptoko') {
+    withLock(function() {
+      updateRowById('Settings', 'key', 'TOKO_BUKA', { value: '0' });
+    });
+    clearSettingsCache();
+    CacheService.getScriptCache().remove('catalog_cache');
+    tgSend(chatId, '🛑 Toko sudah TUTUP. Order baru akan ditolak.');
+    return;
+  }
+
+  if (cmd === '/bukatoko') {
+    withLock(function() {
+      updateRowById('Settings', 'key', 'TOKO_BUKA', { value: '1' });
+    });
+    clearSettingsCache();
+    CacheService.getScriptCache().remove('catalog_cache');
+    tgSend(chatId, '✅ Toko sudah BUKA.');
+    return;
+  }
+
+  if (cmd === '/tutupslot' || cmd === '/bukaslot') {
+    if (args.length < 1) {
+      tgSend(chatId, '⚠️ Format: ' + cmd + ' &lt;slot_id&gt;');
+      return;
+    }
+    var slotId = args[0];
+    var slots = readAll('DeliverySlots');
+    var found = false;
+    for (var i = 0; i < slots.length; i++) {
+      if (String(slots[i].slot_id) === slotId) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      tgSend(chatId, '❌ Slot tidak ditemukan.');
+      return;
+    }
+    
+    var newStatus = cmd === '/tutupslot' ? 'nonaktif' : 'aktif';
+    withLock(function() {
+      updateRowById('DeliverySlots', 'slot_id', slotId, { status: newStatus });
+    });
+    clearSettingsCache();
+    CacheService.getScriptCache().remove('catalog_cache');
+    
+    if (newStatus === 'nonaktif') {
+      tgSend(chatId, '🛑 Slot <code>' + esc(slotId) + '</code> sudah ditutup.');
+    } else {
+      tgSend(chatId, '✅ Slot <code>' + esc(slotId) + '</code> sudah dibuka.');
+    }
+    return;
+  }
+
+  if (cmd === '/produk') {
+    if (args.length < 2) {
+      tgSend(chatId, '⚠️ Format: /produk &lt;id&gt; on|off');
+      return;
+    }
+    var pid = args[0];
+    var state = args[1].toLowerCase();
+    if (state !== 'on' && state !== 'off') {
+      tgSend(chatId, '⚠️ Format: /produk &lt;id&gt; on|off');
+      return;
+    }
+
+    var prods = readAll('Products');
+    var prod = null;
+    for (var i = 0; i < prods.length; i++) {
+      if (String(prods[i].product_id) === pid) {
+        prod = prods[i];
+        break;
+      }
+    }
+    if (!prod) {
+      tgSend(chatId, '❌ Produk tidak ditemukan.');
+      return;
+    }
+
+    var tersedia = state === 'on' ? '1' : '0';
+    var statusText = state === 'on' ? 'tersedia' : 'tidak tersedia';
+    
+    withLock(function() {
+      updateRowById('Products', 'product_id', pid, { tersedia: tersedia });
+    });
+    clearSettingsCache();
+    CacheService.getScriptCache().remove('catalog_cache');
+    
+    tgSend(chatId, '📦 Produk <b>' + esc(prod.nama) + '</b> → ' + statusText);
+    return;
+  }
+
+  if (cmd === '/banner') {
+    if (args.length < 2) {
+      tgSend(chatId, '⚠️ Format: /banner &lt;id&gt; on|off');
+      return;
+    }
+    var bid = args[0];
+    var state = args[1].toLowerCase();
+    if (state !== 'on' && state !== 'off') {
+      tgSend(chatId, '⚠️ Format: /banner &lt;id&gt; on|off');
+      return;
+    }
+
+    var banners = readAll('Banners');
+    var banner = null;
+    for (var i = 0; i < banners.length; i++) {
+      if (String(banners[i].banner_id) === bid) {
+        banner = banners[i];
+        break;
+      }
+    }
+    if (!banner) {
+      tgSend(chatId, '❌ Banner tidak ditemukan.');
+      return;
+    }
+
+    var status = state === 'on' ? 'aktif' : 'nonaktif';
+    withLock(function() {
+      updateRowById('Banners', 'banner_id', bid, { status: status });
+    });
+    clearSettingsCache();
+    CacheService.getScriptCache().remove('catalog_cache');
+    
+    tgSend(chatId, '🖼 Banner <b>' + esc(banner.judul) + '</b> → ' + status);
+    return;
+  }
+
+  if (cmd === '/clearcache') {
+    clearSettingsCache();
+    CacheService.getScriptCache().remove('catalog_cache');
+    tgSend(chatId, '🧹 Cache dibersihkan. Settings & katalog akan dibaca ulang.');
+    return;
+  }
+
+  tgSend(chatId, '❓ Perintah tidak dikenal. Ketik /help untuk daftar perintah.');
+}
+
