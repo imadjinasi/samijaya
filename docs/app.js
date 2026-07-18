@@ -10,6 +10,7 @@ var session = { token: null, member: null };
 var _bannerInterval = null;
 var _bannerIndex = 0;
 var _activeCategory = null; // null = Semua
+var _viewMode = 'list';
 var _otpCooldownTimer = null;
 var _pendingCheckout = false;
 var _submitting = false;
@@ -384,6 +385,38 @@ function applyFilters() {
       card.classList.add('hidden');
     }
   });
+}
+
+// === VIEW MODE ===
+function loadViewMode() {
+  try {
+    var saved = localStorage.getItem('sj_view_mode');
+    if (saved === 'grid') _viewMode = 'grid';
+  } catch (e) {}
+}
+
+function setViewMode(mode) {
+  _viewMode = mode;
+  localStorage.setItem('sj_view_mode', mode);
+  renderViewMode();
+}
+
+function renderViewMode() {
+  var grid = document.getElementById('product-grid');
+  var btnList = document.getElementById('btn-view-list');
+  var btnGrid = document.getElementById('btn-view-grid');
+  
+  if (!grid) return;
+
+  if (_viewMode === 'grid') {
+    grid.classList.add('grid-mode');
+    if (btnGrid) btnGrid.classList.add('active');
+    if (btnList) btnList.classList.remove('active');
+  } else {
+    grid.classList.remove('grid-mode');
+    if (btnList) btnList.classList.add('active');
+    if (btnGrid) btnGrid.classList.remove('active');
+  }
 }
 
 // === RENDER: PRODUCTS ===
@@ -1931,8 +1964,9 @@ function copyRekening(nomor) {
 document.addEventListener('DOMContentLoaded', async function () {
   showLoading();
 
-  // Muat session
+  // Muat session & view mode
   loadSession();
+  loadViewMode();
 
   // Kalau ada token → getMe untuk validasi
   if (session.token) {
@@ -1965,6 +1999,7 @@ document.addEventListener('DOMContentLoaded', async function () {
       renderBanners(catalog.banners);
       renderCategories(catalog.categories);
       renderProducts(catalog.products);
+      renderViewMode();
     } else {
       showToast('Gagal memuat katalog');
     }
