@@ -880,11 +880,16 @@ function renderCheckoutScreen() {
   var subtotal = getCartTotal();
   var count = getCartCount();
 
-  // Today as YYYY-MM-DD
-  var today = new Date();
-  var todayStr = today.getFullYear() + '-' +
-    String(today.getMonth() + 1).padStart(2, '0') + '-' +
-    String(today.getDate()).padStart(2, '0');
+  // Hitung jam & tanggal minimum (Asia/Jakarta)
+  var now = new Date();
+  var jktTime = new Date(now.toLocaleString("en-US", {timeZone: "Asia/Jakarta"}));
+  var jktHour = jktTime.getHours();
+  var minDays = (jktHour >= 18) ? 2 : 1;
+  jktTime.setDate(jktTime.getDate() + minDays);
+  
+  var minStr = jktTime.getFullYear() + '-' +
+    String(jktTime.getMonth() + 1).padStart(2, '0') + '-' +
+    String(jktTime.getDate()).padStart(2, '0');
 
   var html = '<div class="checkout-inner">';
 
@@ -932,7 +937,8 @@ function renderCheckoutScreen() {
   html += '<div class="co-section-title"><span class="co-step">3</span>Tanggal Pengantaran</div>';
   html += '<div class="co-date-wrap">';
   html += '<label class="co-date-label" for="co-date-input">Tanggal Pengantaran (bukan tanggal order)</label>';
-  html += '<input type="date" id="co-date-input" class="co-date-input" min="' + todayStr + '" onchange="onCheckoutDateChange(this.value)">';
+  html += '<input type="date" id="co-date-input" class="co-date-input" min="' + minStr + '" onchange="onCheckoutDateChange(this.value)">';
+  html += '<div class="co-date-hint" style="font-size: 0.8rem; color: #666; margin-top: 5px;">Pemesanan minimal H+1. Pesanan di atas jam 18.00 WIB minimal H+2.</div>';
   html += '<div class="co-date-error" id="co-date-error"></div>';
   html += '</div>';
   html += '</div>';
@@ -1592,12 +1598,12 @@ function updateCheckoutValidation() {
     }
   }
 
-  // Enable/disable button berdasarkan validasi
+  // Tombol TIDAK di-disable oleh validasi — hanya saat _submitting
   var btn = document.getElementById('btn-create-order');
   var noteEl = document.getElementById('co-submit-note');
   if (btn) {
     var isValid = (missing.length === 0);
-    btn.disabled = !isValid || _submitting;
+    btn.disabled = _submitting;
     if (noteEl) {
       noteEl.textContent = isValid ? '' : 'Lengkapi semua pilihan untuk melanjutkan.';
     }
@@ -1626,6 +1632,9 @@ function buildCreateOrderPayload() {
     payload.jam_pilih = checkoutState.jam_pilih;
   }
 
+  // Tanggal antar dikirim untuk semua metode
+  payload.tgl_antar = checkoutState.tgl_antar;
+
   if (checkoutState.metode_kirim === 'DIANTAR') {
     payload.address_id = checkoutState.address_id || '';
     // Susun alamat_snapshot: gabungkan label + alamat_teks + detail
@@ -1637,7 +1646,6 @@ function buildCreateOrderPayload() {
     payload.lat = checkoutState.lat;
     payload.lng = checkoutState.lng;
     payload.slot_id = checkoutState.slot_id;
-    payload.tgl_antar = checkoutState.tgl_antar;
   }
 
   return payload;
@@ -1731,16 +1739,12 @@ async function handleCreateOrder() {
       var msgEl = document.getElementById('co-validation-msg');
       if (msgEl) msgEl.innerHTML = '<div class="co-error-inline">' + escHtml(errMsg) + '</div>';
 
-      // Kembalikan tombol
-      _submitting = false;
-      if (btn) { btn.disabled = false; btn.textContent = originalText; }
-
       if (doRetry) {
-        // Auto-retry 1x setelah 1.5 detik
+        // Auto-retry 1x setelah 1.5 detik — kelola flag sendiri
+        _submitting = true; // tetap submitting selama retry
         if (btn) { btn.disabled = true; btn.textContent = 'Mencoba lagi…'; }
         setTimeout(async function() {
           if (msgEl) msgEl.innerHTML = '';
-          _submitting = true;
           if (btn) { btn.disabled = true; btn.textContent = 'Memproses…'; }
           try {
             var res2 = await api('createOrder', payload);
@@ -1758,10 +1762,12 @@ async function handleCreateOrder() {
             }
           } catch (e2) {
             if (msgEl) msgEl.innerHTML = '<div class="co-error-inline">Gagal terhubung ke server.</div>';
+          } finally {
+            _submitting = false;
+            if (btn) { btn.disabled = false; btn.textContent = originalText; }
           }
-          _submitting = false;
-          if (btn) { btn.disabled = false; btn.textContent = originalText; }
         }, 1500);
+        return; // keluar — retry setTimeout mengelola flag sendiri
       }
 
       if (goToSlot) {
@@ -1775,6 +1781,8 @@ async function handleCreateOrder() {
   } catch (e) {
     var msgEl = document.getElementById('co-validation-msg');
     if (msgEl) msgEl.innerHTML = '<div class="co-error-inline">Gagal terhubung ke server, coba lagi.</div>';
+  } finally {
+    // SELALU reset _submitting & tombol — kecuali jika retry sedang berjalan (sudah return di atas)
     _submitting = false;
     if (btn) { btn.disabled = false; btn.textContent = originalText; }
   }
