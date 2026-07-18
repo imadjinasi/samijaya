@@ -76,6 +76,7 @@ function authRequestOtp(payload) {
   var otpValidMinutes = Number(getSetting('OTP_VALID_MINUTES')) || 30;
 
   var otp;
+  var isResend = false;
   var lockResult = withLock(function () {
     var sessions = readAll('Sessions');
     var now = new Date();
@@ -84,6 +85,7 @@ function authRequestOtp(payload) {
     // Hitung berapa OTP untuk no_hp ini dalam 24 jam terakhir
     var countToday = 0;
     var lastSession = null;
+    var activeSession = null;
     for (var i = 0; i < sessions.length; i++) {
       if (String(sessions[i].no_hp) !== noHp) continue;
 
@@ -95,14 +97,15 @@ function authRequestOtp(payload) {
       if (!lastSession || createdAt > new Date(lastSession.created_at).getTime()) {
         lastSession = sessions[i];
       }
+      // Cari session aktif (belum dipakai dan belum expired)
+      if (Number(sessions[i].otp_used) === 0 && new Date(sessions[i].otp_expires_at).getTime() > now.getTime()) {
+        if (!activeSession || new Date(sessions[i].otp_expires_at).getTime() > new Date(activeSession.otp_expires_at).getTime()) {
+          activeSession = sessions[i];
+        }
+      }
     }
 
-    // Cek limit per hari
-    if (countToday >= otpMaxPerDay) {
-      return { ok: false, error: 'Batas OTP hari ini tercapai, coba besok', code: 'OTP_LIMIT' };
-    }
-
-    // Cek cooldown
+    // Cek cooldown TETAP (untuk mencegah spam request)
     if (lastSession) {
       var lastCreated = new Date(lastSession.created_at).getTime();
       var cooldownEnd = lastCreated + (otpResendCooldown * 60 * 1000);
@@ -117,6 +120,26 @@ function authRequestOtp(payload) {
       }
     }
 
+    // Kalau SUDAH ADA OTP aktif, jangan buat baru
+    if (activeSession) {
+      otp = String(activeSession.otp).replace(/^'/, "");
+      isResend = true;
+      var expiresAtObj = new Date(activeSession.otp_expires_at);
+      var hh = String(expiresAtObj.getHours()).padStart(2, '0');
+      var mm = String(expiresAtObj.getMinutes()).padStart(2, '0');
+      return {
+        ok: true,
+        data: {
+          message: 'OTP sudah ada, admin akan kirim ulang via WhatsApp, berlaku hingga ' + hh + ':' + mm
+        }
+      };
+    }
+
+    // Cek limit per hari HANYA JIKA perlu buat OTP baru
+    if (countToday >= otpMaxPerDay) {
+      return { ok: false, error: 'Batas OTP hari ini tercapai, coba besok', code: 'OTP_LIMIT' };
+    }
+
     // Generate OTP & token
     otp = generateOtp();
     var token = uuid();
@@ -127,7 +150,7 @@ function authRequestOtp(payload) {
       token: token,
       no_hp: noHp,
       member_id: '',
-      otp: otp,
+      otp: "'" + otp,
       otp_expires_at: otpExpiresAt,
       otp_used: 0,
       session_expires_at: '',
@@ -143,7 +166,11 @@ function authRequestOtp(payload) {
   }
 
   // Setelah lock release: kirim notifikasi (placeholder)
-  sendOtpToAdminTelegram(noHp, nama, otp);
+  sendOtpToAdminTelegram(noHp, nama, otp, isResend);
+
+  if (lockResult.data && lockResult.data.message) {
+    return lockResult; // resend
+  }
 
   var otpValidMinutesDisplay = Number(getSetting('OTP_VALID_MINUTES')) || 30;
   return {
@@ -188,7 +215,7 @@ function authVerifyOtp(payload) {
     for (var i = 0; i < sessions.length; i++) {
       var row = sessions[i];
       if (String(row.no_hp) !== noHp) continue;
-      if (String(row.otp) !== inputOtp) continue;
+      if (String(row.otp).replace(/^'/, "") !== inputOtp) continue;
       if (Number(row.otp_used) !== 0) continue;
 
       var expiresAt = new Date(row.otp_expires_at).getTime();
@@ -346,11 +373,12 @@ function authGetMe(payload, token) {
  * @param {string} nama  — nama customer (bisa kosong)
  * @param {string} otp   — OTP 6 digit
  */
-function sendOtpToAdminTelegram(no_hp, nama, otp) {
+function sendOtpToAdminTelegram(no_hp, nama, otp, isResend) {
   var displayNama = nama || 'Customer';
+  var statusText = isResend ? ' (ulang)' : '';
 
   // Susun pesan untuk admin
-  var pesan = '🔐 <b>OTP Request</b>\n'
+  var pesan = '🔐 <b>OTP Request</b>' + statusText + '\n'
     + 'Nama: ' + displayNama + '\n'
     + 'No HP: ' + no_hp + '\n'
     + 'OTP: <code>' + otp + '</code>';

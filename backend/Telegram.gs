@@ -376,12 +376,31 @@ function handleTelegramWebhook(update) {
           kb.push([{text: '✅ Proses', callback_data: 'st:PROSES:'+ord.order_id}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+ord.order_id}]);
         } else if (st === 'DIPROSES') {
           kb.push([{text: '🟢 Siap', callback_data: 'st:SIAP:'+ord.order_id}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+ord.order_id}]);
-          kb.push([{text: '💬 WA Customer', url: waLink(ord.no_hp, fillTemplate('ORDER_DIPROSES', td))}]);
+          kb.push([{text: '💬 WA Customer', url: waLink(ord.no_hp, fillTemplate(resolveTemplateCode('ORDER_DIPROSES', ord.metode_kirim), td))}]);
         } else if (st === 'SIAP') {
           kb.push([{text: '✅ Selesai', callback_data: 'st:SELESAI_ASK:'+ord.order_id}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+ord.order_id}]);
-          kb.push([{text: '💬 WA Customer', url: waLink(ord.no_hp, fillTemplate('ORDER_SIAP', td))}]);
+          kb.push([{text: '💬 WA Customer', url: waLink(ord.no_hp, fillTemplate(resolveTemplateCode('ORDER_SIAP', ord.metode_kirim), td))}]);
         }
         return kb;
+      }
+
+      function resolveTemplateCode(baseCode, metodeKirim) {
+        var specificCode = baseCode + '_' + metodeKirim;
+        var rows = readAll('MessageTemplates');
+        for (var k = 0; k < rows.length; k++) {
+          if (String(rows[k].kode) === specificCode) return specificCode;
+        }
+        return baseCode;
+      }
+
+      function notifyOtherAdmins(stBaru) {
+        var raw = getSetting('ADMIN_CHAT_IDS') || '';
+        var ids = raw.split(',');
+        var msg = '🔔 Update: order ' + orderId + ' → ' + stBaru + ' (oleh admin ' + chatId + ')';
+        for (var k = 0; k < ids.length; k++) {
+          var id = ids[k].trim();
+          if (id && id !== chatId) tgSend(id, msg);
+        }
       }
 
       var res = null;
@@ -397,7 +416,8 @@ function handleTelegramWebhook(update) {
       if (aksi === 'PROSES') {
         res = orderUpdateStatus(orderId, 'DIPROSES', chatId);
         if (res && res.ok) {
-          waUrl = waLink(order.no_hp, fillTemplate('ORDER_DIPROSES', tmplData));
+          notifyOtherAdmins('DIPROSES');
+          waUrl = waLink(order.no_hp, fillTemplate(resolveTemplateCode('ORDER_DIPROSES', order.metode_kirim), tmplData));
           tgApi('editMessageText', {
             chat_id: chatMsgId, message_id: msgId,
             text: textLama + '\n\n🟡 Status: DIPROSES',
@@ -408,7 +428,8 @@ function handleTelegramWebhook(update) {
       else if (aksi === 'SIAP') {
         res = orderUpdateStatus(orderId, 'SIAP', chatId);
         if (res && res.ok) {
-          waUrl = waLink(order.no_hp, fillTemplate('ORDER_SIAP', tmplData));
+          notifyOtherAdmins('SIAP');
+          waUrl = waLink(order.no_hp, fillTemplate(resolveTemplateCode('ORDER_SIAP', order.metode_kirim), tmplData));
           tgApi('editMessageText', {
             chat_id: chatMsgId, message_id: msgId,
             text: textLama + '\n\n🟢 Status: SIAP',
@@ -433,7 +454,8 @@ function handleTelegramWebhook(update) {
       else if (aksi === 'BATAL_YES') {
         res = orderUpdateStatus(orderId, 'BATAL', chatId);
         if (res && res.ok) {
-          waUrl = waLink(order.no_hp, fillTemplate('ORDER_BATAL', tmplData));
+          notifyOtherAdmins('BATAL');
+          waUrl = waLink(order.no_hp, fillTemplate(resolveTemplateCode('ORDER_BATAL', order.metode_kirim), tmplData));
           tgApi('editMessageText', {
             chat_id: chatMsgId, message_id: msgId,
             text: textLama + '\n\n❌ Status: BATAL',
@@ -458,8 +480,9 @@ function handleTelegramWebhook(update) {
       else if (aksi === 'SELESAI_YES') {
         res = orderUpdateStatus(orderId, 'SELESAI', chatId);
         if (res && res.ok) {
+          notifyOtherAdmins('SELESAI');
           tmplData.POINT = res.data.poin_ditambah || 0;
-          waUrl = waLink(order.no_hp, fillTemplate('ORDER_SELESAI', tmplData));
+          waUrl = waLink(order.no_hp, fillTemplate(resolveTemplateCode('ORDER_SELESAI', order.metode_kirim), tmplData));
           tgApi('editMessageText', {
             chat_id: chatMsgId, message_id: msgId,
             text: textLama + '\n\n✅ Status: SELESAI (+' + tmplData.POINT + ' poin)',

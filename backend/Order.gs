@@ -724,6 +724,50 @@ function orderUpdateStatus(orderId, newStatus, actorChatId) {
     
     var poin_ditambah = 0;
     
+    if (newStatus === 'BATAL') {
+      var poinDipakai = Number(order.poin_dipakai) || 0;
+      if (poinDipakai > 0) {
+        var histories = readAll('PointHistory');
+        var alreadyRefunded = false;
+        for (var j = 0; j < histories.length; j++) {
+          if (String(histories[j].order_id) === String(orderId) && String(histories[j].tipe) === 'KOREKSI') {
+            alreadyRefunded = true;
+            break;
+          }
+        }
+        
+        if (!alreadyRefunded) {
+          var allMembers = readAll('Members');
+          var member = null;
+          for (var m = 0; m < allMembers.length; m++) {
+            if (String(allMembers[m].member_id) === String(order.member_id)) {
+              member = allMembers[m];
+              break;
+            }
+          }
+          
+          if (member) {
+            var saldoBaru = (Number(member.total_poin) || 0) + poinDipakai;
+            
+            updateRowById('Members', 'member_id', member.member_id, {
+              total_poin: saldoBaru
+            });
+            
+            appendRowObj('PointHistory', {
+              id: genId('PTH'),
+              member_id: member.member_id,
+              order_id: orderId,
+              tipe: 'KOREKSI',
+              jumlah: poinDipakai,
+              saldo_akhir: saldoBaru,
+              keterangan: 'Pengembalian poin dari order ' + orderId + ' batal',
+              created_at: nowIso
+            });
+          }
+        }
+      }
+    }
+    
     if (newStatus === 'SELESAI') {
       var total = Number(order.total) || 0;
       var rate = Number(getSetting('POINT_RATE_RP')) || 1000;
