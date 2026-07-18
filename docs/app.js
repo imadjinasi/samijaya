@@ -1040,16 +1040,30 @@ function renderCheckoutScreen() {
   html += '</div>';
   html += '</div>';
 
-  // === 8. RINGKASAN BIAYA ===
-  html += '<div class="co-cost-summary" id="checkout-cost-summary">';
-  html += '<div class="co-cost-row"><span>Subtotal produk</span><span class="co-cost-val" id="co-cost-subtotal">' + formatRupiah(subtotal) + '</span></div>';
-  html += '<div class="co-cost-row"><span>Ongkir</span><span class="co-cost-val" id="co-cost-ongkir">—</span></div>';
-  html += '<div class="co-cost-row" id="co-cost-poin-row" style="display:none"><span>Potongan poin</span><span class="co-cost-val discount" id="co-cost-poin">-Rp0</span></div>';
-  html += '<div class="co-cost-row total"><span>TOTAL</span><span class="co-cost-val" id="co-cost-total">' + formatRupiah(subtotal) + '</span></div>';
-  html += '<div class="co-catatan-wrap">';
+  // === 7. CATATAN ===
+  html += '<div class="co-section" id="checkout-note">';
+  html += '<div class="co-catatan-wrap" style="margin-top:0;">';
   html += '<label class="co-label" for="co-catatan">Catatan untuk Samijaya (opsional)</label>';
   html += '<textarea id="co-catatan" class="co-catatan-input" rows="2" placeholder="Contoh: jangan terlalu manis, minta plastik besar…"></textarea>';
   html += '</div>';
+  html += '</div>';
+
+  // === 8. RINGKASAN BIAYA ===
+  html += '<div class="co-cost-summary" id="checkout-cost-summary">';
+  
+  html += '<div class="co-cost-header" onclick="toggleCostDetails()">';
+  html += '<span>Rincian Biaya</span>';
+  html += '<svg class="co-cost-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+  html += '</div>';
+  
+  html += '<div class="co-cost-details collapsed" id="co-cost-details">';
+  html += '<div class="co-cost-row"><span>Subtotal produk</span><span class="co-cost-val" id="co-cost-subtotal">' + formatRupiah(subtotal) + '</span></div>';
+  html += '<div class="co-cost-row"><span>Ongkir</span><span class="co-cost-val" id="co-cost-ongkir">—</span></div>';
+  html += '<div class="co-cost-row" id="co-cost-poin-row" style="display:none"><span>Potongan poin</span><span class="co-cost-val discount" id="co-cost-poin">-Rp0</span></div>';
+  html += '</div>';
+
+  html += '<div class="co-cost-row total"><span>TOTAL</span><span class="co-cost-val" id="co-cost-total">' + formatRupiah(subtotal) + '</span></div>';
+  
   html += '<button id="btn-create-order" onclick="handleCreateOrder()" disabled>Buat Pesanan</button>';
   html += '<div class="co-submit-note" id="co-submit-note">Lengkapi semua pilihan untuk melanjutkan.</div>';
   html += '<div class="co-validation-msg" id="co-validation-msg"></div>';
@@ -1059,6 +1073,14 @@ function renderCheckoutScreen() {
 
   el.innerHTML = html;
   updateCheckoutSummary();
+}
+
+function toggleCostDetails() {
+  var details = document.getElementById('co-cost-details');
+  var icon = document.querySelector('.co-cost-icon');
+  if (!details) return;
+  details.classList.toggle('collapsed');
+  if (icon) icon.classList.toggle('open');
 }
 
 function toggleOrderSummary() {
