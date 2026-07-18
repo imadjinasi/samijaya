@@ -422,6 +422,7 @@ function renderProducts(products) {
   var html = '';
   for (var i = 0; i < products.length; i++) {
     var p = products[i];
+    var isHabis = (Number(p.tersedia) === 0);
     var imgHtml = '';
     if (p.foto_url) {
       var fullUrl = p.foto_file_id ? 'https://lh3.googleusercontent.com/d/' + escHtml(p.foto_file_id) + '=w1200' : escHtml(p.foto_url);
@@ -431,13 +432,21 @@ function renderProducts(products) {
     }
 
     var badgeHtml = '';
-    var badge = String(p.badge_promo || '').trim();
-    if (badge) {
-      badgeHtml = '<div class="product-badge">' + escHtml(badge) + '</div>';
+    if (isHabis) {
+      badgeHtml = '<div class="product-badge" style="background:#8B2E2E;color:#fff;">HABIS</div>';
+    } else {
+      var badge = String(p.badge_promo || '').trim();
+      if (badge) {
+        badgeHtml = '<div class="product-badge">' + escHtml(badge) + '</div>';
+      }
     }
 
+    var addBtn = isHabis
+      ? '<div class="btn-add btn-habis" style="background:#e0e0e0;color:#999;width:auto;padding:0 12px;border-radius:var(--r-pill);font-size:0.75rem;font-weight:bold;cursor:not-allowed;">Habis</div>'
+      : '<button class="btn-add" onclick="onAddToCart(\'' + escHtml(p.product_id) + '\')" aria-label="Tambah ' + escHtml(p.nama) + '">' + ICON.plus + '</button>';
+
     html +=
-      '<div class="product-card" data-category="' + escHtml(p.kategori_id || '') + '" data-name="' + escHtml(p.nama) + '" data-pid="' + escHtml(p.product_id) + '">' +
+      '<div class="product-card ' + (isHabis ? 'out-of-stock' : '') + '" data-category="' + escHtml(p.kategori_id || '') + '" data-name="' + escHtml(p.nama) + '" data-pid="' + escHtml(p.product_id) + '">' +
         '<div class="product-img-wrap">' +
           imgHtml +
         '</div>' +
@@ -447,7 +456,7 @@ function renderProducts(products) {
           '<div class="product-desc">' + escHtml(p.deskripsi || '') + '</div>' +
           '<div class="product-price">' + formatRupiah(p.harga) + '</div>' +
         '</div>' +
-        '<button class="btn-add" onclick="onAddToCart(\'' + escHtml(p.product_id) + '\')" aria-label="Tambah ' + escHtml(p.nama) + '">' + ICON.plus + '</button>' +
+        addBtn +
       '</div>';
   }
   grid.innerHTML = html;
@@ -457,6 +466,10 @@ function onAddToCart(productId) {
   if (!catalog || !catalog.products) return;
   for (var i = 0; i < catalog.products.length; i++) {
     if (catalog.products[i].product_id === productId) {
+      if (Number(catalog.products[i].tersedia) === 0) {
+        showToast('Produk ini sedang habis.');
+        return;
+      }
       addToCart(catalog.products[i]);
       return;
     }
@@ -474,6 +487,20 @@ function renderCartBottomBar() {
   var count = getCartCount();
   var total = getCartTotal();
 
+  var hasHabis = false;
+  if (catalog && catalog.products) {
+    for (var i = 0; i < cart.length; i++) {
+      for (var j = 0; j < catalog.products.length; j++) {
+        if (catalog.products[j].product_id === cart[i].product_id && Number(catalog.products[j].tersedia) === 0) {
+          hasHabis = true;
+          break;
+        }
+      }
+      if (hasHabis) break;
+    }
+  }
+  var dotHtml = hasHabis ? '<span style="position:absolute;top:-4px;right:-4px;background:#E74C3C;color:#fff;font-size:0.6rem;width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;">!</span>' : '';
+
   if (count === 0) {
     bar.classList.add('hidden');
     return;
@@ -484,7 +511,10 @@ function renderCartBottomBar() {
     '<div class="cart-bar-info">' +
       '<div>' + count + ' item • ' + formatRupiah(total) + '</div>' +
     '</div>' +
-    '<button class="btn-view-cart" onclick="openCartModal()">Lihat Keranjang</button>';
+    '<div style="position:relative;">' +
+      '<button class="btn-view-cart" onclick="openCartModal()">Lihat Keranjang</button>' +
+      dotHtml +
+    '</div>';
 }
 
 // === CART MODAL ===
@@ -527,26 +557,34 @@ function renderCartModal() {
       }
     }
 
+    var isHabis = (p && Number(p.tersedia) === 0);
+
     if (p && p.foto_url) {
       var fullUrl = p.foto_file_id ? 'https://lh3.googleusercontent.com/d/' + escHtml(p.foto_file_id) + '=w1200' : escHtml(p.foto_url);
-      imgHtml = '<div class="cart-item-thumb"><img src="' + escHtml(p.foto_url) + '" alt="' + escHtml(item.nama) + '" style="cursor: pointer;" onclick="window.open(\'' + fullUrl + '\', \'_blank\')"></div>';
+      var imgStyle = isHabis ? 'filter: grayscale(100%) opacity(0.6); cursor: pointer;' : 'cursor: pointer;';
+      imgHtml = '<div class="cart-item-thumb" style="position:relative;"><img src="' + escHtml(p.foto_url) + '" alt="' + escHtml(item.nama) + '" style="' + imgStyle + '" onclick="window.open(\'' + fullUrl + '\', \'_blank\')">' + (isHabis ? '<div style="position:absolute;bottom:0;left:0;right:0;background:#8B2E2E;color:#fff;font-size:0.55rem;text-align:center;padding:2px 0;font-weight:bold;">HABIS</div>' : '') + '</div>';
     } else {
-      imgHtml = '<div class="cart-item-thumb placeholder" style="display:flex;align-items:center;justify-content:center;color:var(--brown)">' + ICON.bottle + '</div>';
+      imgHtml = '<div class="cart-item-thumb placeholder" style="position:relative;display:flex;align-items:center;justify-content:center;color:var(--brown)">' + ICON.bottle + (isHabis ? '<div style="position:absolute;bottom:0;left:0;right:0;background:#8B2E2E;color:#fff;font-size:0.55rem;text-align:center;padding:2px 0;font-weight:bold;">HABIS</div>' : '') + '</div>';
     }
 
+    var itemNameHtml = isHabis 
+      ? '<div class="cart-item-name"><span style="color:#C0392B;font-weight:bold;">[HABIS]</span> ' + escHtml(item.nama) + '</div>' 
+      : '<div class="cart-item-name">' + escHtml(item.nama) + '</div>';
+
     html +=
-      '<div class="cart-item">' +
+      '<div class="cart-item" data-pid="' + escHtml(item.product_id) + '">' +
         imgHtml +
         '<div class="cart-item-info">' +
-          '<div class="cart-item-name">' + escHtml(item.nama) + '</div>' +
+          itemNameHtml +
           '<div class="cart-item-price">' + formatRupiah(item.harga) + ' × ' + item.qty + '</div>' +
         '</div>' +
         '<div class="cart-item-qty">' +
-          '<button onclick="updateQty(\'' + escHtml(item.product_id) + '\', -1)">' + ICON.minus + '</button>' +
-          '<span>' + item.qty + '</span>' +
-          '<button onclick="updateQty(\'' + escHtml(item.product_id) + '\', 1)">' + ICON.plus + '</button>' +
+          (isHabis
+            ? '<button class="btn-habis-remove" onclick="removeFromCart(\'' + escHtml(item.product_id) + '\')" style="color:#C0392B;font-size:0.75rem;padding:4px 10px;border:1px solid #C0392B;border-radius:var(--r-pill);white-space:nowrap;background:transparent;">Hapus</button>'
+            : '<button onclick="updateQty(\'' + escHtml(item.product_id) + '\', -1)">' + ICON.minus + '</button><span>' + item.qty + '</span><button onclick="updateQty(\'' + escHtml(item.product_id) + '\', 1)">' + ICON.plus + '</button>'
+          ) +
         '</div>' +
-        '<button class="cart-item-remove" onclick="removeFromCart(\'' + escHtml(item.product_id) + '\')" title="Hapus">' + ICON.trash + '</button>' +
+        (isHabis ? '' : '<button class="cart-item-remove" onclick="removeFromCart(\'' + escHtml(item.product_id) + '\')" title="Hapus">' + ICON.trash + '</button>') +
       '</div>';
   }
   html += '</div>';
@@ -567,6 +605,28 @@ function handleCheckout() {
     showToast('Keranjang kosong');
     return;
   }
+
+  var hasHabis = false;
+  var firstHabisId = null;
+  if (catalog && catalog.products) {
+    for (var i = 0; i < cart.length; i++) {
+      for (var j = 0; j < catalog.products.length; j++) {
+        if (catalog.products[j].product_id === cart[i].product_id && Number(catalog.products[j].tersedia) === 0) {
+          hasHabis = true;
+          firstHabisId = cart[i].product_id;
+          break;
+        }
+      }
+      if (hasHabis) break;
+    }
+  }
+  if (hasHabis) {
+    showToast('Ada produk habis di keranjang. Hapus dulu untuk lanjut.');
+    var badItem = document.querySelector('.cart-item[data-pid="' + firstHabisId + '"]');
+    if (badItem) badItem.scrollIntoView({behavior: 'smooth', block: 'center'});
+    return;
+  }
+
   // Gate: must be logged in
   if (!session.token || !session.member) {
     _pendingCheckout = true;

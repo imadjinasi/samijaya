@@ -72,7 +72,7 @@ function catalogGetCatalog() {
   var products = [];
   for (var i = 0; i < allProducts.length; i++) {
     var p = allProducts[i];
-    if (String(p.status) === 'aktif' && Number(p.tersedia) === 1) {
+    if (String(p.status) === 'aktif') {
       // Tambahkan foto_url
       var fotoFileId = String(p.foto_file_id || '').trim();
       p.foto_url = fotoFileId

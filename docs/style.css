@@ -700,6 +700,11 @@ h1, h2, h3, .font-serif {
   right: 12px;
 }
 
+/* Out of Stock */
+.product-card.out-of-stock .product-img-wrap img {
+  filter: grayscale(100%) opacity(0.6);
+}
+
 /* ============================================================
    BOTTOM CART BAR
    ============================================================ */
@@ -2249,10 +2254,12 @@ select {
   position: relative;
   max-width: 480px;
   margin: 0 auto;
-  padding: 40px 20px 80px;
+  padding: 80px 20px 80px;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: flex-start;
+  min-height: 100vh;
   gap: 0;
 }
 
@@ -2588,7 +2595,7 @@ select {
 @media (max-width: 380px) {
   .success-heading { font-size: 1.6rem; }
   .success-order-id { font-size: 1.3rem; }
-  .success-inner { padding: 30px 14px 60px; }
+  .success-inner { padding: 60px 14px 60px; min-height: 100vh; justify-content: flex-start; }
   .success-payment-box { padding: 16px 14px; }
 }
 
