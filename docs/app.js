@@ -13,6 +13,7 @@ var _activeCategory = null; // null = Semua
 var _otpCooldownTimer = null;
 var _pendingCheckout = false;
 var _submitting = false;
+var _pendingOtp = '';
 var checkoutState = {
   tgl_antar: '',
   metode_kirim: '',
@@ -713,8 +714,9 @@ async function handleVerifyOtp(no_hp, nama) {
         }
       }
     } else if (res.code === 'NAMA_REQUIRED') {
+      _pendingOtp = otp;
       closeOtpModal();
-      showRegisterModal(no_hp, otp);
+      showRegisterModal(no_hp);
     } else {
       document.getElementById('otp-error').textContent = res.error || 'OTP salah';
       if (btn) btn.disabled = false;
@@ -727,12 +729,9 @@ async function handleVerifyOtp(no_hp, nama) {
 }
 
 // === REGISTER MODAL ===
-function showRegisterModal(no_hp, otp) {
+function showRegisterModal(no_hp) {
   var modal = document.getElementById('register-modal');
   modal.classList.remove('hidden');
-
-  var btn = document.getElementById('btn-register');
-  if (btn) btn.setAttribute('onclick', "handleRegister('" + escHtml(no_hp) + "', '" + escHtml(otp) + "')");
 
   var box = modal.querySelector('.modal-sheet');
   var html = '<div class="modal-handle"></div>';
@@ -755,9 +754,10 @@ function showRegisterModal(no_hp, otp) {
 
 function closeRegisterModal() {
   document.getElementById('register-modal').classList.add('hidden');
+  _pendingOtp = '';
 }
 
-async function handleRegister(no_hp, otp) {
+async function handleRegister(no_hp) {
   var nama = document.getElementById('register-nama').value.trim();
   if (!nama) {
     document.getElementById('register-error').textContent = 'Nama wajib diisi';
@@ -771,10 +771,11 @@ async function handleRegister(no_hp, otp) {
   showLoading();
   try {
     // Reuse the OTP by verifying directly
-    var res = await api('verifyOtp', { no_hp: no_hp, otp: otp, nama: nama });
+    var res = await api('verifyOtp', { no_hp: no_hp, otp: _pendingOtp, nama: nama });
     hideLoading();
 
     if (res.ok) {
+      _pendingOtp = '';
       session.token = res.data.token;
       session.member = res.data.member;
       saveSession();
