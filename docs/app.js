@@ -126,9 +126,7 @@ function addToCart(product) {
       product_id: product.product_id,
       nama: product.nama,
       harga: Number(product.harga),
-      qty: 1,
-      foto_file_id: product.foto_file_id,
-      foto_url: product.foto_url
+      qty: 1
     });
   }
   saveCart();
@@ -426,7 +424,7 @@ function renderProducts(products) {
     var p = products[i];
     var imgHtml = '';
     if (p.foto_url) {
-      var fullUrl = p.foto_file_id ? 'https://drive.google.com/thumbnail?id=' + escHtml(p.foto_file_id) + '&sz=w1600' : escHtml(p.foto_url);
+      var fullUrl = p.foto_file_id ? 'https://lh3.googleusercontent.com/d/' + escHtml(p.foto_file_id) + '=w1200' : escHtml(p.foto_url);
       imgHtml = '<img src="' + escHtml(p.foto_url) + '" alt="' + escHtml(p.nama) + '" loading="lazy" style="cursor: pointer;" onclick="window.open(\'' + fullUrl + '\', \'_blank\')">';
     } else {
       imgHtml = '<div class="product-img-placeholder">' + ICON.bottle + '</div>';
@@ -517,9 +515,21 @@ function renderCartModal() {
   for (var i = 0; i < cart.length; i++) {
     var item = cart[i];
     var imgHtml = '';
-    if (item.foto_url) {
-      var fullUrl = item.foto_file_id ? 'https://drive.google.com/thumbnail?id=' + escHtml(item.foto_file_id) + '&sz=w1600' : escHtml(item.foto_url);
-      imgHtml = '<div class="cart-item-thumb"><img src="' + escHtml(item.foto_url) + '" alt="' + escHtml(item.nama) + '" style="cursor: pointer;" onclick="window.open(\'' + fullUrl + '\', \'_blank\')"></div>';
+    
+    // Cari detail produk dari catalog untuk mengambil foto (tanpa menyimpannya di localStorage)
+    var p = null;
+    if (catalog && catalog.products) {
+      for (var j = 0; j < catalog.products.length; j++) {
+        if (catalog.products[j].product_id === item.product_id) {
+          p = catalog.products[j];
+          break;
+        }
+      }
+    }
+
+    if (p && p.foto_url) {
+      var fullUrl = p.foto_file_id ? 'https://lh3.googleusercontent.com/d/' + escHtml(p.foto_file_id) + '=w1200' : escHtml(p.foto_url);
+      imgHtml = '<div class="cart-item-thumb"><img src="' + escHtml(p.foto_url) + '" alt="' + escHtml(item.nama) + '" style="cursor: pointer;" onclick="window.open(\'' + fullUrl + '\', \'_blank\')"></div>';
     } else {
       imgHtml = '<div class="cart-item-thumb placeholder" style="display:flex;align-items:center;justify-content:center;color:var(--brown)">' + ICON.bottle + '</div>';
     }
