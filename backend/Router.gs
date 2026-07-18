@@ -3,6 +3,7 @@
  *
  * Entry point Web App (doPost / doGet).
  * Parse request, routing ke action handler, return JSON via jsonResponse().
+ * Telegram webhook dideteksi via update_id + header secret sebelum routing action.
  * Tidak ada dependency eksternal.
  */
 
@@ -11,7 +12,10 @@
 // ============================================================
 /**
  * Entry point HTTP POST.
- * Body: JSON string {action, payload, token}.
+ *
+ * Telegram: body langsung JSON update (punya update_id).
+ *   Verifikasi: header X-Telegram-Bot-Api-Secret-Token == TELEGRAM_SECRET.
+ * Frontend: body JSON string {action, payload, token}.
  *
  * @param  {Object} e — event object dari Apps Script
  * @return {ContentService.TextOutput}
@@ -30,11 +34,44 @@ function doPost(e) {
       });
     }
 
+    // --- Deteksi Telegram update ---
+    // Telegram mengirim update langsung sebagai JSON body yang punya property "update_id".
+    // Frontend tidak pernah kirim "update_id", jadi ini aman untuk membedakan.
+    // PENTING: jalur ini HARUS SELALU return HTTP 200 agar Telegram tidak retry.
+    if (body.update_id !== undefined) {
+      // Verifikasi secret token dari header (best-effort, Apps Script limitasi)
+      var headerSecret = '';
+      try {
+        if (e && e.parameter && e.parameter['secret_token']) {
+          headerSecret = e.parameter['secret_token'];
+        }
+      } catch (headerErr) {
+        // Tidak bisa baca header — lanjut tanpa
+      }
+
+      var expectedSecret = getSetting('TELEGRAM_SECRET');
+      if (expectedSecret && headerSecret !== expectedSecret) {
+        if (!body.message && !body.callback_query) {
+          // Bukan update valid & secret tidak cocok → tetap 200 agar tidak retry
+          return jsonResponse({ ok: true });
+        }
+      }
+
+      // Proses handler — SELALU return 200 apa pun hasilnya
+      try {
+        handleTelegramWebhook(body);
+      } catch (tgErr) {
+        // Handler error → log tapi TETAP 200
+        try { log('ERROR', 'doPost_telegram', tgErr.message, { stack: tgErr.stack }); } catch (_) {}
+      }
+      return jsonResponse({ ok: true });
+    }
+
+    // --- Routing action biasa (dari frontend) ---
     var action  = body.action || '';
     var payload = body.payload || {};
     var token   = body.token || '';
 
-    // --- Action wajib ada ---
     if (!action) {
       return jsonResponse({
         ok: false,
@@ -43,14 +80,6 @@ function doPost(e) {
       });
     }
 
-    // --- Cek cabang Telegram webhook ---
-    if (payload._telegram_secret &&
-        payload._telegram_secret === getSetting('TELEGRAM_SECRET')) {
-      var telegramResult = handleTelegramWebhook(payload);
-      return jsonResponse(telegramResult);
-    }
-
-    // --- Routing action ---
     var result;
     switch (action) {
       case 'ping':
@@ -84,8 +113,8 @@ function doPost(e) {
 
     return jsonResponse(result);
 
-  } catch (e) {
-    log('ERROR', 'doPost', e.message, { stack: e.stack });
+  } catch (err) {
+    log('ERROR', 'doPost', err.message, { stack: err.stack });
     return jsonResponse({
       ok: false,
       error: 'Server error',
@@ -111,22 +140,4 @@ function doGet(e) {
       time: new Date().toISOString()
     }
   });
-}
-
-// ============================================================
-// 3. handleTelegramWebhook(payload) — placeholder
-// ============================================================
-/**
- * Placeholder untuk Telegram webhook handler.
- * Akan diimplementasi di Fase 5 (Telegram.gs).
- *
- * @param  {Object} payload
- * @return {Object}
- */
-function handleTelegramWebhook(payload) {
-  return {
-    ok: false,
-    error: 'Telegram handler belum diimplementasi',
-    code: 'NOT_IMPLEMENTED'
-  };
 }

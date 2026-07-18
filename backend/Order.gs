@@ -92,14 +92,55 @@ function _generateOrderId(ordersRows) {
 }
 
 /**
- * Placeholder notifikasi order baru ke admin.
- * Hanya log — Telegram dikirim di Fase 5.
+ * Notifikasi order baru ke admin via Telegram.
+ * Kirim ringkasan order sebagai teks. Tanpa tombol approval (Unit 5B).
  *
  * @param {Object} orderObj — object order yang sudah ditulis ke sheet
  */
-// TODO Fase 5: kirim Telegram beneran
 function _notifyAdminNewOrder(orderObj) {
-  log('NOTIF', orderObj.order_id, 'Order baru', {
+  // Susun ringkasan items
+  var itemsText = '';
+  try {
+    var orderItems = readAll('OrderItems');
+    for (var i = 0; i < orderItems.length; i++) {
+      if (String(orderItems[i].order_id) === String(orderObj.order_id)) {
+        itemsText += '  • ' + orderItems[i].nama_snapshot
+          + ' x' + orderItems[i].qty
+          + ' (Rp' + Number(orderItems[i].subtotal).toLocaleString('id') + ')\n';
+      }
+    }
+  } catch (e) {
+    itemsText = '  (gagal baca items)\n';
+  }
+
+  // Format metode kirim
+  var metodeInfo = String(orderObj.metode_kirim);
+  if (orderObj.alamat_snapshot) {
+    metodeInfo += ' — ' + orderObj.alamat_snapshot;
+  }
+
+  // Tgl antar + catatan
+  var tglAntar = String(orderObj.tgl_antar || '');
+  var catatan  = String(orderObj.catatan_customer || '-');
+
+  var pesan = '🛒 <b>Order Baru!</b>\n\n'
+    + '📋 ID: <code>' + orderObj.order_id + '</code>\n'
+    + '👤 Nama: ' + orderObj.nama + '\n'
+    + '📞 No HP: ' + orderObj.no_hp + '\n'
+    + '📦 Metode: ' + metodeInfo + '\n'
+    + '📅 Tgl Antar: ' + tglAntar + '\n'
+    + '💳 Bayar: ' + orderObj.metode_bayar + '\n\n'
+    + '<b>Items:</b>\n' + (itemsText || '  (kosong)\n')
+    + '\n💰 Subtotal: Rp' + Number(orderObj.subtotal).toLocaleString('id')
+    + '\n🚚 Ongkir: Rp' + Number(orderObj.ongkir || 0).toLocaleString('id')
+    + '\n🎁 Poin: -Rp' + Number(orderObj.poin_dipakai || 0).toLocaleString('id')
+    + '\n<b>Total: Rp' + Number(orderObj.total).toLocaleString('id') + '</b>\n\n'
+    + '📝 Catatan: ' + catatan + '\n\n'
+    + '<i>Kelola order via tombol (segera)</i>';
+
+  tgSendToAdmins(pesan);
+
+  log('NOTIF', orderObj.order_id, 'Notif order baru dikirim ke admin Telegram', {
     member_id:    orderObj.member_id,
     nama:         orderObj.nama,
     total:        orderObj.total,

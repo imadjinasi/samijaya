@@ -336,17 +336,38 @@ function authGetMe(payload, token) {
 }
 
 // ============================================================
-// 5. sendOtpToAdminTelegram(no_hp, nama, otp) — PLACEHOLDER
+// 5. sendOtpToAdminTelegram(no_hp, nama, otp)
 // ============================================================
 /**
  * Kirim notifikasi OTP ke admin via Telegram.
- * Placeholder — hanya log untuk saat ini.
+ * Pesan berisi info customer + tombol inline URL "Kirim OTP via WhatsApp".
  *
- * @param {string} no_hp — nomor HP ternormalisasi
+ * @param {string} no_hp — nomor HP ternormalisasi (format 62xxx)
  * @param {string} nama  — nama customer (bisa kosong)
  * @param {string} otp   — OTP 6 digit
  */
-// TODO Fase 5: implementasi kirim Telegram beneran
 function sendOtpToAdminTelegram(no_hp, nama, otp) {
-  log('NOTIF', no_hp, 'OTP request', { otp: otp, nama: nama });
+  var displayNama = nama || 'Customer';
+
+  // Susun pesan untuk admin
+  var pesan = '🔐 <b>OTP Request</b>\n'
+    + 'Nama: ' + displayNama + '\n'
+    + 'No HP: ' + no_hp + '\n'
+    + 'OTP: <code>' + otp + '</code>';
+
+  // Susun teks WhatsApp dari template OTP
+  var waText = fillTemplate('OTP', { NAMA: displayNama, OTP: otp });
+  var waUrl  = waLink(no_hp, waText);
+
+  // Kirim ke semua admin dengan tombol inline URL
+  tgSendToAdmins(pesan, {
+    reply_markup: {
+      inline_keyboard: [[
+        { text: '📲 Kirim OTP via WhatsApp', url: waUrl }
+      ]]
+    }
+  });
+
+  log('NOTIF', no_hp, 'OTP dikirim ke admin Telegram', { otp: otp, nama: nama });
 }
+
