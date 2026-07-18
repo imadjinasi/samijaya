@@ -12,6 +12,7 @@ var _bannerIndex = 0;
 var _activeCategory = null; // null = Semua
 var _otpCooldownTimer = null;
 var _pendingCheckout = false;
+var _submitting = false;
 var checkoutState = {
   tgl_antar: '',
   metode_kirim: '',
@@ -986,8 +987,12 @@ function renderCheckoutScreen() {
   html += '<div class="co-cost-row"><span>Ongkir</span><span class="co-cost-val" id="co-cost-ongkir">—</span></div>';
   html += '<div class="co-cost-row" id="co-cost-poin-row" style="display:none"><span>Potongan poin</span><span class="co-cost-val discount" id="co-cost-poin">-Rp0</span></div>';
   html += '<div class="co-cost-row total"><span>TOTAL</span><span class="co-cost-val" id="co-cost-total">' + formatRupiah(subtotal) + '</span></div>';
-  html += '<button id="btn-create-order" disabled>Buat Pesanan</button>';
-  html += '<div class="co-submit-note">Submit aktif setelah langkah berikutnya.</div>';
+  html += '<div class="co-catatan-wrap">';
+  html += '<label class="co-label" for="co-catatan">Catatan untuk Samijaya (opsional)</label>';
+  html += '<textarea id="co-catatan" class="co-catatan-input" rows="2" placeholder="Contoh: jangan terlalu manis, minta plastik besar…"></textarea>';
+  html += '</div>';
+  html += '<button id="btn-create-order" onclick="handleCreateOrder()" disabled>Buat Pesanan</button>';
+  html += '<div class="co-submit-note" id="co-submit-note">Lengkapi semua pilihan untuk melanjutkan.</div>';
   html += '<div class="co-validation-msg" id="co-validation-msg"></div>';
   html += '</div>';
 
@@ -1587,9 +1592,330 @@ function updateCheckoutValidation() {
     }
   }
 
-  // Button always disabled in 4a
+  // Enable/disable button berdasarkan validasi
   var btn = document.getElementById('btn-create-order');
-  if (btn) btn.disabled = true;
+  var noteEl = document.getElementById('co-submit-note');
+  if (btn) {
+    var isValid = (missing.length === 0);
+    btn.disabled = !isValid || _submitting;
+    if (noteEl) {
+      noteEl.textContent = isValid ? '' : 'Lengkapi semua pilihan untuk melanjutkan.';
+    }
+  }
+}
+
+// === BUILD PAYLOAD createOrder ===
+function buildCreateOrderPayload() {
+  var catatan = document.getElementById('co-catatan');
+  var catatanVal = catatan ? catatan.value.trim() : '';
+
+  var items = cart.map(function(i) {
+    return { product_id: i.product_id, qty: i.qty };
+  });
+
+  var payload = {
+    metode_kirim: checkoutState.metode_kirim,
+    metode_bayar: checkoutState.metode_bayar,
+    pakai_poin: checkoutState.pakai_poin,
+    items: items,
+    catatan_customer: catatanVal
+  };
+
+  if (checkoutState.metode_kirim === 'AMBIL' || checkoutState.metode_kirim === 'OJOL') {
+    payload.lokasi_pickup_id = checkoutState.lokasi_pickup_id;
+    payload.jam_pilih = checkoutState.jam_pilih;
+  }
+
+  if (checkoutState.metode_kirim === 'DIANTAR') {
+    payload.address_id = checkoutState.address_id || '';
+    // Susun alamat_snapshot: gabungkan label + alamat_teks + detail
+    var snapshotParts = [];
+    if (checkoutState.label_alamat) snapshotParts.push(checkoutState.label_alamat);
+    if (checkoutState.alamat_teks) snapshotParts.push(checkoutState.alamat_teks);
+    if (checkoutState.detail_alamat) snapshotParts.push(checkoutState.detail_alamat);
+    payload.alamat_snapshot = snapshotParts.join(' — ');
+    payload.lat = checkoutState.lat;
+    payload.lng = checkoutState.lng;
+    payload.slot_id = checkoutState.slot_id;
+    payload.tgl_antar = checkoutState.tgl_antar;
+  }
+
+  return payload;
+}
+
+// === HANDLE createOrder ===
+async function handleCreateOrder() {
+  if (_submitting) return;
+
+  // Validasi ulang sebelum submit
+  var missing = [];
+  if (!checkoutState.tgl_antar) missing.push('Tanggal pengantaran');
+  if (checkoutState.tgl_antar && isDateHoliday(checkoutState.tgl_antar)) missing.push('Tanggal yang dipilih adalah hari libur');
+  if (!checkoutState.metode_kirim) missing.push('Metode pengiriman');
+  if (checkoutState.metode_kirim === 'AMBIL' || checkoutState.metode_kirim === 'OJOL') {
+    if (!checkoutState.lokasi_pickup_id) missing.push('Lokasi pengambilan');
+    if (!checkoutState.jam_pilih) missing.push('Jam ambil/jemput');
+  }
+  if (checkoutState.metode_kirim === 'DIANTAR') {
+    if (!checkoutState.lat || !checkoutState.lng) missing.push('Titik lokasi pengantaran');
+    if (checkoutState.ongkir === null && checkoutState.lat) missing.push('Di luar jangkauan antar');
+    if (!checkoutState.slot_id) missing.push('Slot pengiriman');
+  }
+  if (!checkoutState.metode_bayar) missing.push('Metode pembayaran');
+
+  if (missing.length > 0) {
+    var msgEl = document.getElementById('co-validation-msg');
+    if (msgEl) {
+      var ul = '<ul>';
+      for (var k = 0; k < missing.length; k++) ul += '<li>' + escHtml(missing[k]) + '</li>';
+      ul += '</ul>';
+      msgEl.innerHTML = 'Belum lengkap:' + ul;
+    }
+    return;
+  }
+
+  // Set loading state
+  _submitting = true;
+  var btn = document.getElementById('btn-create-order');
+  var originalText = 'Buat Pesanan';
+  if (btn) { btn.disabled = true; btn.textContent = 'Memproses…'; }
+
+  var payload = buildCreateOrderPayload();
+
+  try {
+    var res = await api('createOrder', payload);
+    if (res.ok) {
+      // Sukses: kosongkan cart, buka halaman sukses
+      cart = [];
+      saveCart();
+      renderCartBottomBar();
+      renderHeader();
+      // Tutup checkout
+      document.getElementById('checkout-screen').classList.add('hidden');
+      document.body.style.overflow = '';
+      // Buka success screen
+      showSuccessScreen(res.data);
+    } else {
+      // Handle error per code
+      var errMsg = '';
+      var doRetry = false;
+      var goToSlot = false;
+      var code = res.code || '';
+
+      if (code === 'SIBUK_COBA_LAGI') {
+        errMsg = 'Sistem sedang ramai, mencoba lagi…';
+        doRetry = true;
+      } else if (code === 'TOKO_TUTUP') {
+        errMsg = 'Maaf, toko sedang tutup.';
+      } else if (code === 'SLOT_PENUH') {
+        errMsg = 'Slot pengiriman sudah penuh, pilih slot atau tanggal lain.';
+        goToSlot = true;
+      } else if (code === 'LUAR_JANGKAUAN') {
+        errMsg = 'Alamat di luar jangkauan antar.';
+      } else if (code === 'MIN_ORDER') {
+        errMsg = 'Belum memenuhi minimal order untuk diantar.';
+      } else if (code === 'TANGGAL_TERLALU_CEPAT') {
+        errMsg = res.error || 'Tanggal pengantaran terlalu cepat, pilih tanggal lain.';
+      } else if (code === 'PRODUK_TIDAK_TERSEDIA') {
+        errMsg = (res.error || 'Produk tidak tersedia.') + ' Silakan refresh katalog dan periksa keranjang.';
+      } else if (code === 'UNAUTHORIZED') {
+        errMsg = 'Sesi habis, silakan login ulang.';
+        session = { token: null, member: null };
+        localStorage.removeItem('sj_session');
+        renderHeader();
+      } else {
+        errMsg = res.error || 'Gagal membuat pesanan, coba lagi.';
+      }
+
+      // Tampilkan pesan error
+      var msgEl = document.getElementById('co-validation-msg');
+      if (msgEl) msgEl.innerHTML = '<div class="co-error-inline">' + escHtml(errMsg) + '</div>';
+
+      // Kembalikan tombol
+      _submitting = false;
+      if (btn) { btn.disabled = false; btn.textContent = originalText; }
+
+      if (doRetry) {
+        // Auto-retry 1x setelah 1.5 detik
+        if (btn) { btn.disabled = true; btn.textContent = 'Mencoba lagi…'; }
+        setTimeout(async function() {
+          if (msgEl) msgEl.innerHTML = '';
+          _submitting = true;
+          if (btn) { btn.disabled = true; btn.textContent = 'Memproses…'; }
+          try {
+            var res2 = await api('createOrder', payload);
+            if (res2.ok) {
+              cart = [];
+              saveCart();
+              renderCartBottomBar();
+              renderHeader();
+              document.getElementById('checkout-screen').classList.add('hidden');
+              document.body.style.overflow = '';
+              showSuccessScreen(res2.data);
+            } else {
+              var msg2 = res2.error || 'Gagal membuat pesanan, coba lagi.';
+              if (msgEl) msgEl.innerHTML = '<div class="co-error-inline">' + escHtml(msg2) + '</div>';
+            }
+          } catch (e2) {
+            if (msgEl) msgEl.innerHTML = '<div class="co-error-inline">Gagal terhubung ke server.</div>';
+          }
+          _submitting = false;
+          if (btn) { btn.disabled = false; btn.textContent = originalText; }
+        }, 1500);
+      }
+
+      if (goToSlot) {
+        // Scroll ke area slot
+        setTimeout(function() {
+          var slotEl = document.getElementById('co-slot-pills');
+          if (slotEl) slotEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 200);
+      }
+    }
+  } catch (e) {
+    var msgEl = document.getElementById('co-validation-msg');
+    if (msgEl) msgEl.innerHTML = '<div class="co-error-inline">Gagal terhubung ke server, coba lagi.</div>';
+    _submitting = false;
+    if (btn) { btn.disabled = false; btn.textContent = originalText; }
+  }
+}
+
+// === SUCCESS SCREEN ===
+function showSuccessScreen(data) {
+  var el = document.getElementById('success-screen');
+  if (!el) return;
+  renderSuccessScreen(data);
+  el.classList.remove('hidden');
+  el.scrollTop = 0;
+  document.body.style.overflow = 'hidden';
+}
+
+function closeSuccessScreen() {
+  var el = document.getElementById('success-screen');
+  if (el) el.classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+function renderSuccessScreen(data) {
+  var el = document.getElementById('success-screen');
+  if (!el) return;
+
+  var orderId = data.order_id || '';
+  var subtotal = data.subtotal || 0;
+  var ongkir = data.ongkir || 0;
+  var poinDipakai = data.poin_dipakai || 0;
+  var total = data.total || 0;
+  var metodeBayar = data.metode_bayar || '';
+  var bayar = data.bayar || null;
+  var waToko = String(data.wa_toko || '').replace(/[^0-9]/g, '');
+
+  var html = '<div class="success-inner">';
+
+  // Watermark mascot
+  html += '<div class="success-watermark" aria-hidden="true">☕</div>';
+
+  // Ikon sukses
+  html += '<div class="success-icon-wrap">';
+  html += '<svg class="success-checkmark" viewBox="0 0 52 52" fill="none">';
+  html += '<circle cx="26" cy="26" r="25" stroke="currentColor" stroke-width="2"/>';
+  html += '<path d="M14 26l8 8 16-16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>';
+  html += '</svg>';
+  html += '</div>';
+
+  html += '<h2 class="success-heading">Pesanan Diterima!</h2>';
+  html += '<p class="success-sub">Terima kasih, pesanan kamu sedang menunggu konfirmasi Samijaya.</p>';
+
+  // Order ID
+  html += '<div class="success-order-id-wrap">';
+  html += '<div class="success-order-id-label">Order ID</div>';
+  html += '<div class="success-order-id" id="success-order-id-text">' + escHtml(orderId) + '</div>';
+  html += '<button class="btn-copy-id" onclick="copyOrderId()" title="Salin Order ID">Salin</button>';
+  html += '</div>';
+
+  // Ringkasan biaya
+  html += '<div class="success-cost-box">';
+  html += '<div class="success-cost-row"><span>Subtotal produk</span><span>' + formatRupiah(subtotal) + '</span></div>';
+  html += '<div class="success-cost-row"><span>Ongkos kirim</span><span>' + formatRupiah(ongkir) + '</span></div>';
+  if (poinDipakai > 0) {
+    html += '<div class="success-cost-row poin-row"><span>Potongan poin</span><span>-' + formatRupiah(poinDipakai) + '</span></div>';
+  }
+  html += '<div class="success-cost-row total-row"><span>TOTAL</span><span>' + formatRupiah(total) + '</span></div>';
+  html += '</div>';
+
+  // Status
+  html += '<div class="success-status-badge">⏳ Menunggu konfirmasi Samijaya</div>';
+
+  // === PEMBAYARAN ===
+  if (metodeBayar === 'TRANSFER' && bayar) {
+    html += '<div class="success-payment-box">';
+    html += '<div class="success-payment-title">Selesaikan Pembayaran</div>';
+
+    // QRIS
+    if (bayar.qris_file_id) {
+      html += '<div class="success-qris-wrap">';
+      html += '<img src="https://drive.google.com/thumbnail?id=' + escHtml(bayar.qris_file_id) + '&sz=w400" alt="QRIS Samijaya" loading="lazy" class="success-qris-img">';
+      html += '<div class="success-qris-label">Scan QRIS di atas</div>';
+      html += '</div>';
+    }
+
+    // Rekening
+    var bank = String(bayar.rekening_bank || '').trim();
+    var nomor = String(bayar.rekening_nomor || '').trim();
+    var nama = String(bayar.rekening_nama || '').trim();
+    if (bank || nomor || nama) {
+      html += '<div class="success-rekening-box">';
+      html += '<div class="success-rekening-label">atau Transfer ke Rekening</div>';
+      if (bank) html += '<div class="success-rek-row"><span class="rek-bank">' + escHtml(bank) + '</span></div>';
+      if (nomor) {
+        html += '<div class="success-rek-row rek-nomor-row">';
+        html += '<span id="success-rek-nomor">' + escHtml(nomor) + '</span>';
+        html += '<button class="btn-copy-nomor" onclick="copyRekening(\'' + escHtml(nomor) + '\')" title="Salin nomor rekening">Salin</button>';
+        html += '</div>';
+      }
+      if (nama) html += '<div class="success-rek-row"><span>a.n. ' + escHtml(nama) + '</span></div>';
+      html += '</div>';
+    }
+
+    // Tombol utama: kirim bukti via WA
+    var waPesan = encodeURIComponent('Halo Samijaya, saya sudah transfer untuk pesanan ' + orderId + '. Berikut bukti transfernya:');
+    html += '<a class="btn-success-primary" href="https://wa.me/' + escHtml(waToko) + '?text=' + waPesan + '" target="_blank" rel="noopener">📲 Kirim Bukti Transfer via WhatsApp</a>';
+    html += '</div>';
+  } else {
+    // COD
+    html += '<div class="success-payment-box">';
+    html += '<div class="success-cod-note">💵 Bayar tunai saat pesanan diterima.</div>';
+    var waPesanCod = encodeURIComponent('Halo Samijaya, saya baru membuat pesanan ' + orderId + '.');
+    html += '<a class="btn-success-primary" href="https://wa.me/' + escHtml(waToko) + '?text=' + waPesanCod + '" target="_blank" rel="noopener">💬 Hubungi Samijaya</a>';
+    html += '</div>';
+  }
+
+  // Tombol sekunder
+  html += '<div class="success-actions-secondary">';
+  html += '<button class="btn-success-secondary" onclick="closeSuccessScreen()">← Kembali ke Menu</button>';
+  html += '<button class="btn-success-link" onclick="alert(\'Halaman riwayat pesanan akan tersedia di Fase 6.\')">Lihat Pesanan Saya</button>';
+  html += '</div>';
+
+  html += '</div>'; // success-inner
+  el.innerHTML = html;
+}
+
+function copyOrderId() {
+  var el = document.getElementById('success-order-id-text');
+  if (!el) return;
+  var text = el.textContent;
+  navigator.clipboard.writeText(text).then(function() {
+    showToast('Order ID disalin!');
+  }).catch(function() {
+    showToast(text);
+  });
+}
+
+function copyRekening(nomor) {
+  navigator.clipboard.writeText(nomor).then(function() {
+    showToast('Nomor rekening disalin!');
+  }).catch(function() {
+    showToast(nomor);
+  });
 }
 
 // === INIT ===

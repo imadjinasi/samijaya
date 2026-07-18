@@ -2064,3 +2064,405 @@ select {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* ============================================================
+   CHECKOUT EXTRAS (catatan, error inline)
+   ============================================================ */
+.co-catatan-wrap {
+  margin-top: 14px;
+  margin-bottom: 4px;
+}
+
+.co-catatan-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1.5px solid var(--latte);
+  border-radius: var(--r-input);
+  background: var(--white);
+  color: var(--espresso);
+  font-size: 0.9rem;
+  font-family: inherit;
+  outline: none;
+  resize: vertical;
+  transition: border-color var(--ease);
+}
+
+.co-catatan-input:focus {
+  border-color: var(--espresso);
+}
+
+.co-error-inline {
+  background: rgba(192, 57, 43, 0.08);
+  border: 1px solid rgba(192, 57, 43, 0.25);
+  border-radius: var(--r-input);
+  padding: 12px 16px;
+  color: var(--danger);
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.5;
+  margin-top: 6px;
+}
+
+/* ============================================================
+   SUCCESS SCREEN
+   ============================================================ */
+.success-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: var(--cream);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.success-overlay.hidden {
+  display: none;
+}
+
+.success-inner {
+  position: relative;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 40px 20px 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+/* Watermark */
+.success-watermark {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 260px;
+  opacity: 0.035;
+  pointer-events: none;
+  z-index: 0;
+  user-select: none;
+  line-height: 1;
+}
+
+.success-inner > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Icon */
+.success-icon-wrap {
+  margin-bottom: 20px;
+}
+
+.success-checkmark {
+  width: 72px;
+  height: 72px;
+  color: var(--success);
+  animation: successPop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+}
+
+@keyframes successPop {
+  0% { transform: scale(0.5); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Heading */
+.success-heading {
+  font-family: 'DM Serif Display', serif;
+  font-size: 2rem;
+  color: var(--espresso);
+  text-align: center;
+  margin-bottom: 8px;
+  animation: fadeUp 0.4s 0.15s ease both;
+}
+
+.success-sub {
+  font-size: 0.9rem;
+  color: #666;
+  text-align: center;
+  margin-bottom: 24px;
+  animation: fadeUp 0.4s 0.2s ease both;
+}
+
+@keyframes fadeUp {
+  0% { transform: translateY(10px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+/* Order ID */
+.success-order-id-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: var(--espresso);
+  color: var(--cream);
+  border-radius: 16px;
+  padding: 16px 24px;
+  width: 100%;
+  margin-bottom: 20px;
+  animation: fadeUp 0.4s 0.25s ease both;
+}
+
+.success-order-id-label {
+  font-size: 0.75rem;
+  opacity: 0.65;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.success-order-id {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.6rem;
+  letter-spacing: 0.04em;
+  word-break: break-all;
+  text-align: center;
+}
+
+.btn-copy-id {
+  background: rgba(255,255,255,0.15);
+  color: var(--cream);
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: var(--r-pill);
+  padding: 5px 16px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--ease);
+}
+
+.btn-copy-id:hover {
+  background: rgba(255,255,255,0.25);
+}
+
+/* Cost box */
+.success-cost-box {
+  width: 100%;
+  background: var(--white);
+  border-radius: 16px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  animation: fadeUp 0.4s 0.3s ease both;
+  border: 1px solid var(--line);
+}
+
+.success-cost-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 0.9rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.success-cost-row:last-child {
+  border-bottom: none;
+}
+
+.success-cost-row.poin-row {
+  color: var(--success);
+}
+
+.success-cost-row.total-row {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.05rem;
+  padding-top: 10px;
+  margin-top: 4px;
+  border-top: 2px solid var(--espresso);
+  border-bottom: none;
+}
+
+/* Status badge */
+.success-status-badge {
+  background: rgba(199, 107, 42, 0.1);
+  border: 1px solid rgba(199, 107, 42, 0.3);
+  color: var(--orange);
+  border-radius: var(--r-pill);
+  padding: 8px 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 24px;
+  animation: fadeUp 0.4s 0.35s ease both;
+}
+
+/* Payment box */
+.success-payment-box {
+  width: 100%;
+  background: var(--white);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 20px;
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  animation: fadeUp 0.4s 0.4s ease both;
+}
+
+.success-payment-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.15rem;
+  color: var(--espresso);
+  align-self: flex-start;
+}
+
+.success-qris-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.success-qris-img {
+  max-width: 220px;
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+}
+
+.success-qris-label {
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.success-rekening-box {
+  width: 100%;
+  background: var(--cream);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.success-rekening-label {
+  font-size: 0.8rem;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.success-rek-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.95rem;
+  flex-wrap: wrap;
+  word-break: break-word;
+}
+
+.rek-bank {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.rek-nomor-row span {
+  font-family: monospace;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+}
+
+.btn-copy-nomor {
+  background: var(--espresso);
+  color: var(--cream);
+  border-radius: var(--r-pill);
+  padding: 4px 14px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: background var(--ease);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.btn-copy-nomor:hover {
+  background: var(--brown);
+}
+
+.success-cod-note {
+  font-size: 1rem;
+  color: var(--espresso);
+  font-weight: 600;
+  text-align: center;
+}
+
+/* Primary WA button */
+.btn-success-primary {
+  display: block;
+  width: 100%;
+  background: #25D366;
+  color: #fff;
+  text-align: center;
+  border-radius: var(--r-pill);
+  padding: 15px 20px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: opacity var(--ease), transform var(--ease);
+  box-shadow: 0 4px 20px rgba(37, 211, 102, 0.3);
+}
+
+.btn-success-primary:hover {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+
+.btn-success-primary:active {
+  transform: scale(0.98);
+}
+
+/* Secondary actions */
+.success-actions-secondary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  animation: fadeUp 0.4s 0.5s ease both;
+}
+
+.btn-success-secondary {
+  width: 100%;
+  background: var(--white);
+  color: var(--espresso);
+  border: 1.5px solid var(--latte);
+  border-radius: var(--r-pill);
+  padding: 14px 20px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--ease);
+}
+
+.btn-success-secondary:hover {
+  background: var(--latte);
+  border-color: var(--brown);
+}
+
+.btn-success-link {
+  background: none;
+  color: #888;
+  font-size: 0.85rem;
+  text-decoration: underline;
+  cursor: pointer;
+  border: none;
+  padding: 4px;
+}
+
+.btn-success-link:hover {
+  color: var(--espresso);
+}
+
+/* Responsive 360px */
+@media (max-width: 380px) {
+  .success-heading { font-size: 1.6rem; }
+  .success-order-id { font-size: 1.3rem; }
+  .success-inner { padding: 30px 14px 60px; }
+  .success-payment-box { padding: 16px 14px; }
+}
+
