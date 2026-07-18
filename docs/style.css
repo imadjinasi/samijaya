@@ -405,37 +405,26 @@ h1, h2, h3, .font-serif {
 /* Category Tabs */
 #category-tabs {
   padding: 0 20px 12px;
-  overflow-x: auto;
-  display: flex;
-  gap: 8px;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
 }
 
-#category-tabs::-webkit-scrollbar { display: none; }
-
-.cat-tab {
-  flex-shrink: 0;
-  padding: 8px 20px;
+.cat-dropdown {
+  width: 100%;
+  padding: 8px 32px 8px 16px;
   border: 1.5px solid var(--latte);
   border-radius: var(--r-pill);
-  background: transparent;
+  background: var(--white) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23503229' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") no-repeat right 12px center;
+  appearance: none;
+  -webkit-appearance: none;
   color: var(--brown);
-  font-size: 0.82rem;
+  font-size: 0.85rem;
   font-weight: 600;
-  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
   transition: all var(--ease);
 }
 
-.cat-tab:hover {
+.cat-dropdown:focus {
   border-color: var(--brown);
-  color: var(--espresso);
-}
-
-.cat-tab.active {
-  background: var(--espresso);
-  color: var(--cream);
-  border-color: var(--espresso);
 }
 
 /* Search Bar */
@@ -464,8 +453,8 @@ h1, h2, h3, .font-serif {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--r-pill);
   color: var(--brown);
   background: transparent;
@@ -488,7 +477,7 @@ h1, h2, h3, .font-serif {
 
 .search-input-wrap input {
   width: 100%;
-  padding: 11px 16px 11px 44px;
+  padding: 8px 16px 8px 40px;
   border: 1.5px solid var(--line);
   border-radius: var(--r-pill);
   font-size: 0.88rem;
