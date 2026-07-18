@@ -232,21 +232,7 @@ function deleteWebhook() {
  */
 function handleTelegramWebhook(update) {
   try {
-
-    // --- Idempotency: cegah eksekusi ganda via update_id ---
-    // Telegram bisa mengirim update yang sama berkali-kali jika webhook lambat.
-    // Simpan update_id di cache; kalau sudah ada → skip tanpa aksi.
-    var updateId = String(update.update_id || '');
-    if (updateId) {
-      var cache = CacheService.getScriptCache();
-      var cacheKey = 'tg_upd_' + updateId;
-      if (cache.get(cacheKey)) {
-        // Update sudah diproses sebelumnya → skip
-        return { ok: true };
-      }
-      // Tandai sebagai diproses (TTL 600 detik = 10 menit)
-      cache.put(cacheKey, '1', 600);
-    }
+    // Idempotency sudah dijaga di Router.gs (cache update_id sebelum handler dipanggil).
 
     // --- Message ---
     if (update.message) {

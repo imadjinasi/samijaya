@@ -3,7 +3,7 @@
  *
  * Entry point Web App (doPost / doGet).
  * Parse request, routing ke action handler, return JSON via jsonResponse().
- * Telegram webhook dideteksi via update_id + header secret sebelum routing action.
+ * Telegram webhook dideteksi via update_id + struktur body (tanpa header — GAS limitasi).
  * Tidak ada dependency eksternal.
  */
 
@@ -13,8 +13,8 @@
 /**
  * Entry point HTTP POST.
  *
- * Telegram: body langsung JSON update (punya update_id).
- *   Verifikasi: header X-Telegram-Bot-Api-Secret-Token == TELEGRAM_SECRET.
+ * Telegram: body langsung JSON update (punya update_id + message/callback_query).
+ *   Verifikasi via struktur body, bukan header (GAS tidak expose POST headers).
  * Frontend: body JSON string {action, payload, token}.
  *
  * @param  {Object} e — event object dari Apps Script
@@ -35,36 +35,39 @@ function doPost(e) {
     }
 
     // --- Deteksi Telegram update ---
-    // Telegram mengirim update langsung sebagai JSON body yang punya property "update_id".
+    // Telegram mengirim update sebagai JSON body dengan property "update_id".
     // Frontend tidak pernah kirim "update_id", jadi ini aman untuk membedakan.
+    // NOTE: Apps Script Web App TIDAK meneruskan custom HTTP header dari POST,
+    //   jadi verifikasi X-Telegram-Bot-Api-Secret-Token tidak mungkin di sini.
+    //   Verifikasi cukup via struktur body (update_id + shape valid).
+    //   setWebhook tetap kirim secret_token ke Telegram sebagai best-practice.
     // PENTING: jalur ini HARUS SELALU return HTTP 200 agar Telegram tidak retry.
     if (body.update_id !== undefined) {
-      // Verifikasi secret token dari header (best-effort, Apps Script limitasi)
-      var headerSecret = '';
-      try {
-        if (e && e.parameter && e.parameter['secret_token']) {
-          headerSecret = e.parameter['secret_token'];
-        }
-      } catch (headerErr) {
-        // Tidak bisa baca header — lanjut tanpa
+      // Validasi struktur: harus punya salah satu payload Telegram yang dikenal
+      if (!body.message && !body.callback_query && !body.edited_message) {
+        // update_id ada tapi tanpa payload valid → abaikan, tetap 200
+        return HtmlService.createHtmlOutput('ok');
       }
 
-      var expectedSecret = getSetting('TELEGRAM_SECRET');
-      if (expectedSecret && headerSecret !== expectedSecret) {
-        if (!body.message && !body.callback_query) {
-          // Bukan update valid & secret tidak cocok → tetap 200 agar tidak retry
-          return jsonResponse({ ok: true });
-        }
+      // --- Idempotency: cegah eksekusi ganda via update_id ---
+      // Ditempatkan di Router (SEBELUM handler) agar meskipun handler crash,
+      // retry berikutnya tetap di-skip karena cache sudah ter-set.
+      var updateId = String(body.update_id);
+      var cache = CacheService.getScriptCache();
+      var cacheKey = 'tg_upd_' + updateId;
+      if (cache.get(cacheKey)) {
+        // Update sudah diproses sebelumnya → skip
+        return HtmlService.createHtmlOutput('ok');
       }
+      cache.put(cacheKey, '1', 600); // TTL 10 menit
 
       // Proses handler — SELALU return 200 apa pun hasilnya
       try {
         handleTelegramWebhook(body);
       } catch (tgErr) {
-        // Handler error → log tapi TETAP 200
         try { log('ERROR', 'doPost_telegram', tgErr.message, { stack: tgErr.stack }); } catch (_) {}
       }
-      return jsonResponse({ ok: true });
+      return HtmlService.createHtmlOutput('ok');
     }
 
     // --- Routing action biasa (dari frontend) ---

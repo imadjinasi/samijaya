@@ -236,7 +236,7 @@ function clearSettingsCache() {
  */
 function log(tipe, refId, pesan, detail) {
   appendRowObj('Logs', {
-    timestamp:   new Date().toISOString(),
+    timestamp: Utilities.formatDate(new Date(), "Asia/Jakarta", "yyyy-MM-dd HH:mm:ss"),
     tipe:        tipe,
     ref_id:      refId,
     pesan:       pesan,
