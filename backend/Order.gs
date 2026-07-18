@@ -57,6 +57,18 @@ function _toHHMMOrder(v) {
 }
 
 /**
+ * Konversi "HH:mm" → jumlah menit sejak 00:00.
+ * Dipakai untuk perbandingan jam operasional secara numerik.
+ *
+ * @param  {string} hhmm — format "HH:mm"
+ * @return {number}      — menit sejak 00:00 (contoh: "07:30" → 450)
+ */
+function _toMinutes(hhmm) {
+  var parts = String(hhmm).split(':');
+  return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+}
+
+/**
  * Generate order_id: "SJ" + YYMMDD (Asia/Jakarta) + 3 digit urut harian.
  * Dipanggil di dalam withLock sehingga aman dari race condition.
  * Hitung urutan dari baris Orders yang sudah dibaca (bukan baca ulang).
@@ -280,7 +292,6 @@ function orderCreateOrder(payload, token) {
     var metodeKirim    = String(payload.metode_kirim || '');
     var ongkir         = 0;
     var slotId         = '';
-    var tglAntar       = '';
     var lokasiPickupId = '';
     var namaLokasi     = '';
     var alamatSnapshot = '';
@@ -288,6 +299,39 @@ function orderCreateOrder(payload, token) {
     var lngFinal       = '';
     var jarakKmFinal   = '';
     var jamPilih       = '';
+
+    // ----------------------------------------------------------
+    // 5.1 Validasi tanggal_antar untuk SEMUA metode
+    // ----------------------------------------------------------
+    var tglAntar = String(payload.tgl_antar || '').trim();
+    if (!tglAntar || !/^\d{4}-\d{2}-\d{2}$/.test(tglAntar)) {
+      return { ok: false, code: 'BAD_REQUEST', error: 'Tanggal wajib diisi' };
+    }
+
+    var now = new Date();
+    var todayJkt = _toJktDateStr(now);
+    if (tglAntar < todayJkt) {
+      return { ok: false, code: 'TANGGAL_TIDAK_VALID', error: 'Tanggal tidak boleh di masa lampau' };
+    }
+
+    var jktHour = parseInt(Utilities.formatDate(now, 'Asia/Jakarta', 'HH'), 10);
+    var minDays = (jktHour >= 18) ? 2 : 1;
+    var minDateObj = new Date(now.getTime() + minDays * 24 * 60 * 60 * 1000);
+    var minDateStr = _toJktDateStr(minDateObj);
+
+    if (tglAntar < minDateStr) {
+      return { ok: false, code: 'TANGGAL_TERLALU_CEPAT', error: 'Pemesanan minimal H+1. Pesanan di atas jam 18.00 WIB minimal H+2.' };
+    }
+
+    var allHolidays = readAll('Holidays');
+    for (var i = 0; i < allHolidays.length; i++) {
+      var holTgl = allHolidays[i].tanggal;
+      if (holTgl instanceof Date) holTgl = _toJktDateStr(holTgl);
+      else holTgl = String(holTgl).trim();
+      if (holTgl === tglAntar) {
+        return { ok: false, code: 'HARI_LIBUR', error: 'Tanggal yang dipilih adalah hari libur' };
+      }
+    }
 
     // ---- AMBIL -----------------------------------------------
     if (metodeKirim === 'AMBIL' || metodeKirim === 'OJOL') {
@@ -299,11 +343,30 @@ function orderCreateOrder(payload, token) {
       if (!jamPilih) {
         return { ok: false, code: 'BAD_REQUEST', error: 'jam_pilih wajib diisi' };
       }
-      namaLokasi     = String(pickupMap[lokasiPickupId].nama);
+      // Validasi format jam_pilih
+      if (!/^\d{1,2}:\d{2}$/.test(jamPilih)) {
+        return { ok: false, code: 'BAD_REQUEST', error: 'jam_pilih harus format HH:mm' };
+      }
+
+      // --- Validasi jam operasional lokasi pickup ---
+      var lokObj   = pickupMap[lokasiPickupId];
+      var jamBuka  = _toHHMMOrder(lokObj.jam_buka);   // Date dari Sheets → "HH:mm"
+      var jamTutup = _toHHMMOrder(lokObj.jam_tutup);
+      var mPilih   = _toMinutes(jamPilih);
+      var mBuka    = _toMinutes(jamBuka);
+      var mTutup   = _toMinutes(jamTutup);
+      if (mPilih < mBuka || mPilih > mTutup) {
+        return {
+          ok: false,
+          code: 'JAM_LUAR_OPERASIONAL',
+          error: 'Jam di luar jam operasional ' + String(lokObj.nama) + ' (' + jamBuka + '\u2013' + jamTutup + ')'
+        };
+      }
+
+      namaLokasi     = String(lokObj.nama);
       alamatSnapshot = namaLokasi; // untuk AMBIL/OJOL, alamat_snapshot = nama lokasi pickup
       ongkir         = 0;
       slotId         = '';
-      tglAntar       = '';
 
     // ---- DIANTAR ---------------------------------------------
     } else if (metodeKirim === 'DIANTAR') {
@@ -366,40 +429,6 @@ function orderCreateOrder(payload, token) {
       slotId = String(payload.slot_id || '').trim();
       if (!slotId) {
         return { ok: false, code: 'BAD_REQUEST', error: 'slot_id wajib untuk metode DIANTAR' };
-      }
-
-      // tgl_antar wajib & format valid
-      tglAntar = String(payload.tgl_antar || '').trim();
-      if (!tglAntar || !/^\d{4}-\d{2}-\d{2}$/.test(tglAntar)) {
-        return { ok: false, code: 'BAD_REQUEST', error: 'tgl_antar wajib format YYYY-MM-DD' };
-      }
-
-      // --------------------------------------------------------
-      // 6. Validasi tanggal: tidak lampau (Asia/Jakarta), tidak hari libur
-      // --------------------------------------------------------
-      var now = new Date();
-      var todayJkt = _toJktDateStr(now);
-      if (tglAntar < todayJkt) {
-        return { ok: false, code: 'TANGGAL_TIDAK_VALID', error: 'Tanggal antar tidak boleh di masa lampau' };
-      }
-
-      var jktHour = parseInt(Utilities.formatDate(now, 'Asia/Jakarta', 'HH'), 10);
-      var minDays = (jktHour >= 18) ? 2 : 1;
-      var minDateObj = new Date(now.getTime() + minDays * 24 * 60 * 60 * 1000);
-      var minDateStr = _toJktDateStr(minDateObj);
-
-      if (tglAntar < minDateStr) {
-        return { ok: false, code: 'TANGGAL_TERLALU_CEPAT', error: 'Pengantaran minimal H+1. Order setelah jam 18.00 minimal H+2.' };
-      }
-
-      var allHolidays = readAll('Holidays');
-      for (var i = 0; i < allHolidays.length; i++) {
-        var holTgl = allHolidays[i].tanggal;
-        if (holTgl instanceof Date) holTgl = _toJktDateStr(holTgl);
-        else holTgl = String(holTgl).trim();
-        if (holTgl === tglAntar) {
-          return { ok: false, code: 'HARI_LIBUR', error: 'Tanggal antar adalah hari libur' };
-        }
       }
 
       // Validasi slot ada & aktif di DeliverySlots
