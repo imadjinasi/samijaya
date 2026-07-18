@@ -70,6 +70,13 @@ function doPost(e) {
         result = catalogGetCatalog();
         break;
 
+      case 'getSlotAvailability':
+        result = orderGetSlotAvailability(payload);
+        break;
+      case 'createOrder':
+        result = orderCreateOrder(payload, token);
+        break;
+
       default:
         result = { ok: false, error: 'Unknown action: ' + action, code: 'UNKNOWN_ACTION' };
         break;
