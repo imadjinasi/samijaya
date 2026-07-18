@@ -135,10 +135,20 @@ function _notifyAdminNewOrder(orderObj) {
     + '\n🚚 Ongkir: Rp' + Number(orderObj.ongkir || 0).toLocaleString('id')
     + '\n🎁 Poin: -Rp' + Number(orderObj.poin_dipakai || 0).toLocaleString('id')
     + '\n<b>Total: Rp' + Number(orderObj.total).toLocaleString('id') + '</b>\n\n'
-    + '📝 Catatan: ' + catatan + '\n\n'
-    + '<i>Kelola order via tombol (segera)</i>';
+    + '📝 Catatan: ' + catatan;
 
-  tgSendToAdmins(pesan);
+  var opts = {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: '✅ Proses', callback_data: 'st:PROSES:' + orderObj.order_id },
+          { text: '❌ Batal', callback_data: 'st:BATAL_ASK:' + orderObj.order_id }
+        ]
+      ]
+    }
+  };
+
+  tgSendToAdmins(pesan, opts);
 
   log('NOTIF', orderObj.order_id, 'Notif order baru dikirim ke admin Telegram', {
     member_id:    orderObj.member_id,
@@ -659,4 +669,119 @@ function orderCreateOrder(payload, token) {
     };
 
   }); // end withLock
+}
+
+// ============================================================
+// 3. orderUpdateStatus(orderId, newStatus, actorChatId)
+// ============================================================
+/**
+ * Update status order dan tambah poin jika SELESAI.
+ * Validasi transisi dan idempotency penambahan poin.
+ *
+ * @param  {string} orderId
+ * @param  {string} newStatus
+ * @param  {string} actorChatId
+ * @return {Object}
+ */
+function orderUpdateStatus(orderId, newStatus, actorChatId) {
+  return withLock(function () {
+    var allOrders = readAll('Orders');
+    var order = null;
+    for (var i = 0; i < allOrders.length; i++) {
+      if (String(allOrders[i].order_id) === String(orderId)) {
+        order = allOrders[i];
+        break;
+      }
+    }
+    if (!order) return { ok: false, code: 'ORDER_NOT_FOUND', error: 'Order tidak ditemukan' };
+
+    var oldStatus = String(order.status);
+    
+    // Validasi transisi
+    var valid = false;
+    if (oldStatus === 'SELESAI' || oldStatus === 'BATAL') {
+      return { ok: false, code: 'STATUS_FINAL', error: 'Order sudah final' };
+    }
+    
+    if (oldStatus === 'MENUNGGU' && (newStatus === 'DIPROSES' || newStatus === 'BATAL')) valid = true;
+    else if (oldStatus === 'DIPROSES' && (newStatus === 'SIAP' || newStatus === 'BATAL')) valid = true;
+    else if (oldStatus === 'SIAP' && (newStatus === 'SELESAI' || newStatus === 'BATAL')) valid = true;
+    
+    if (!valid) return { ok: false, code: 'TRANSISI_TIDAK_VALID', error: 'Transisi ' + oldStatus + ' ke ' + newStatus + ' tidak valid' };
+
+    var now = new Date();
+    var nowIso = now.toISOString();
+    
+    var timeline = [];
+    try { timeline = JSON.parse(order.timeline_json); } catch (e) {}
+    timeline.push({ status: newStatus, at: nowIso, by: actorChatId });
+    
+    var updateData = {
+      status: newStatus,
+      updated_at: nowIso,
+      timeline_json: JSON.stringify(timeline)
+    };
+    
+    var poin_ditambah = 0;
+    
+    if (newStatus === 'SELESAI') {
+      var total = Number(order.total) || 0;
+      var rate = Number(getSetting('POINT_RATE_RP')) || 1000;
+      var poin = Math.floor(total / rate);
+      
+      if (poin > 0) {
+        // Cek idempotensi
+        var histories = readAll('PointHistory');
+        var alreadyAdded = false;
+        for (var j = 0; j < histories.length; j++) {
+          if (String(histories[j].order_id) === String(orderId) && String(histories[j].tipe) === 'TAMBAH') {
+            alreadyAdded = true;
+            break;
+          }
+        }
+        
+        if (!alreadyAdded) {
+          var allMembers = readAll('Members');
+          var member = null;
+          for (var m = 0; m < allMembers.length; m++) {
+            if (String(allMembers[m].member_id) === String(order.member_id)) {
+              member = allMembers[m];
+              break;
+            }
+          }
+          
+          if (member) {
+            var saldoBaru = (Number(member.total_poin) || 0) + poin;
+            var totalBelanjaBaru = (Number(member.total_belanja) || 0) + total;
+            
+            updateRowById('Members', 'member_id', member.member_id, {
+              total_poin: saldoBaru,
+              total_belanja: totalBelanjaBaru
+            });
+            
+            appendRowObj('PointHistory', {
+              id: genId('PTH'),
+              member_id: member.member_id,
+              order_id: orderId,
+              tipe: 'TAMBAH',
+              jumlah: poin,
+              saldo_akhir: saldoBaru,
+              keterangan: 'Poin dari order ' + orderId,
+              created_at: nowIso
+            });
+            
+            poin_ditambah = poin;
+          }
+        }
+      }
+    }
+    
+    updateRowById('Orders', 'order_id', orderId, updateData);
+    order.status = newStatus; // update obyek lokal untuk return
+    
+    if (newStatus === 'SELESAI') {
+      return { ok: true, data: { order: order, poin_ditambah: poin_ditambah } };
+    }
+    return { ok: true, data: { order: order } };
+  });
 }

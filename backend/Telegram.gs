@@ -315,13 +315,165 @@ function handleTelegramWebhook(update) {
       return { ok: true };
     }
 
-    // --- Callback Query (stub untuk Unit 5B) ---
+    // --- Callback Query ---
     if (update.callback_query) {
-      tgApi('answerCallbackQuery', {
-        callback_query_id: String(update.callback_query.id),
-        text: 'Fitur tombol menyusul.',
-        show_alert: false
-      });
+      var cb = update.callback_query;
+      var cbId = String(cb.id);
+      var chatId = String(cb.from.id);
+      var data = String(cb.data || '');
+      var message = cb.message;
+      var msgId = message ? String(message.message_id) : '';
+      var chatMsgId = message ? String(message.chat.id) : '';
+      
+      if (!isAdmin(chatId)) {
+        tgApi('answerCallbackQuery', { callback_query_id: cbId, text: 'Bukan admin', show_alert: true });
+        return { ok: true };
+      }
+      
+      if (data.indexOf('st:') !== 0) {
+        tgApi('answerCallbackQuery', { callback_query_id: cbId, text: 'Aksi diabaikan' });
+        return { ok: true };
+      }
+      
+      var parts = data.split(':');
+      var prefix = parts[0];
+      var aksi = parts[1];
+      var orderId = parts[2];
+      
+      var allOrders = readAll('Orders');
+      var order = null;
+      for (var i = 0; i < allOrders.length; i++) {
+        if (String(allOrders[i].order_id) === String(orderId)) {
+          order = allOrders[i];
+          break;
+        }
+      }
+      
+      if (!order) {
+        tgApi('answerCallbackQuery', { callback_query_id: cbId, text: 'Order tidak ditemukan', show_alert: true });
+        return { ok: true };
+      }
+
+      var textLama = message ? (message.text || '') : '';
+      
+      function getCabang(ord) {
+        if (ord.metode_kirim === 'DIANTAR') return ord.alamat_snapshot || '-';
+        try {
+          var locs = readAll('PickupLocations');
+          for (var j = 0; j < locs.length; j++) {
+            if (String(locs[j].lokasi_id) === String(ord.lokasi_pickup_id)) return locs[j].nama;
+          }
+        } catch (e) {}
+        return '-';
+      }
+      
+      function buildMarkup(st, ord) {
+        var kb = [];
+        var td = {
+          NAMA: ord.nama, ORDER_ID: ord.order_id, TOTAL: Number(ord.total).toLocaleString('id'), CABANG: getCabang(ord), POINT: 0
+        };
+        if (st === 'MENUNGGU') {
+          kb.push([{text: '✅ Proses', callback_data: 'st:PROSES:'+ord.order_id}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+ord.order_id}]);
+        } else if (st === 'DIPROSES') {
+          kb.push([{text: '🟢 Siap', callback_data: 'st:SIAP:'+ord.order_id}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+ord.order_id}]);
+          kb.push([{text: '💬 WA Customer', url: waLink(ord.no_hp, fillTemplate('ORDER_DIPROSES', td))}]);
+        } else if (st === 'SIAP') {
+          kb.push([{text: '✅ Selesai', callback_data: 'st:SELESAI_ASK:'+ord.order_id}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+ord.order_id}]);
+          kb.push([{text: '💬 WA Customer', url: waLink(ord.no_hp, fillTemplate('ORDER_SIAP', td))}]);
+        }
+        return kb;
+      }
+
+      var res = null;
+      var waUrl = '';
+      var tmplData = {
+        NAMA: order.nama,
+        ORDER_ID: order.order_id,
+        TOTAL: Number(order.total).toLocaleString('id'),
+        CABANG: getCabang(order),
+        POINT: 0
+      };
+      
+      if (aksi === 'PROSES') {
+        res = orderUpdateStatus(orderId, 'DIPROSES', chatId);
+        if (res && res.ok) {
+          waUrl = waLink(order.no_hp, fillTemplate('ORDER_DIPROSES', tmplData));
+          tgApi('editMessageText', {
+            chat_id: chatMsgId, message_id: msgId,
+            text: textLama + '\n\n🟡 Status: DIPROSES',
+            reply_markup: { inline_keyboard: [[{text: '🟢 Siap', callback_data: 'st:SIAP:'+orderId}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+orderId}], [{text: '💬 WA Customer', url: waUrl}]] }
+          });
+        }
+      }
+      else if (aksi === 'SIAP') {
+        res = orderUpdateStatus(orderId, 'SIAP', chatId);
+        if (res && res.ok) {
+          waUrl = waLink(order.no_hp, fillTemplate('ORDER_SIAP', tmplData));
+          tgApi('editMessageText', {
+            chat_id: chatMsgId, message_id: msgId,
+            text: textLama + '\n\n🟢 Status: SIAP',
+            reply_markup: { inline_keyboard: [[{text: '✅ Selesai', callback_data: 'st:SELESAI_ASK:'+orderId}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+orderId}], [{text: '💬 WA Customer', url: waUrl}]] }
+          });
+        }
+      }
+      else if (aksi === 'BATAL_ASK') {
+        tgApi('editMessageReplyMarkup', {
+          chat_id: chatMsgId, message_id: msgId,
+          reply_markup: { inline_keyboard: [[{text: 'Ya, batalkan', callback_data: 'st:BATAL_YES:'+orderId}, {text: 'Tidak, kembali', callback_data: 'st:BATAL_NO:'+orderId}]] }
+        });
+        tgApi('answerCallbackQuery', { callback_query_id: cbId, text: 'Konfirmasi pembatalan' });
+        return { ok: true };
+      }
+      else if (aksi === 'BATAL_NO') {
+        tgApi('editMessageReplyMarkup', {
+          chat_id: chatMsgId, message_id: msgId,
+          reply_markup: { inline_keyboard: buildMarkup(order.status, order) }
+        });
+      }
+      else if (aksi === 'BATAL_YES') {
+        res = orderUpdateStatus(orderId, 'BATAL', chatId);
+        if (res && res.ok) {
+          waUrl = waLink(order.no_hp, fillTemplate('ORDER_BATAL', tmplData));
+          tgApi('editMessageText', {
+            chat_id: chatMsgId, message_id: msgId,
+            text: textLama + '\n\n❌ Status: BATAL',
+            reply_markup: { inline_keyboard: [[{text: '💬 WA Customer', url: waUrl}]] }
+          });
+        }
+      }
+      else if (aksi === 'SELESAI_ASK') {
+        tgApi('editMessageReplyMarkup', {
+          chat_id: chatMsgId, message_id: msgId,
+          reply_markup: { inline_keyboard: [[{text: 'Ya, selesaikan', callback_data: 'st:SELESAI_YES:'+orderId}, {text: 'Tidak, kembali', callback_data: 'st:SELESAI_NO:'+orderId}]] }
+        });
+        tgApi('answerCallbackQuery', { callback_query_id: cbId, text: 'Konfirmasi selesai' });
+        return { ok: true };
+      }
+      else if (aksi === 'SELESAI_NO') {
+        tgApi('editMessageReplyMarkup', {
+          chat_id: chatMsgId, message_id: msgId,
+          reply_markup: { inline_keyboard: buildMarkup(order.status, order) }
+        });
+      }
+      else if (aksi === 'SELESAI_YES') {
+        res = orderUpdateStatus(orderId, 'SELESAI', chatId);
+        if (res && res.ok) {
+          tmplData.POINT = res.data.poin_ditambah || 0;
+          waUrl = waLink(order.no_hp, fillTemplate('ORDER_SELESAI', tmplData));
+          tgApi('editMessageText', {
+            chat_id: chatMsgId, message_id: msgId,
+            text: textLama + '\n\n✅ Status: SELESAI (+' + tmplData.POINT + ' poin)',
+            reply_markup: { inline_keyboard: [[{text: '💬 WA Customer', url: waUrl}]] }
+          });
+        }
+      }
+
+      if (res && !res.ok) {
+        tgApi('answerCallbackQuery', { callback_query_id: cbId, text: 'Gagal: ' + res.error, show_alert: true });
+        return { ok: true };
+      }
+
+      tgApi('answerCallbackQuery', { callback_query_id: cbId, text: 'Berhasil' });
       return { ok: true };
     }
 
