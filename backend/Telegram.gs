@@ -842,8 +842,22 @@ function handleAdminCommand(chatId, text) {
   }
 
   if (cmd === '/produk') {
+    if (args.length < 1) {
+      var prods = readAll('Products');
+      var lines = ['📦 <b>Daftar Produk</b>\n'];
+      var max = Math.min(prods.length, 50);
+      for (var i = 0; i < max; i++) {
+        var p = prods[i];
+        var stateStr = Number(p.tersedia) === 1 ? 'on' : 'off';
+        lines.push('<code>' + p.product_id + '</code> • ' + esc(p.nama) + ' • Rp' + Number(p.harga).toLocaleString('id') + ' • ' + stateStr);
+      }
+      if (prods.length > 50) lines.push('\n<i>(Menampilkan 50 baris pertama)</i>');
+      tgSend(chatId, lines.join('\n'));
+      return;
+    }
+
     if (args.length < 2) {
-      tgSend(chatId, '⚠️ Format: /produk &lt;id&gt; on|off');
+      tgSend(chatId, '⚠️ Format: /produk &lt;id&gt; on|off\nAtau ketik /produk untuk melihat daftar.');
       return;
     }
     var pid = args[0];
@@ -880,8 +894,21 @@ function handleAdminCommand(chatId, text) {
   }
 
   if (cmd === '/banner') {
+    if (args.length < 1) {
+      var banners = readAll('Banners');
+      var lines = ['🖼 <b>Daftar Banner</b>\n'];
+      var max = Math.min(banners.length, 50);
+      for (var i = 0; i < max; i++) {
+        var b = banners[i];
+        lines.push('<code>' + b.banner_id + '</code> • ' + esc(b.judul) + ' • ' + b.status);
+      }
+      if (banners.length > 50) lines.push('\n<i>(Menampilkan 50 baris pertama)</i>');
+      tgSend(chatId, lines.join('\n'));
+      return;
+    }
+
     if (args.length < 2) {
-      tgSend(chatId, '⚠️ Format: /banner &lt;id&gt; on|off');
+      tgSend(chatId, '⚠️ Format: /banner &lt;id&gt; on|off\nAtau ketik /banner untuk melihat daftar.');
       return;
     }
     var bid = args[0];
