@@ -366,6 +366,14 @@ function handleTelegramWebhook(update) {
         } catch (e) {}
         return '-';
       }
+
+      function buildActionRow(ord, waUrl) {
+        var row = [{text: '💬 WA Customer', url: waUrl}];
+        if (ord.metode_kirim === 'DIANTAR' && ord.lat && ord.lng) {
+          row.push({text: '🗺️ Buka Maps ke Lokasi Antar', url: 'https://www.google.com/maps/dir/?api=1&destination=' + ord.lat + ',' + ord.lng});
+        }
+        return row;
+      }
       
       function buildMarkup(st, ord) {
         var kb = [];
@@ -376,10 +384,10 @@ function handleTelegramWebhook(update) {
           kb.push([{text: '✅ Proses', callback_data: 'st:PROSES:'+ord.order_id}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+ord.order_id}]);
         } else if (st === 'DIPROSES') {
           kb.push([{text: '🟢 Siap', callback_data: 'st:SIAP:'+ord.order_id}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+ord.order_id}]);
-          kb.push([{text: '💬 WA Customer', url: waLink(ord.no_hp, fillTemplate(resolveTemplateCode('ORDER_DIPROSES', ord.metode_kirim), td))}]);
+          kb.push(buildActionRow(ord, waLink(ord.no_hp, fillTemplate(resolveTemplateCode('ORDER_DIPROSES', ord.metode_kirim), td))));
         } else if (st === 'SIAP') {
           kb.push([{text: '✅ Selesai', callback_data: 'st:SELESAI_ASK:'+ord.order_id}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+ord.order_id}]);
-          kb.push([{text: '💬 WA Customer', url: waLink(ord.no_hp, fillTemplate(resolveTemplateCode('ORDER_SIAP', ord.metode_kirim), td))}]);
+          kb.push(buildActionRow(ord, waLink(ord.no_hp, fillTemplate(resolveTemplateCode('ORDER_SIAP', ord.metode_kirim), td))));
         }
         return kb;
       }
@@ -421,7 +429,7 @@ function handleTelegramWebhook(update) {
           tgApi('editMessageText', {
             chat_id: chatMsgId, message_id: msgId,
             text: textLama + '\n\n🟡 Status: DIPROSES',
-            reply_markup: { inline_keyboard: [[{text: '🟢 Siap', callback_data: 'st:SIAP:'+orderId}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+orderId}], [{text: '💬 WA Customer', url: waUrl}]] }
+            reply_markup: { inline_keyboard: [[{text: '🟢 Siap', callback_data: 'st:SIAP:'+orderId}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+orderId}], buildActionRow(order, waUrl)] }
           });
         }
       }
@@ -433,7 +441,7 @@ function handleTelegramWebhook(update) {
           tgApi('editMessageText', {
             chat_id: chatMsgId, message_id: msgId,
             text: textLama + '\n\n🟢 Status: SIAP',
-            reply_markup: { inline_keyboard: [[{text: '✅ Selesai', callback_data: 'st:SELESAI_ASK:'+orderId}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+orderId}], [{text: '💬 WA Customer', url: waUrl}]] }
+            reply_markup: { inline_keyboard: [[{text: '✅ Selesai', callback_data: 'st:SELESAI_ASK:'+orderId}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+orderId}], buildActionRow(order, waUrl)] }
           });
         }
       }

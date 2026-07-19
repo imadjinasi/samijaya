@@ -2508,21 +2508,21 @@ async function loadProfile() {
 }
 
 function renderProfileForm(member) {
-  var html = '<form id="profile-form" onsubmit="event.preventDefault(); submitProfile();" style="display:flex; flex-direction:column; gap:16px;">';
+  var html = '<form id="profile-form" onsubmit="event.preventDefault(); submitProfile();" style="display:flex; flex-direction:column; gap:20px; padding:24px 20px; max-width: 520px; margin: 0 auto;">';
   
-  html += '<div class="checkout-field-group">';
-  html += '<label>Nama Lengkap</label>';
-  html += '<input type="text" id="prof-nama" class="checkout-input" value="' + escHtml(member.nama || '') + '" required minlength="1" maxlength="60">';
+  html += '<div style="display:flex; flex-direction:column; gap:6px;">';
+  html += '<label style="font-weight:600; color:var(--brown); font-size:0.9rem;">Nama Lengkap</label>';
+  html += '<input type="text" id="prof-nama" class="co-date-input" value="' + escHtml(member.nama || '') + '" required minlength="1" maxlength="60" style="padding:12px 14px; border-radius:12px; border:1px solid var(--line); font-size:15px; width:100%;">';
   html += '</div>';
 
-  html += '<div class="checkout-field-group">';
-  html += '<label>Tanggal Lahir</label>';
-  html += '<input type="date" id="prof-tgl" class="checkout-input" value="' + escHtml(member.tgl_lahir || '') + '">';
+  html += '<div style="display:flex; flex-direction:column; gap:6px;">';
+  html += '<label style="font-weight:600; color:var(--brown); font-size:0.9rem;">Tanggal Lahir</label>';
+  html += '<input type="date" id="prof-tgl" class="co-date-input" value="' + escHtml(member.tgl_lahir || '') + '" style="padding:12px 14px; border-radius:12px; border:1px solid var(--line); font-size:15px; width:100%;">';
   html += '</div>';
 
-  html += '<div class="checkout-field-group">';
-  html += '<label>Jenis Kelamin</label>';
-  html += '<select id="prof-jk" class="checkout-input">';
+  html += '<div style="display:flex; flex-direction:column; gap:6px;">';
+  html += '<label style="font-weight:600; color:var(--brown); font-size:0.9rem;">Jenis Kelamin</label>';
+  html += '<select id="prof-jk" class="co-date-input" style="padding:12px 14px; border-radius:12px; border:1px solid var(--line); font-size:15px; width:100%;">';
   var jk = member.jenis_kelamin || '';
   html += '<option value="" ' + (jk === '' ? 'selected' : '') + '>Tidak diisi</option>';
   html += '<option value="Laki-laki" ' + (jk === 'Laki-laki' ? 'selected' : '') + '>Laki-laki</option>';
@@ -2530,18 +2530,18 @@ function renderProfileForm(member) {
   html += '</select>';
   html += '</div>';
 
-  html += '<div class="checkout-field-group">';
-  html += '<label>Email (Opsional)</label>';
-  html += '<input type="email" id="prof-email" class="checkout-input" value="' + escHtml(member.email || '') + '">';
+  html += '<div style="display:flex; flex-direction:column; gap:6px;">';
+  html += '<label style="font-weight:600; color:var(--brown); font-size:0.9rem;">Email (Opsional)</label>';
+  html += '<input type="email" id="prof-email" class="co-date-input" value="' + escHtml(member.email || '') + '" style="padding:12px 14px; border-radius:12px; border:1px solid var(--line); font-size:15px; width:100%;">';
   html += '</div>';
 
-  html += '<div class="checkout-field-group">';
-  html += '<label>Nomor HP</label>';
-  html += '<input type="text" class="checkout-input" value="' + escHtml(member.no_hp || '') + '" readonly style="background:#eee; color:#666; cursor:not-allowed;">';
-  html += '<div style="font-size:0.8rem; color:#888; margin-top:4px;">Untuk mengubah nomor HP, hubungi admin via WhatsApp.</div>';
+  html += '<div style="display:flex; flex-direction:column; gap:6px;">';
+  html += '<label style="font-weight:600; color:var(--brown); font-size:0.9rem;">Nomor HP</label>';
+  html += '<input type="text" class="co-date-input" value="' + escHtml(member.no_hp || '') + '" readonly style="padding:12px 14px; border-radius:12px; border:1px solid var(--line); font-size:15px; width:100%; background:rgba(216, 193, 164, 0.15); color:var(--brown); cursor:not-allowed;">';
+  html += '<div style="font-size:0.8rem; color:var(--brown); opacity:0.7; margin-top:2px;">Untuk mengubah nomor HP, hubungi admin via WhatsApp.</div>';
   html += '</div>';
 
-  html += '<button type="submit" class="btn-success-primary" style="margin-top:16px;" id="btn-submit-profile">Simpan Perubahan</button>';
+  html += '<button type="submit" id="btn-submit-profile" style="width:100%; padding:14px; border:none; border-radius:var(--r-pill); background:var(--espresso); color:var(--cream); font-weight:700; font-size:1rem; margin-top:10px; cursor:pointer;">Simpan Perubahan</button>';
 
   html += '</form>';
   document.getElementById('profile-content').innerHTML = html;
@@ -2645,7 +2645,7 @@ function renderMyAddressesList(addresses) {
   if (!container) return;
 
   if (addresses.length === 0) {
-    container.innerHTML = '<div style="text-align:center; padding: 40px 0;"><div style="font-size:3rem; margin-bottom:16px;">📍</div><div style="font-size:1.1rem; color:var(--espresso); font-weight:600;">Belum ada alamat tersimpan</div><button class="btn-success-primary" style="margin-top:24px;" onclick="showAddressForm()">Tambah Alamat</button></div>';
+    container.innerHTML = '<div style="text-align:center; padding: 40px 20px;"><div style="font-size:3rem; margin-bottom:16px;">📍</div><div style="font-size:1.1rem; color:var(--espresso); font-weight:600; margin-bottom:8px;">Belum ada alamat tersimpan</div><div style="font-size:0.85rem; color:var(--brown); opacity:0.8;">Klik + Tambah di atas untuk menambah alamat.</div></div>';
     return;
   }
 
@@ -2680,32 +2680,32 @@ function showAddressForm(addr) {
   html += '<button class="modal-close" onclick="hideAddressForm()">&times;</button>';
   html += '</div>';
   
-  html += '<div class="modal-body">';
-  html += '<form id="form-addr" onsubmit="event.preventDefault(); submitAddress(\'' + (isEdit ? addr.address_id : '') + '\');" style="display:flex; flex-direction:column; gap:16px;">';
+  html += '<div class="modal-body" style="padding: 24px 20px;">';
+  html += '<form id="form-addr" onsubmit="event.preventDefault(); submitAddress(\'' + (isEdit ? addr.address_id : '') + '\');" style="display:flex; flex-direction:column; gap:20px;">';
   
-  html += '<div class="checkout-field-group">';
-  html += '<label>Label (mis. Rumah, Kantor)</label>';
-  html += '<input type="text" id="addr-label" class="checkout-input" value="' + (isEdit ? escHtml(addr.label) : '') + '" required minlength="1" maxlength="30">';
+  html += '<div style="display:flex; flex-direction:column; gap:6px;">';
+  html += '<label style="font-weight:600; color:var(--brown); font-size:0.9rem;">Label (mis. Rumah, Kantor)</label>';
+  html += '<input type="text" id="addr-label" class="co-date-input" value="' + (isEdit ? escHtml(addr.label) : '') + '" required minlength="1" maxlength="30" style="padding:12px 14px; border-radius:12px; border:1px solid var(--line); font-size:15px; width:100%;">';
   html += '</div>';
 
-  html += '<div class="checkout-field-group">';
-  html += '<label>Detail Alamat (Patokan dsb.)</label>';
-  html += '<textarea id="addr-detail" class="checkout-input" rows="3" required minlength="1" maxlength="200">' + (isEdit ? escHtml(addr.detail) : '') + '</textarea>';
+  html += '<div style="display:flex; flex-direction:column; gap:6px;">';
+  html += '<label style="font-weight:600; color:var(--brown); font-size:0.9rem;">Detail Alamat (Patokan dsb.)</label>';
+  html += '<textarea id="addr-detail" class="co-date-input" rows="3" required minlength="1" maxlength="200" style="padding:12px 14px; border-radius:12px; border:1px solid var(--line); font-size:15px; width:100%;">' + (isEdit ? escHtml(addr.detail) : '') + '</textarea>';
   html += '</div>';
 
-  html += '<div class="checkout-field-group">';
-  html += '<label>Pin Lokasi</label>';
-  html += '<div id="addr-search-wrap" style="position:relative; margin-bottom:8px;">';
-  html += '<input type="text" id="addr-search" class="checkout-input" placeholder="Cari nama tempat / jalan...">';
+  html += '<div style="display:flex; flex-direction:column; gap:6px;">';
+  html += '<label style="font-weight:600; color:var(--brown); font-size:0.9rem;">Pin Lokasi</label>';
+  html += '<div id="addr-search-wrap" style="position:relative; margin-bottom:4px;">';
+  html += '<input type="text" id="addr-search" class="co-date-input" placeholder="Cari nama tempat / jalan..." style="padding:10px 14px; border-radius:12px; border:1px solid var(--line); font-size:14px; width:100%;">';
   html += '<div id="addr-search-results" class="search-results hidden"></div>';
   html += '</div>';
-  html += '<div id="addr-map" style="height:200px; border-radius:12px; background:#e0e0e0; margin-bottom:8px;"></div>';
-  html += '<button type="button" class="btn-outline" style="width:100%;" onclick="addrUseMyLocation()">Gunakan Lokasi Saya</button>';
+  html += '<div id="addr-map" style="height:280px; border-radius:14px; border:1px solid var(--line); background:#e0e0e0; margin-bottom:8px; z-index:1;"></div>';
+  html += '<button type="button" style="width:fit-content; padding:8px 16px; border:1.5px solid var(--espresso); border-radius:var(--r-pill); background:transparent; color:var(--espresso); font-weight:600; font-size:0.85rem; cursor:pointer;" onclick="addrUseMyLocation()">📍 Gunakan Lokasi Saya</button>';
   html += '<input type="hidden" id="addr-lat" value="' + (isEdit ? addr.latitude : '') + '" required>';
   html += '<input type="hidden" id="addr-lng" value="' + (isEdit ? addr.longitude : '') + '" required>';
   html += '</div>';
 
-  html += '<button type="submit" class="btn-success-primary" id="btn-submit-addr">Simpan Alamat</button>';
+  html += '<button type="submit" id="btn-submit-addr" style="width:100%; padding:14px; border:none; border-radius:var(--r-pill); background:var(--espresso); color:var(--cream); font-weight:700; font-size:1rem; margin-top:10px; cursor:pointer;">Simpan Alamat</button>';
   html += '</form>';
   html += '</div>';
 
