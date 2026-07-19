@@ -217,6 +217,8 @@ function renderHeaderAuth() {
           '<span class="header-user-poin">• ' + poin + ' poin</span>' +
         '</button>' +
         '<div class="header-dropdown hidden" id="header-dropdown">' +
+          '<button onclick="showProfile()">Profil Saya</button>' +
+          '<button onclick="showMyAddresses()">Alamat Saya</button>' +
           '<button onclick="showMyOrders()">Pesanan Saya</button>' +
           '<button onclick="showMyPoints()">Poin Saya</button>' +
           '<button onclick="logout()">Keluar</button>' +
@@ -816,6 +818,7 @@ async function handleVerifyOtp(no_hp, nama) {
     if (res.ok) {
       session.token = res.data.token;
       session.member = res.data.member;
+      session.addresses = res.data.addresses || [];
       saveSession();
       closeOtpModal();
       renderHeader();
@@ -892,6 +895,7 @@ async function handleRegister(no_hp) {
       _pendingOtp = '';
       session.token = res.data.token;
       session.member = res.data.member;
+      session.addresses = res.data.addresses || [];
       saveSession();
       closeRegisterModal();
       renderHeader();
@@ -2447,3 +2451,437 @@ function renderMyPoints(data) {
   
   container.innerHTML = html;
 }
+
+// === PROFIL SAYA ===
+function showProfile() {
+  if (document.getElementById('header-dropdown')) {
+    document.getElementById('header-dropdown').classList.add('hidden');
+  }
+  var el = document.getElementById('profile-screen');
+  if (!el) return;
+
+  var html = '<div class="checkout-inner">';
+  html += '<div class="checkout-header">';
+  html += '<button class="checkout-back-btn" onclick="hideProfile()" aria-label="Kembali">';
+  html += '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>';
+  html += '</button>';
+  html += '<div class="checkout-header-title">Profil Saya</div>';
+  html += '</div>';
+  html += '<div id="profile-content" style="padding: 16px;">Memuat...</div>';
+  html += '</div>';
+
+  el.innerHTML = html;
+  el.classList.remove('hidden');
+  el.scrollTop = 0;
+  document.body.style.overflow = 'hidden';
+
+  loadProfile();
+}
+
+function hideProfile() {
+  var el = document.getElementById('profile-screen');
+  if (el) el.classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+async function loadProfile() {
+  if (!session.token) {
+    document.getElementById('profile-content').innerHTML = '<div style="text-align:center; padding: 40px 0;">Silakan login terlebih dahulu.</div>';
+    return;
+  }
+
+  showLoading();
+  try {
+    var res = await api('getMe');
+    if (res.ok) {
+      session.member = res.data.member;
+      session.addresses = res.data.addresses || [];
+      saveSession();
+      renderProfileForm(res.data.member);
+    } else {
+      document.getElementById('profile-content').innerHTML = '<div style="text-align:center; padding: 40px 0; color:var(--danger)">Gagal memuat profil.</div>';
+    }
+  } catch (e) {
+    document.getElementById('profile-content').innerHTML = '<div style="text-align:center; padding: 40px 0; color:var(--danger)">Gagal terhubung ke server.</div>';
+  }
+  hideLoading();
+}
+
+function renderProfileForm(member) {
+  var html = '<form id="profile-form" onsubmit="event.preventDefault(); submitProfile();" style="display:flex; flex-direction:column; gap:16px;">';
+  
+  html += '<div class="checkout-field-group">';
+  html += '<label>Nama Lengkap</label>';
+  html += '<input type="text" id="prof-nama" class="checkout-input" value="' + escHtml(member.nama || '') + '" required minlength="1" maxlength="60">';
+  html += '</div>';
+
+  html += '<div class="checkout-field-group">';
+  html += '<label>Tanggal Lahir</label>';
+  html += '<input type="date" id="prof-tgl" class="checkout-input" value="' + escHtml(member.tgl_lahir || '') + '">';
+  html += '</div>';
+
+  html += '<div class="checkout-field-group">';
+  html += '<label>Jenis Kelamin</label>';
+  html += '<select id="prof-jk" class="checkout-input">';
+  var jk = member.jenis_kelamin || '';
+  html += '<option value="" ' + (jk === '' ? 'selected' : '') + '>Tidak diisi</option>';
+  html += '<option value="Laki-laki" ' + (jk === 'Laki-laki' ? 'selected' : '') + '>Laki-laki</option>';
+  html += '<option value="Perempuan" ' + (jk === 'Perempuan' ? 'selected' : '') + '>Perempuan</option>';
+  html += '</select>';
+  html += '</div>';
+
+  html += '<div class="checkout-field-group">';
+  html += '<label>Email (Opsional)</label>';
+  html += '<input type="email" id="prof-email" class="checkout-input" value="' + escHtml(member.email || '') + '">';
+  html += '</div>';
+
+  html += '<div class="checkout-field-group">';
+  html += '<label>Nomor HP</label>';
+  html += '<input type="text" class="checkout-input" value="' + escHtml(member.no_hp || '') + '" readonly style="background:#eee; color:#666; cursor:not-allowed;">';
+  html += '<div style="font-size:0.8rem; color:#888; margin-top:4px;">Untuk mengubah nomor HP, hubungi admin via WhatsApp.</div>';
+  html += '</div>';
+
+  html += '<button type="submit" class="btn-success-primary" style="margin-top:16px;" id="btn-submit-profile">Simpan Perubahan</button>';
+
+  html += '</form>';
+  document.getElementById('profile-content').innerHTML = html;
+}
+
+async function submitProfile() {
+  if (_submitting) return;
+  
+  var btn = document.getElementById('btn-submit-profile');
+  var prevText = btn.textContent;
+  
+  var payload = {
+    nama: document.getElementById('prof-nama').value,
+    tgl_lahir: document.getElementById('prof-tgl').value,
+    jenis_kelamin: document.getElementById('prof-jk').value,
+    email: document.getElementById('prof-email').value
+  };
+
+  btn.disabled = true;
+  btn.textContent = 'Menyimpan...';
+  _submitting = true;
+
+  try {
+    var res = await api('updateProfile', payload);
+    if (res.ok) {
+      session.member = res.data.member;
+      saveSession();
+      renderHeaderAuth();
+      showToast('Profil berhasil disimpan');
+      hideProfile();
+    } else {
+      showToast(res.error || 'Gagal menyimpan profil');
+    }
+  } catch (e) {
+    showToast('Gagal terhubung ke server');
+  }
+
+  _submitting = false;
+  btn.disabled = false;
+  btn.textContent = prevText;
+}
+
+// === ALAMAT SAYA ===
+function showMyAddresses() {
+  if (document.getElementById('header-dropdown')) {
+    document.getElementById('header-dropdown').classList.add('hidden');
+  }
+  var el = document.getElementById('address-screen');
+  if (!el) return;
+
+  var html = '<div class="checkout-inner">';
+  html += '<div class="checkout-header">';
+  html += '<button class="checkout-back-btn" onclick="hideMyAddresses()" aria-label="Kembali">';
+  html += '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>';
+  html += '</button>';
+  html += '<div class="checkout-header-title">Alamat Saya</div>';
+  html += '<button class="header-right-btn" style="color:var(--orange); font-weight:600;" onclick="showAddressForm()">+ Tambah</button>';
+  html += '</div>';
+  html += '<div id="address-content" style="padding: 16px;">Memuat...</div>';
+  html += '</div>';
+
+  el.innerHTML = html;
+  el.classList.remove('hidden');
+  el.scrollTop = 0;
+  document.body.style.overflow = 'hidden';
+
+  loadMyAddresses();
+}
+
+function hideMyAddresses() {
+  var el = document.getElementById('address-screen');
+  if (el) el.classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+async function loadMyAddresses() {
+  if (!session.token) {
+    document.getElementById('address-content').innerHTML = '<div style="text-align:center; padding: 40px 0;">Silakan login terlebih dahulu.</div>';
+    return;
+  }
+
+  showLoading();
+  try {
+    var res = await api('getMe');
+    if (res.ok) {
+      session.member = res.data.member;
+      session.addresses = res.data.addresses || [];
+      saveSession();
+      renderMyAddressesList(res.data.addresses || []);
+    } else {
+      document.getElementById('address-content').innerHTML = '<div style="text-align:center; padding: 40px 0; color:var(--danger)">Gagal memuat alamat.</div>';
+    }
+  } catch (e) {
+    document.getElementById('address-content').innerHTML = '<div style="text-align:center; padding: 40px 0; color:var(--danger)">Gagal terhubung ke server.</div>';
+  }
+  hideLoading();
+}
+
+function renderMyAddressesList(addresses) {
+  var container = document.getElementById('address-content');
+  if (!container) return;
+
+  if (addresses.length === 0) {
+    container.innerHTML = '<div style="text-align:center; padding: 40px 0;"><div style="font-size:3rem; margin-bottom:16px;">📍</div><div style="font-size:1.1rem; color:var(--espresso); font-weight:600;">Belum ada alamat tersimpan</div><button class="btn-success-primary" style="margin-top:24px;" onclick="showAddressForm()">Tambah Alamat</button></div>';
+    return;
+  }
+
+  var html = '<div style="display:flex; flex-direction:column; gap:12px;">';
+  for (var i = 0; i < addresses.length; i++) {
+    var addr = addresses[i];
+    var encodedAddr = escHtml(JSON.stringify(addr)); // for passing to JS
+    html += '<div class="address-card" style="background:#fff; border-radius:var(--r-card); padding:16px; box-shadow:var(--shadow);">';
+    html += '<div style="font-weight:600; font-size:1.1rem; color:var(--espresso); margin-bottom:4px;">' + escHtml(addr.label) + '</div>';
+    html += '<div style="color:#666; font-size:0.9rem; line-height:1.4; margin-bottom:8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">' + escHtml(addr.detail) + '</div>';
+    html += '<div style="color:#888; font-size:0.75rem; margin-bottom:12px;">' + addr.latitude + ', ' + addr.longitude + '</div>';
+    html += '<div style="display:flex; gap:8px;">';
+    html += '<button class="btn-outline" style="flex:1; padding:8px;" onclick=\'showAddressForm(' + encodedAddr + ')\'>Edit</button>';
+    html += '<button class="btn-outline" style="flex:1; padding:8px; color:var(--danger); border-color:var(--danger);" onclick="deleteAddress(\'' + addr.address_id + '\')">Hapus</button>';
+    html += '</div>';
+    html += '</div>';
+  }
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function showAddressForm(addr) {
+  var modal = document.getElementById('address-form-modal');
+  if (!modal) return;
+  var sheet = modal.querySelector('.modal-sheet');
+
+  var isEdit = !!addr;
+  var title = isEdit ? 'Edit Alamat' : 'Tambah Alamat';
+  
+  var html = '<div class="modal-header">';
+  html += '<h3>' + title + '</h3>';
+  html += '<button class="modal-close" onclick="hideAddressForm()">&times;</button>';
+  html += '</div>';
+  
+  html += '<div class="modal-body">';
+  html += '<form id="form-addr" onsubmit="event.preventDefault(); submitAddress(\'' + (isEdit ? addr.address_id : '') + '\');" style="display:flex; flex-direction:column; gap:16px;">';
+  
+  html += '<div class="checkout-field-group">';
+  html += '<label>Label (mis. Rumah, Kantor)</label>';
+  html += '<input type="text" id="addr-label" class="checkout-input" value="' + (isEdit ? escHtml(addr.label) : '') + '" required minlength="1" maxlength="30">';
+  html += '</div>';
+
+  html += '<div class="checkout-field-group">';
+  html += '<label>Detail Alamat (Patokan dsb.)</label>';
+  html += '<textarea id="addr-detail" class="checkout-input" rows="3" required minlength="1" maxlength="200">' + (isEdit ? escHtml(addr.detail) : '') + '</textarea>';
+  html += '</div>';
+
+  html += '<div class="checkout-field-group">';
+  html += '<label>Pin Lokasi</label>';
+  html += '<div id="addr-search-wrap" style="position:relative; margin-bottom:8px;">';
+  html += '<input type="text" id="addr-search" class="checkout-input" placeholder="Cari nama tempat / jalan...">';
+  html += '<div id="addr-search-results" class="search-results hidden"></div>';
+  html += '</div>';
+  html += '<div id="addr-map" style="height:200px; border-radius:12px; background:#e0e0e0; margin-bottom:8px;"></div>';
+  html += '<button type="button" class="btn-outline" style="width:100%;" onclick="addrUseMyLocation()">Gunakan Lokasi Saya</button>';
+  html += '<input type="hidden" id="addr-lat" value="' + (isEdit ? addr.latitude : '') + '" required>';
+  html += '<input type="hidden" id="addr-lng" value="' + (isEdit ? addr.longitude : '') + '" required>';
+  html += '</div>';
+
+  html += '<button type="submit" class="btn-success-primary" id="btn-submit-addr">Simpan Alamat</button>';
+  html += '</form>';
+  html += '</div>';
+
+  sheet.innerHTML = html;
+  modal.classList.remove('hidden');
+
+  // init map
+  setTimeout(function() {
+    var initialLat = isEdit ? addr.latitude : -7.9666;
+    var initialLng = isEdit ? addr.longitude : 112.6326;
+    
+    // Gunakan fungsi global dari map.js kalau bisa, atau initialize manual.
+    // map.js punya initMap() yang bikin global window.map. Kita bisa re-use itu atau bikin instance baru.
+    // Lebih aman bikin instance baru kalau Leaflet.
+    if (window.addrMapInstance) {
+      window.addrMapInstance.remove();
+    }
+    window.addrMapInstance = L.map('addr-map').setView([initialLat, initialLng], 15);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap © CARTO'
+    }).addTo(window.addrMapInstance);
+    
+    var marker = L.marker([initialLat, initialLng], {draggable: true}).addTo(window.addrMapInstance);
+    
+    // Update input hidden
+    if (isEdit) {
+      document.getElementById('addr-lat').value = initialLat;
+      document.getElementById('addr-lng').value = initialLng;
+    }
+
+    marker.on('dragend', function(e) {
+      var pos = marker.getLatLng();
+      document.getElementById('addr-lat').value = pos.lat;
+      document.getElementById('addr-lng').value = pos.lng;
+    });
+
+    window.addrMapInstance.on('click', function(e) {
+      marker.setLatLng(e.latlng);
+      document.getElementById('addr-lat').value = e.latlng.lat;
+      document.getElementById('addr-lng').value = e.latlng.lng;
+    });
+
+    // Setup photon search for this map
+    var searchInput = document.getElementById('addr-search');
+    var searchTimer = null;
+    searchInput.addEventListener('input', function() {
+      clearTimeout(searchTimer);
+      var q = this.value.trim();
+      var resEl = document.getElementById('addr-search-results');
+      if (q.length < 3) { resEl.classList.add('hidden'); return; }
+      
+      searchTimer = setTimeout(function() {
+        fetch('https://photon.komoot.io/api/?q=' + encodeURIComponent(q) + '&limit=5')
+          .then(function(r){return r.json()})
+          .then(function(data) {
+            if(!data.features || data.features.length === 0) {
+              resEl.classList.add('hidden'); return;
+            }
+            resEl.innerHTML = '';
+            data.features.forEach(function(f) {
+              var name = f.properties.name || '';
+              var city = f.properties.city || f.properties.state || '';
+              var div = document.createElement('div');
+              div.className = 'search-result-item';
+              div.textContent = name + (city ? ', ' + city : '');
+              div.onclick = function() {
+                var c = f.geometry.coordinates; // [lng, lat]
+                marker.setLatLng([c[1], c[0]]);
+                window.addrMapInstance.setView([c[1], c[0]], 16);
+                document.getElementById('addr-lat').value = c[1];
+                document.getElementById('addr-lng').value = c[0];
+                resEl.classList.add('hidden');
+                searchInput.value = div.textContent;
+              };
+              resEl.appendChild(div);
+            });
+            resEl.classList.remove('hidden');
+          });
+      }, 500);
+    });
+
+    // Expose for geolocation
+    window.addrMapMarker = marker;
+
+  }, 100);
+}
+
+function addrUseMyLocation() {
+  if (!navigator.geolocation) {
+    showToast('Browser tidak mendukung lokasi');
+    return;
+  }
+  showToast('Mencari lokasi...');
+  navigator.geolocation.getCurrentPosition(
+    function(pos) {
+      var lat = pos.coords.latitude;
+      var lng = pos.coords.longitude;
+      if (window.addrMapInstance && window.addrMapMarker) {
+        window.addrMapInstance.setView([lat, lng], 16);
+        window.addrMapMarker.setLatLng([lat, lng]);
+        document.getElementById('addr-lat').value = lat;
+        document.getElementById('addr-lng').value = lng;
+      }
+    },
+    function(err) {
+      showToast('Gagal ambil lokasi');
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+
+function hideAddressForm() {
+  var modal = document.getElementById('address-form-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function submitAddress(addressId) {
+  if (_submitting) return;
+  var btn = document.getElementById('btn-submit-addr');
+  var prev = btn.textContent;
+  
+  var lat = document.getElementById('addr-lat').value;
+  var lng = document.getElementById('addr-lng').value;
+  if (!lat || !lng) {
+    showToast('Silakan pilih lokasi di peta');
+    return;
+  }
+
+  var payload = {
+    label: document.getElementById('addr-label').value,
+    detail: document.getElementById('addr-detail').value,
+    latitude: lat,
+    longitude: lng
+  };
+  
+  if (addressId) {
+    payload.address_id = addressId;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Menyimpan...';
+  _submitting = true;
+
+  var action = addressId ? 'updateAddress' : 'addAddress';
+  try {
+    var res = await api(action, payload);
+    if (res.ok) {
+      showToast('Alamat berhasil disimpan');
+      hideAddressForm();
+      loadMyAddresses(); // refresh list
+    } else {
+      showToast(res.error || 'Gagal menyimpan alamat');
+    }
+  } catch (e) {
+    showToast('Gagal terhubung ke server');
+  }
+
+  _submitting = false;
+  btn.disabled = false;
+  btn.textContent = prev;
+}
+
+async function deleteAddress(addressId) {
+  if (!confirm('Hapus alamat ini?')) return;
+
+  try {
+    var res = await api('deleteAddress', { address_id: addressId });
+    if (res.ok) {
+      showToast('Alamat dihapus');
+      loadMyAddresses();
+    } else {
+      showToast(res.error || 'Gagal menghapus');
+    }
+  } catch(e) {
+    showToast('Gagal terhubung ke server');
+  }
+}
+

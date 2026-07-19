@@ -270,11 +270,22 @@ function authVerifyOtp(payload) {
       session_expires_at: sessionExpiresAt
     });
 
+    // Ambil alamat aktif untuk member ini
+    var allAddresses = readAll('MemberAddresses');
+    var addresses = [];
+    for (var a = 0; a < allAddresses.length; a++) {
+      var addr = allAddresses[a];
+      if (String(addr.member_id) === String(member.member_id) && String(addr.status) === 'aktif') {
+        addresses.push(addr);
+      }
+    }
+
     return {
       ok: true,
       data: {
         token: matchRow.token,
-        member: member
+        member: member,
+        addresses: addresses
       }
     };
   });
@@ -358,6 +369,82 @@ function authGetMe(payload, token) {
     data: {
       member: member,
       addresses: addresses
+    }
+  };
+}
+
+// ============================================================
+// 4.1. authUpdateProfile(payload, token)
+// ============================================================
+/**
+ * Update profil member yang sedang login.
+ *
+ * @param  {Object} payload — {nama, tgl_lahir, jenis_kelamin, email}
+ * @param  {string} token   — session token
+ * @return {Object} response {ok, data/error/code}
+ */
+function authUpdateProfile(payload, token) {
+  var member = requireSession(token);
+  if (!member) {
+    return { ok: false, error: 'Sesi tidak valid atau kedaluwarsa', code: 'UNAUTHORIZED' };
+  }
+
+  // Validasi field
+  var patch = {};
+  
+  if (payload.nama !== undefined) {
+    var nama = String(payload.nama).trim();
+    if (nama.length < 1 || nama.length > 60) {
+      return { ok: false, code: 'BAD_REQUEST', error: 'Nama harus 1-60 karakter' };
+    }
+    patch.nama = nama;
+  }
+
+  if (payload.tgl_lahir !== undefined) {
+    var tgl = String(payload.tgl_lahir).trim();
+    if (tgl !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(tgl)) {
+      return { ok: false, code: 'BAD_REQUEST', error: 'Format tanggal lahir tidak valid (YYYY-MM-DD)' };
+    }
+    patch.tgl_lahir = tgl;
+  }
+
+  if (payload.jenis_kelamin !== undefined) {
+    var jk = String(payload.jenis_kelamin).trim();
+    if (jk !== '' && jk !== 'Laki-laki' && jk !== 'Perempuan') {
+      return { ok: false, code: 'BAD_REQUEST', error: 'Jenis kelamin tidak valid' };
+    }
+    patch.jenis_kelamin = jk;
+  }
+
+  if (payload.email !== undefined) {
+    var email = String(payload.email).trim();
+    if (email !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return { ok: false, code: 'BAD_REQUEST', error: 'Format email tidak valid' };
+    }
+    patch.email = email;
+  }
+
+  // Update
+  if (Object.keys(patch).length > 0) {
+    var result = withLock(function() {
+      // Refresh member dari DB di dalam lock untuk memastikan data paling baru (walau optional)
+      var updated = updateRowById('Members', 'member_id', member.member_id, patch);
+      if (!updated) {
+        throw new Error('Gagal update row Member');
+      }
+      return updated;
+    });
+    
+    // Gabung hasil patch ke object member untuk response
+    for (var k in patch) {
+      member[k] = patch[k];
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      member: member
     }
   };
 }

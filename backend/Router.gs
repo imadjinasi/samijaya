@@ -95,11 +95,24 @@ function doPost(e) {
       case 'verifyOtp':
         result = authVerifyOtp(payload);
         break;
+      case 'updateProfile':
+        result = authUpdateProfile(payload, token);
+        break;
       case 'getMe':
         result = authGetMe(payload, token);
         break;
       case 'getCatalog':
         result = catalogGetCatalog();
+        break;
+
+      case 'addAddress':
+        result = addressAdd(payload, token);
+        break;
+      case 'updateAddress':
+        result = addressUpdate(payload, token);
+        break;
+      case 'deleteAddress':
+        result = addressDelete(payload, token);
         break;
 
       case 'getSlotAvailability':

@@ -38,7 +38,7 @@ Key wajib (nilai default dalam kurung):
 - `NOMOR_WA_TOKO` (kosong)
 
 ### 2. Members
-`member_id | nama | no_hp | tgl_lahir | email | total_poin | total_belanja | created_at | status`
+`member_id | nama | no_hp | tgl_lahir | email | jenis_kelamin | total_poin | total_belanja | created_at | status`
 
 ### 3. MemberAddresses
 `address_id | member_id | label | detail | latitude | longitude | created_at | status`
