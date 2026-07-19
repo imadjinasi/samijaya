@@ -2854,14 +2854,14 @@ async function submitAddress(addressId) {
   try {
     var res = await api(action, payload);
     if (res.ok) {
-      showToast('Alamat berhasil disimpan');
+      alert('Alamat berhasil disimpan');
       hideAddressForm();
       loadMyAddresses(); // refresh list
     } else {
-      showToast(res.error || 'Gagal menyimpan alamat');
+      alert('Gagal: ' + (res.error || 'Gagal menyimpan alamat'));
     }
   } catch (e) {
-    showToast('Gagal terhubung ke server');
+    alert('Gagal terhubung ke server');
   }
 
   _submitting = false;

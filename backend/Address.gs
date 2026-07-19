@@ -36,17 +36,17 @@ function addressAdd(payload, token) {
   withLock(function() {
     addressId = genId('ADR');
     // Kolom: address_id | member_id | label | detail | latitude | longitude | created_at | status
-    var row = [
-      addressId,
-      member.member_id,
-      label,
-      detail,
-      lat,
-      lng,
-      getNowJkt(),
-      'aktif'
-    ];
-    appendRow('MemberAddresses', row);
+    var row = {
+      address_id: addressId,
+      member_id: member.member_id,
+      label: label,
+      detail: detail,
+      latitude: lat,
+      longitude: lng,
+      created_at: getNowJkt(),
+      status: 'aktif'
+    };
+    appendRowObj('MemberAddresses', row);
   });
 
   return {

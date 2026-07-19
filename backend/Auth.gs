@@ -326,7 +326,15 @@ function requireSession(token) {
   var members = readAll('Members');
   for (var m = 0; m < members.length; m++) {
     if (String(members[m].member_id) === String(matchRow.member_id)) {
-      return members[m];
+      var mem = members[m];
+      if (mem.tgl_lahir) {
+        if (Object.prototype.toString.call(mem.tgl_lahir) === '[object Date]') {
+          mem.tgl_lahir = Utilities.formatDate(mem.tgl_lahir, 'Asia/Jakarta', 'yyyy-MM-dd');
+        } else if (typeof mem.tgl_lahir === 'string' && mem.tgl_lahir.indexOf('T') !== -1) {
+          mem.tgl_lahir = mem.tgl_lahir.split('T')[0];
+        }
+      }
+      return mem;
     }
   }
 
