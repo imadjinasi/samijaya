@@ -2164,6 +2164,7 @@ async function loadMyOrders() {
       document.getElementById('my-orders-content').innerHTML = '<div style="text-align:center; padding: 40px 0; color:var(--danger)">Gagal memuat pesanan.</div>';
     }
   } catch (e) {
+    console.error("Error loadMyOrders:", e);
     document.getElementById('my-orders-content').innerHTML = '<div style="text-align:center; padding: 40px 0; color:var(--danger)">Gagal terhubung ke server.</div>';
   }
 }
@@ -2198,13 +2199,14 @@ function renderMyOrders(orders) {
   
   var html = '';
   for (var i = 0; i < orders.length; i++) {
-    var order = orders[i];
+    var order = orders[i] || {};
+    var oid = order.order_id || 'UNKNOWN';
     var statusClass = 'status-' + (order.status || '').toLowerCase();
     var tglAntarStr = order.tgl_antar ? formatDateIndo(order.tgl_antar) : '';
     
     html += '<div class="my-order-card">';
     html += '<div class="my-order-header">';
-    html += '<span class="my-order-id">' + escHtml(order.order_id) + '</span>';
+    html += '<span class="my-order-id">' + escHtml(oid) + '</span>';
     html += '<span class="my-order-date">' + formatDateIndo(order.created_at) + '</span>';
     html += '</div>';
     
@@ -2219,39 +2221,41 @@ function renderMyOrders(orders) {
     
     html += '<div class="my-order-items-preview">';
     var maxItems = 2;
-    for (var j = 0; j < Math.min(order.items.length, maxItems); j++) {
+    var items = order.items || [];
+    for (var j = 0; j < Math.min(items.length, maxItems); j++) {
       html += '<div class="my-order-item-row">';
-      html += '<span>' + escHtml(order.items[j].nama_snapshot) + ' × ' + order.items[j].qty + '</span>';
+      html += '<span>' + escHtml(items[j].nama_snapshot || '-') + ' × ' + (items[j].qty || 1) + '</span>';
       html += '</div>';
     }
-    if (order.items.length > maxItems) {
-      html += '<div class="my-order-item-row" style="color:#888; font-size:0.85rem;">+' + (order.items.length - maxItems) + ' item lainnya</div>';
+    if (items.length > maxItems) {
+      html += '<div class="my-order-item-row" style="color:#888; font-size:0.85rem;">+' + (items.length - maxItems) + ' item lainnya</div>';
     }
     html += '</div>';
     
     html += '<div class="my-order-footer">';
-    html += '<div class="my-order-total">' + formatRupiah(order.total) + '</div>';
+    html += '<div class="my-order-total">' + formatRupiah(order.total || 0) + '</div>';
     html += '<div class="my-order-actions">';
-    html += '<button class="my-order-btn-detail" onclick="toggleOrderDetail(\'' + escHtml(order.order_id) + '\')">Detail</button>';
+    html += '<button class="my-order-btn-detail" onclick="toggleOrderDetail(\'' + escHtml(oid) + '\')">Detail</button>';
     
-    var waToko = (catalog && catalog.settings && catalog.settings.NOMOR_WA_TOKO) ? catalog.settings.NOMOR_WA_TOKO.replace(/[^0-9]/g, '') : '6285179912504';
-    var waMsg = encodeURIComponent('Halo Samijaya, saya mau tanya pesanan ' + order.order_id);
+    var waToko = (catalog && catalog.settings && catalog.settings.NOMOR_WA_TOKO) ? String(catalog.settings.NOMOR_WA_TOKO).replace(/[^0-9]/g, '') : '6285179912504';
+    var waMsg = encodeURIComponent('Halo Samijaya, saya mau tanya pesanan ' + oid);
     html += '<a class="my-order-btn-wa" href="https://wa.me/' + waToko + '?text=' + waMsg + '" target="_blank" rel="noopener">Hubungi Samijaya</a>';
     html += '</div>';
     html += '</div>'; // footer
     
     // Expandable detail
-    html += '<div class="my-order-detail collapsed" id="my-order-detail-' + escHtml(order.order_id) + '">';
+    html += '<div class="my-order-detail collapsed" id="my-order-detail-' + escHtml(oid) + '">';
     
     // Timeline
-    if (order.timeline && order.timeline.length > 0) {
+    var timeline = order.timeline || [];
+    if (timeline.length > 0) {
       html += '<div class="my-order-timeline">';
-      for (var t = 0; t < order.timeline.length; t++) {
-        var tm = order.timeline[t];
+      for (var t = 0; t < timeline.length; t++) {
+        var tm = timeline[t];
         html += '<div class="timeline-item">';
         html += '<div class="timeline-dot"></div>';
         html += '<div class="timeline-content">';
-        html += '<div class="timeline-status">' + escHtml(tm.status) + '</div>';
+        html += '<div class="timeline-status">' + escHtml(tm.status || '-') + '</div>';
         html += '<div class="timeline-time">' + formatDateIndo(tm.at) + ' ' + formatTimeIndo(tm.at) + '</div>';
         html += '</div></div>';
       }
@@ -2265,7 +2269,7 @@ function renderMyOrders(orders) {
       html += '<div class="my-order-info-value">' + escHtml(order.alamat_snapshot || '-') + '</div>';
     } else {
       var locName = order.lokasi_pickup_id;
-      if (catalog && catalog.pickupLocations) {
+      if (catalog && catalog.pickupLocations && order.lokasi_pickup_id) {
         var foundLoc = catalog.pickupLocations.find(function(l) { return l.lokasi_id === order.lokasi_pickup_id; });
         if (foundLoc) locName = foundLoc.nama;
       }
@@ -2287,12 +2291,12 @@ function renderMyOrders(orders) {
     
     // Rincian Biaya
     html += '<div class="my-order-cost-breakdown">';
-    html += '<div class="cost-row"><span>Subtotal</span><span>' + formatRupiah(order.subtotal) + '</span></div>';
-    html += '<div class="cost-row"><span>Ongkir</span><span>' + formatRupiah(order.ongkir) + '</span></div>';
+    html += '<div class="cost-row"><span>Subtotal</span><span>' + formatRupiah(order.subtotal || 0) + '</span></div>';
+    html += '<div class="cost-row"><span>Ongkir</span><span>' + formatRupiah(order.ongkir || 0) + '</span></div>';
     if (order.poin_dipakai > 0) {
       html += '<div class="cost-row poin"><span>Potongan Poin</span><span>-' + formatRupiah(order.poin_dipakai) + '</span></div>';
     }
-    html += '<div class="cost-row total"><span>Total Keseluruhan</span><span>' + formatRupiah(order.total) + '</span></div>';
+    html += '<div class="cost-row total"><span>Total Keseluruhan</span><span>' + formatRupiah(order.total || 0) + '</span></div>';
     html += '</div>';
     
     html += '</div>'; // my-order-detail
