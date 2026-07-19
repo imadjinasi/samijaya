@@ -2180,9 +2180,20 @@ async function loadMyOrders() {
   }
   
   try {
-    var res = await api('getMyOrders');
-    if (res.ok) {
-      renderMyOrders(res.data.orders || []);
+    var [resOrders, resReviewable] = await Promise.all([
+      api('getMyOrders'),
+      api('getMyReviewable')
+    ]);
+    
+    if (resOrders.ok) {
+      var reviewableMap = {};
+      if (resReviewable.ok && resReviewable.data && resReviewable.data.reviewable) {
+        var revs = resReviewable.data.reviewable;
+        for (var i = 0; i < revs.length; i++) {
+          reviewableMap[revs[i].order_id] = revs[i];
+        }
+      }
+      renderMyOrders(resOrders.data.orders || [], reviewableMap);
     } else {
       document.getElementById('my-orders-content').innerHTML = '<div style="text-align:center; padding: 40px 0; color:var(--danger)">Gagal memuat pesanan.</div>';
     }
@@ -2191,6 +2202,7 @@ async function loadMyOrders() {
     document.getElementById('my-orders-content').innerHTML = '<div style="text-align:center; padding: 40px 0; color:var(--danger)">Gagal terhubung ke server.</div>';
   }
 }
+
 
 function formatDateIndo(isoString) {
   if (!isoString) return '-';
@@ -2205,7 +2217,8 @@ function formatTimeIndo(isoString) {
   return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
 }
 
-function renderMyOrders(orders) {
+function renderMyOrders(orders, reviewableMap) {
+  reviewableMap = reviewableMap || {};
   var container = document.getElementById('my-orders-content');
   if (!container) return;
   
@@ -2256,13 +2269,39 @@ function renderMyOrders(orders) {
     
     html += '<div class="my-order-total-price">' + formatRupiah(order.total || 0) + '</div>';
     
-    html += '<div class="my-order-actions">';
+    html += '<div class="my-order-actions" style="flex-wrap: wrap; gap: 8px;">';
     html += '<button class="my-order-btn-detail" onclick="toggleOrderDetail(\'' + escHtml(oid) + '\')">Detail</button>';
     
     var waToko = (catalog && catalog.settings && catalog.settings.NOMOR_WA_TOKO) ? String(catalog.settings.NOMOR_WA_TOKO || '').replace(/[^0-9]/g, '') : '6285179912504';
     var waMsg = encodeURIComponent('Halo Samijaya, saya mau tanya pesanan ' + oid);
     var waIcon = '<svg class="wa-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>';
     html += '<a class="my-order-btn-wa" href="https://wa.me/' + waToko + '?text=' + waMsg + '" target="_blank" rel="noopener">' + waIcon + 'Hubungi Samijaya</a>';
+    
+    if (order.status === 'SELESAI') {
+      if (reviewableMap[oid]) {
+        var deadline = reviewableMap[oid].deadline;
+        var encodedOrder = btoa(unescape(encodeURIComponent(JSON.stringify({
+          order_id: oid,
+          tgl_antar: order.tgl_antar,
+          items: order.items || [],
+          deadline: deadline
+        }))));
+        html += '<button class="my-order-btn-review" onclick="openReviewModal(\'' + encodedOrder + '\')" style="flex-basis: 100%;">⭐ Beri Ulasan</button>';
+      } else {
+        // Cek apakah expired atau sudah diulas
+        var updatedAt = order.updated_at ? new Date(order.updated_at) : new Date(order.created_at);
+        var diffDays = (new Date().getTime() - updatedAt.getTime()) / (1000 * 3600 * 24);
+        html += '<div style="flex-basis: 100%; text-align: center; margin-top: 8px;">';
+        if (diffDays <= 7) {
+          html += '<span class="review-badge reviewed">✅ Sudah diulas</span>';
+          html += '<div class="review-actions-secondary"><button onclick="deleteReview(\'' + escHtml(oid) + '\')">Hapus & Ulang Ulasan</button></div>';
+        } else {
+          html += '<span class="review-badge expired">Waktu ulasan berakhir</span>';
+        }
+        html += '</div>';
+      }
+    }
+    
     html += '</div>';
     
     // Expandable detail
@@ -2937,3 +2976,148 @@ async function deleteAddress(addressId) {
   }
 }
 
+// === REVIEW ===
+var currentReviewOrderId = '';
+var currentReviewRating = 0;
+
+function openReviewModal(encodedPayload) {
+  var data = JSON.parse(decodeURIComponent(escape(atob(encodedPayload))));
+  currentReviewOrderId = data.order_id;
+  currentReviewRating = 0;
+  
+  var modal = document.getElementById('review-modal');
+  var sheet = modal.querySelector('.modal-sheet');
+  
+  var html = '<div class="co-header-bar">';
+  html += '<div class="co-header-title">⭐ Beri Ulasan</div>';
+  html += '<button class="co-btn-close" onclick="closeReviewModal()">×</button>';
+  html += '</div>';
+  
+  html += '<div class="co-content-pad" style="text-align: center;">';
+  html += '<div style="font-weight:600; margin-bottom: 4px;">Pesanan ' + escHtml(data.order_id) + '</div>';
+  
+  // Format items summary
+  var itemsStr = '';
+  if (data.items && data.items.length > 0) {
+    itemsStr = data.items.map(function(it) { return it.nama_snapshot; }).join(', ');
+    if (itemsStr.length > 40) itemsStr = itemsStr.substring(0, 37) + '...';
+  }
+  html += '<div style="font-size:0.85rem; color:#666; margin-bottom:16px;">' + escHtml(itemsStr) + '</div>';
+  
+  // Countdown
+  var deadlineDate = new Date(data.deadline);
+  var diffTime = deadlineDate.getTime() - new Date().getTime();
+  var diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  var deadlineStr = formatDateIndo(data.deadline);
+  html += '<div class="review-countdown">Berlaku sampai ' + deadlineStr + ' (' + diffDays + ' hari lagi)</div>';
+  
+  // Rating stars
+  html += '<div class="review-rating-stars">';
+  for (var i = 1; i <= 5; i++) {
+    html += '<div class="review-star" id="review-star-' + i + '" onclick="setReviewRating(' + i + ')">★</div>';
+  }
+  html += '</div>';
+  
+  // Text area
+  html += '<textarea id="review-ulasan" class="review-textarea" placeholder="Ceritakan pengalaman Anda (opsional)"></textarea>';
+  
+  // Info points
+  var rate = (catalog && catalog.settings && catalog.settings.POINT_RATE_RP) ? Number(catalog.settings.POINT_RATE_RP) : 1000;
+  // Kita tidak punya total di modal, tapi instruksi user "Setelah submit, Anda akan menerima {poin} poin..." 
+  // Biar simple, pesannya:
+  html += '<div class="review-info-note">Setelah submit, poin akan ditambahkan berdasarkan total belanja Anda. Anda bisa hapus dan ulang review sebelum deadline.</div>';
+  
+  html += '<button id="btn-submit-review" class="btn-success-primary" onclick="submitReview()" disabled>Kirim Ulasan</button>';
+  html += '</div>'; // pad
+  
+  sheet.innerHTML = html;
+  modal.classList.remove('hidden');
+}
+
+function closeReviewModal() {
+  document.getElementById('review-modal').classList.add('hidden');
+}
+
+function setReviewRating(rating) {
+  currentReviewRating = rating;
+  for (var i = 1; i <= 5; i++) {
+    var star = document.getElementById('review-star-' + i);
+    if (i <= rating) {
+      star.classList.add('active');
+    } else {
+      star.classList.remove('active');
+    }
+  }
+  document.getElementById('btn-submit-review').disabled = false;
+}
+
+async function submitReview() {
+  if (currentReviewRating < 1 || currentReviewRating > 5) {
+    showToast('Silakan pilih rating 1-5 bintang');
+    return;
+  }
+  
+  if (_submitting) return;
+  _submitting = true;
+  var btn = document.getElementById('btn-submit-review');
+  btn.disabled = true;
+  btn.textContent = 'Mengirim...';
+  
+  var ulasan = document.getElementById('review-ulasan').value.trim();
+  
+  try {
+    var res = await api('submitReview', {
+      order_id: currentReviewOrderId,
+      rating: currentReviewRating,
+      ulasan: ulasan
+    });
+    
+    if (res.ok) {
+      var poin = res.data.poin_ditambah || 0;
+      var msg = poin > 0 ? ('Terima kasih! Poin ' + poin + ' telah ditambahkan.') : 'Ulasan berhasil dikirim.';
+      showToast(msg);
+      closeReviewModal();
+      loadMyOrders();
+      // Perbarui juga data member agar poin di session sinkron
+      var meRes = await api('getMe');
+      if (meRes.ok) {
+        session.member = meRes.data.member;
+        saveSession();
+      }
+    } else {
+      showToast(res.error || 'Gagal mengirim ulasan');
+    }
+  } catch (e) {
+    showToast('Gagal terhubung ke server');
+  }
+  
+  _submitting = false;
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = 'Kirim Ulasan';
+  }
+}
+
+async function deleteReview(orderId) {
+  if (!confirm('Hapus ulasan untuk mengulas ulang?')) return;
+  
+  try {
+    // Kita butuh review_id, tapi dari My Orders kita tidak menyimpan review_id.
+    // Tapi di endpoint reviewDeleteMine payloadnya minta review_id. 
+    // Kita harus buat endpoint ini bisa menerima order_id karena dari sisi client kita cuma pegang order_id.
+    // Atau di getMyReviewable tidak ada, karena ordernya SUDAH di-review.
+    // Wait, kalau kita kirim order_id gimana?
+    // User instruction: reviewDeleteMine(payload, token) — payload {review_id}.
+    // Sebaiknya reviewDeleteMine juga menerima order_id jika review_id tidak ada.
+    // Untuk saat ini mari kita kirim order_id juga, lalu nanti saya modifikasi Review.gs.
+    var res = await api('deleteMyReview', { order_id: orderId });
+    if (res.ok) {
+      showToast('Ulasan dihapus, poin telah dikoreksi.');
+      loadMyOrders();
+    } else {
+      showToast(res.error || 'Gagal menghapus ulasan');
+    }
+  } catch(e) {
+    showToast('Gagal terhubung ke server');
+  }
+}

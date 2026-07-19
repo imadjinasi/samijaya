@@ -127,6 +127,16 @@ function doPost(e) {
       case 'getMyPoints':
         result = pointGetMyPoints(payload, token);
         break;
+      
+      case 'submitReview':
+        result = reviewSubmit(payload, token);
+        break;
+      case 'getMyReviewable':
+        result = reviewGetMyReviewable(payload, token);
+        break;
+      case 'deleteMyReview':
+        result = reviewDeleteMine(payload, token);
+        break;
 
       default:
         result = { ok: false, error: 'Unknown action: ' + action, code: 'UNKNOWN_ACTION' };

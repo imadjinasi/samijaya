@@ -770,54 +770,22 @@ function orderUpdateStatus(orderId, newStatus, actorChatId) {
     
     if (newStatus === 'SELESAI') {
       var total = Number(order.total) || 0;
-      var rate = Number(getSetting('POINT_RATE_RP')) || 1000;
-      var poin = Math.floor(total / rate);
-      
-      if (poin > 0) {
-        // Cek idempotensi
-        var histories = readAll('PointHistory');
-        var alreadyAdded = false;
-        for (var j = 0; j < histories.length; j++) {
-          if (String(histories[j].order_id) === String(orderId) && String(histories[j].tipe) === 'TAMBAH') {
-            alreadyAdded = true;
-            break;
-          }
-        }
-        
-        if (!alreadyAdded) {
-          var allMembers = readAll('Members');
-          var member = null;
-          for (var m = 0; m < allMembers.length; m++) {
-            if (String(allMembers[m].member_id) === String(order.member_id)) {
-              member = allMembers[m];
-              break;
-            }
-          }
-          
-          if (member) {
-            var saldoBaru = (Number(member.total_poin) || 0) + poin;
-            var totalBelanjaBaru = (Number(member.total_belanja) || 0) + total;
-            
-            updateRowById('Members', 'member_id', member.member_id, {
-              total_poin: saldoBaru,
-              total_belanja: totalBelanjaBaru
-            });
-            
-            appendRowObj('PointHistory', {
-              id: genId('PTH'),
-              member_id: member.member_id,
-              order_id: orderId,
-              tipe: 'TAMBAH',
-              jumlah: poin,
-              saldo_akhir: saldoBaru,
-              keterangan: 'Poin dari order ' + orderId,
-              created_at: nowStr
-            });
-            
-            poin_ditambah = poin;
-          }
+      var allMembers = readAll('Members');
+      var member = null;
+      for (var m = 0; m < allMembers.length; m++) {
+        if (String(allMembers[m].member_id) === String(order.member_id)) {
+          member = allMembers[m];
+          break;
         }
       }
+      
+      if (member) {
+        var totalBelanjaBaru = (Number(member.total_belanja) || 0) + total;
+        updateRowById('Members', 'member_id', member.member_id, {
+          total_belanja: totalBelanjaBaru
+        });
+      }
+      // Poin tidak ditambah di sini. Diberikan saat customer submit ulasan (max 7 hari).
     }
     
     updateRowById('Orders', 'order_id', orderId, updateData);

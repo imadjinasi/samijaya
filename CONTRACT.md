@@ -10,7 +10,7 @@
 - Foto: simpan `FILE_ID` Google Drive; URL tampil = `https://drive.google.com/thumbnail?id=<FILE_ID>&sz=w400`.
 - ID lain (member_id, address_id, product_id, dst): prefix + timestamp base36.
 
-## 2. Sheet (15) — header persis, dilarang menambah/mengubah kolom
+## 2. Sheet (16) — header persis, dilarang menambah/mengubah kolom
 
 ### 1. Settings
 `key | value | keterangan`
@@ -86,6 +86,12 @@ Key wajib (nilai default dalam kurung):
 `timestamp | tipe | ref_id | pesan | detail_json`
 - `tipe`: `NOTIF | ACTIVITY | ERROR`
 
+### 16. Reviews
+`review_id | order_id | member_id | rating | ulasan | status | created_at`
+- `status`: `aktif` / `hidden` / `dihapus`
+- `rating`: 1-5 (integer)
+- `ulasan`: teks bebas, opsional
+
 ## 3. Daftar Action API (lengkap — dilarang menambah tanpa izin)
 
 - `ping` — health check
@@ -101,7 +107,13 @@ Key wajib (nilai default dalam kurung):
 
 Plus jalur webhook Telegram (via `TELEGRAM_SECRET` di header).
 
-## 4. Struktur Repo
+## 4. Aturan Poin & Ulasan (F.1)
+- Poin diberikan SAAT ULASAN DISUBMIT, bukan saat status SELESAI.
+- Deadline review: 7 hari dari waktu status jadi SELESAI.
+- Kalau lewat deadline → poin HANGUS (tidak diberikan sama sekali).
+- Ulasan bisa dihapus dan disubmit ulang selama masih dalam deadline 7 hari.
+
+## 5. Struktur Repo
 
 ```
 Samijaya/
