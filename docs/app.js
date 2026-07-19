@@ -15,6 +15,7 @@ var _otpCooldownTimer = null;
 var _pendingCheckout = false;
 var _submitting = false;
 var _pendingOtp = '';
+var publicReviewsData = null;
 var checkoutState = {
   tgl_antar: '',
   metode_kirim: '',
@@ -2116,9 +2117,13 @@ document.addEventListener('DOMContentLoaded', async function () {
   // Render header & auth
   renderHeader();
 
-  // Fetch catalog
+  // Fetch catalog & reviews
   try {
-    var catRes = await api('getCatalog');
+    var [catRes, revRes] = await Promise.all([
+      api('getCatalog'),
+      api('getPublicReviews')
+    ]);
+
     if (catRes.ok) {
       catalog = catRes.data;
       renderBanners(catalog.banners);
@@ -2127,6 +2132,11 @@ document.addEventListener('DOMContentLoaded', async function () {
       renderViewMode();
     } else {
       showToast('Gagal memuat katalog');
+    }
+
+    if (revRes && revRes.ok) {
+      publicReviewsData = revRes.data;
+      renderPublicReviews();
     }
   } catch (e) {
     showToast('Gagal terhubung ke server');
@@ -3162,4 +3172,61 @@ async function deleteReview(orderId) {
   } catch(e) {
     showToast('Gagal terhubung ke server');
   }
+}
+
+function renderPublicReviews() {
+  if (!publicReviewsData) return;
+  var total = publicReviewsData.total_ulasan || 0;
+  var rata = publicReviewsData.rata_rating || 0;
+  
+  var badgeContainer = document.getElementById('rating-badge-container');
+  var section = document.getElementById('reviews-section');
+  
+  if (total >= 3) {
+    badgeContainer.classList.remove('hidden');
+    badgeContainer.innerHTML = 
+      '<div class="rating-badge" onclick="document.getElementById(\'reviews-section\').scrollIntoView({behavior:\'smooth\'})">' +
+        '<span class="rating-badge-star">⭐</span>' +
+        '<span class="rating-badge-angka">' + rata.toFixed(1) + '</span>' +
+        '<span class="rating-badge-teks">• ' + total + ' ulasan pelanggan</span>' +
+      '</div>';
+  } else {
+    badgeContainer.classList.add('hidden');
+  }
+  
+  if (total === 0) {
+    section.classList.add('hidden');
+    return;
+  }
+  
+  section.classList.remove('hidden');
+  var slider = document.getElementById('reviews-slider');
+  var html = '';
+  
+  var reviews = publicReviewsData.reviews || [];
+  for (var i = 0; i < reviews.length; i++) {
+    var r = reviews[i];
+    var stars = '';
+    for (var s = 1; s <= 5; s++) {
+      stars += '<span class="' + (s <= r.rating ? 'active' : '') + '">★</span>';
+    }
+    
+    var teks = String(r.ulasan || '').trim();
+    if (!teks) teks = '-';
+    
+    var tglObj = new Date(r.created_at);
+    var tglStr = isNaN(tglObj.getTime()) ? '' : tglObj.toLocaleDateString('id-ID', {day:'numeric', month:'short', year:'numeric'});
+    
+    html += 
+      '<div class="review-card">' +
+        '<div class="review-card-stars">' + stars + '</div>' +
+        '<div class="review-card-text">' + escHtml(teks) + '</div>' +
+        '<div class="review-card-meta">' +
+          '<span>' + escHtml(r.nama_singkat) + '</span>' +
+          '<span>' + escHtml(tglStr) + '</span>' +
+        '</div>' +
+      '</div>';
+  }
+  
+  slider.innerHTML = html;
 }

@@ -552,6 +552,9 @@ function handleAdminCommand(chatId, text) {
       + '/bukaslot &lt;id&gt; — aktifkan slot antar\n'
       + '/produk &lt;id&gt; on|off — ubah ketersediaan produk\n'
       + '/banner &lt;id&gt; on|off — ubah status banner\n'
+      + '/ulasan — list 20 ulasan terbaru\n'
+      + '/ulasan hide &lt;id&gt; — sembunyikan ulasan\n'
+      + '/ulasan show &lt;id&gt; — tampilkan ulasan\n'
       + '/clearcache — hapus cache settings & katalog';
     tgSend(chatId, msg);
     return;
@@ -948,6 +951,87 @@ function handleAdminCommand(chatId, text) {
     
     tgSend(chatId, '🖼 Banner <b>' + esc(banner.judul) + '</b> → ' + status);
     return;
+  }
+
+  if (cmd === '/ulasan') {
+    if (args.length === 0) {
+      var allReviews = readAll('Reviews');
+      var allMembers = readAll('Members');
+      var memberMap = {};
+      for (var m = 0; m < allMembers.length; m++) {
+        var memb = allMembers[m];
+        var parts = String(memb.nama || '').trim().split(/\s+/);
+        var ns = 'Pelanggan Setia';
+        if (parts.length > 1) {
+          ns = parts[0] + ' ' + parts[1].charAt(0).toUpperCase() + '.';
+        } else if (parts.length === 1 && parts[0]) {
+          ns = parts[0];
+        }
+        memberMap[String(memb.member_id)] = ns;
+      }
+
+      var filtered = [];
+      for (var i = 0; i < allReviews.length; i++) {
+        var st = String(allReviews[i].status);
+        if (st === 'aktif' || st === 'hidden') {
+          filtered.push(allReviews[i]);
+        }
+      }
+      
+      if (filtered.length === 0) {
+        tgSend(chatId, 'Belum ada ulasan.');
+        return;
+      }
+      
+      filtered.sort(function(a, b) {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+      
+      var limit = Math.min(filtered.length, 20);
+      var lines = ['⭐ <b>Daftar Ulasan Terbaru</b>\n'];
+      for (var j = 0; j < limit; j++) {
+        var r = filtered[j];
+        var uPreview = r.ulasan || '';
+        if (uPreview.length > 60) uPreview = uPreview.substring(0, 60) + '...';
+        var ns2 = memberMap[String(r.member_id)] || 'Pelanggan Setia';
+        lines.push('<code>' + r.review_id + '</code> ★' + r.rating + ' • ' + esc(ns2) + ' • ' + esc(r.order_id) + '\n' + esc(uPreview) + '\nStatus: ' + r.status + '\n');
+      }
+      tgSend(chatId, lines.join('\n'));
+      return;
+    }
+    
+    var subCmd = args[0].toLowerCase();
+    if (subCmd === 'hide' || subCmd === 'show') {
+      if (args.length < 2) {
+        tgSend(chatId, '⚠️ Format: /ulasan ' + subCmd + ' &lt;review_id&gt;');
+        return;
+      }
+      var rid = args[1];
+      var allReviews2 = readAll('Reviews');
+      var rev = null;
+      for (var i2 = 0; i2 < allReviews2.length; i2++) {
+        if (String(allReviews2[i2].review_id) === rid) {
+          rev = allReviews2[i2];
+          break;
+        }
+      }
+      if (!rev) {
+        tgSend(chatId, '❌ Ulasan tidak ditemukan.');
+        return;
+      }
+      
+      var newStatus = subCmd === 'hide' ? 'hidden' : 'aktif';
+      withLock(function() {
+        updateRowById('Reviews', 'review_id', rid, { status: newStatus });
+      });
+      
+      if (subCmd === 'hide') {
+        tgSend(chatId, '🚫 Ulasan disembunyikan dari homepage.');
+      } else {
+        tgSend(chatId, '✅ Ulasan ditampilkan lagi.');
+      }
+      return;
+    }
   }
 
   if (cmd === '/clearcache') {

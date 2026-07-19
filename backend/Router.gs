@@ -137,6 +137,9 @@ function doPost(e) {
       case 'deleteMyReview':
         result = reviewDeleteMine(payload, token);
         break;
+      case 'getPublicReviews':
+        result = reviewGetPublic();
+        break;
 
       default:
         result = { ok: false, error: 'Unknown action: ' + action, code: 'UNKNOWN_ACTION' };

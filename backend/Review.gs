@@ -305,3 +305,60 @@ function reviewExpireCleanup() {
 
   return expiredCount;
 }
+
+function reviewGetPublic() {
+  var allReviews = readAll('Reviews');
+  var allMembers = readAll('Members');
+  
+  var memberMap = {};
+  for (var m = 0; m < allMembers.length; m++) {
+    var memb = allMembers[m];
+    var namaLengkap = String(memb.nama || '').trim();
+    var namaSingkat = 'Pelanggan Setia';
+    if (namaLengkap) {
+      var parts = namaLengkap.split(/\s+/);
+      if (parts.length > 1) {
+        namaSingkat = parts[0] + ' ' + parts[1].charAt(0).toUpperCase() + '.';
+      } else if (parts.length === 1 && parts[0]) {
+        namaSingkat = parts[0];
+      }
+    }
+    memberMap[String(memb.member_id)] = namaSingkat;
+  }
+  
+  var aktifReviews = [];
+  var sumRating = 0;
+  for (var i = 0; i < allReviews.length; i++) {
+    var rev = allReviews[i];
+    if (String(rev.status) === 'aktif') {
+      var rRating = Number(rev.rating) || 0;
+      sumRating += rRating;
+      aktifReviews.push({
+        review_id: rev.review_id,
+        rating: rRating,
+        ulasan: String(rev.ulasan || ''),
+        created_at: rev.created_at,
+        nama_singkat: memberMap[String(rev.member_id)] || 'Pelanggan Setia'
+      });
+    }
+  }
+  
+  var total_ulasan = aktifReviews.length;
+  var rata_rating = total_ulasan > 0 ? (sumRating / total_ulasan) : 0;
+  rata_rating = Number(rata_rating.toFixed(2));
+  
+  aktifReviews.sort(function(a, b) {
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+  
+  var recentReviews = aktifReviews.slice(0, 20);
+  
+  return {
+    ok: true,
+    data: {
+      rata_rating: rata_rating,
+      total_ulasan: total_ulasan,
+      reviews: recentReviews
+    }
+  };
+}
