@@ -1258,11 +1258,10 @@ function renderShippingDetail(method) {
     html += '<div id="delivery-address-selection">';
     if (addresses && addresses.length > 0) {
       html += '<select id="co-address-select" class="co-date-input" style="margin-bottom:10px;" onchange="onSavedAddressChange(this.value)">';
-      html += '<option value="">— Pilih alamat tersimpan —</option>';
+      html += '<option value="">— Pilih alamat tersimpan (opsional) —</option>';
       for (var i = 0; i < addresses.length; i++) {
         html += '<option value="' + addresses[i].address_id + '">' + escHtml(addresses[i].label + ' - ' + addresses[i].detail) + '</option>';
       }
-      html += '<option value="NEW">+ Alamat baru</option>';
       html += '</select>';
     }
 
@@ -1279,7 +1278,7 @@ function renderShippingDetail(method) {
       html += '<div id="location-error-msg" style="display:none; font-size:0.8rem; color:var(--danger); margin-bottom:8px;"></div>';
     }
     
-    html += '<div id="checkoutMapHint" style="font-size:13-14px; color:var(--brown); padding:8px 0;">💡 Geser pin merah untuk menyesuaikan lokasi pengantaran.</div>';
+    html += '<div id="checkoutMapHint" style="font-size:13-14px; color:var(--brown); padding:8px 0;">💡 Geser pin biru untuk menyesuaikan lokasi pengantaran.</div>';
     html += '<div id="delivery-map-section" class="map-container"></div>';
 
     html += '<div class="address-form">';
@@ -1363,7 +1362,7 @@ function validatePickupTime() {
 
 function onSavedAddressChange(val) {
   var newAddressContainer = document.getElementById('delivery-new-address');
-  if (val === 'NEW') {
+  if (!val || val === '') {
     newAddressContainer.classList.remove('hidden');
     checkoutState.address_id = '';
     setTimeout(function() {
@@ -1375,7 +1374,7 @@ function onSavedAddressChange(val) {
     checkoutState.lng = '';
     checkoutState.ongkir = null;
     updateCheckoutSummary();
-  } else if (val !== '') {
+  } else {
     newAddressContainer.classList.add('hidden');
     checkoutState.address_id = val;
     var allAddresses = session.addresses || (session.member && session.member.addresses) || [];
@@ -1392,13 +1391,6 @@ function onSavedAddressChange(val) {
       checkoutState.alamat_teks = addr.detail;
       calculateOngkir();
     }
-  } else {
-    newAddressContainer.classList.add('hidden');
-    checkoutState.address_id = '';
-    checkoutState.lat = '';
-    checkoutState.lng = '';
-    checkoutState.ongkir = null;
-    updateCheckoutSummary();
   }
 }
 
