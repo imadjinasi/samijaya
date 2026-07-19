@@ -617,6 +617,10 @@ function orderCreateOrder(payload, token) {
     //    Poin PENAMBAHAN dari order ini TIDAK sekarang — hanya saat status SELESAI (Fase 5)
     if (poinDipakai > 0) {
       var saldoAkhir = saldoPoinLama - poinDipakai;
+      if (saldoAkhir < 0) {
+        log('ERROR', 'GUARD_POIN', 'Guard poin minus dicegah di checkout', { member_id: member.member_id, saldo: saldoPoinLama, pakai: poinDipakai });
+        return { ok: false, code: 'POIN_TIDAK_CUKUP', error: 'Saldo poin tidak mencukupi' };
+      }
       appendRowObj('PointHistory', {
         id:          genId('PTH'),
         member_id:   member.member_id,
@@ -848,6 +852,19 @@ function orderGetMyOrders(payload, token) {
     }
   }
 
+  // Baca sheet Reviews
+  var allReviews = readAll('Reviews');
+  var reviewsByOrderId = {};
+  for (var r = 0; r < allReviews.length; r++) {
+    var rev = allReviews[r];
+    if (String(rev.status) === 'aktif' && orderIds.indexOf(rev.order_id) !== -1) {
+      reviewsByOrderId[rev.order_id] = {
+        rating: rev.rating,
+        ulasan: rev.ulasan
+      };
+    }
+  }
+
   var resultOrders = [];
   for (var j = 0; j < userOrders.length; j++) {
     var row = userOrders[j];
@@ -872,7 +889,8 @@ function orderGetMyOrders(payload, token) {
       alamat_snapshot: row.alamat_snapshot,
       lokasi_pickup_id: row.lokasi_pickup_id,
       catatan_customer: row.catatan_customer,
-      items: itemsByOrderId[oid] || []
+      items: itemsByOrderId[oid] || [],
+      review: reviewsByOrderId[oid] || null
     });
   }
 

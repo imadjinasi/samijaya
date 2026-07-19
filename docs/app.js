@@ -2293,8 +2293,19 @@ function renderMyOrders(orders, reviewableMap) {
         var diffDays = (new Date().getTime() - updatedAt.getTime()) / (1000 * 3600 * 24);
         html += '<div style="flex-basis: 100%; text-align: center; margin-top: 8px;">';
         if (diffDays <= 7) {
+          var oldUlasan = order.review ? order.review.ulasan : '';
+          var oldRating = order.review ? order.review.rating : 0;
+          var encodedOrder = btoa(unescape(encodeURIComponent(JSON.stringify({
+            order_id: oid,
+            tgl_antar: order.tgl_antar,
+            items: order.items || [],
+            deadline: order.updated_at ? new Date(new Date(order.updated_at).getTime() + 7*24*3600*1000) : null,
+            old_ulasan: oldUlasan,
+            old_rating: oldRating,
+            is_edit: true
+          }))));
           html += '<span class="review-badge reviewed">✅ Sudah diulas</span>';
-          html += '<div class="review-actions-secondary"><button onclick="deleteReview(\'' + escHtml(oid) + '\')">Hapus & Ulang Ulasan</button></div>';
+          html += '<div class="review-actions-secondary"><button onclick="openReviewModal(\'' + encodedOrder + '\')">Lihat/Edit Ulasan</button></div>';
         } else {
           html += '<span class="review-badge expired">Waktu ulasan berakhir</span>';
         }
@@ -2979,11 +2990,13 @@ async function deleteAddress(addressId) {
 // === REVIEW ===
 var currentReviewOrderId = '';
 var currentReviewRating = 0;
+var currentReviewIsEdit = false;
 
 function openReviewModal(encodedPayload) {
   var data = JSON.parse(decodeURIComponent(escape(atob(encodedPayload))));
   currentReviewOrderId = data.order_id;
   currentReviewRating = 0;
+  currentReviewIsEdit = !!data.is_edit;
   
   var modal = document.getElementById('review-modal');
   var sheet = modal.querySelector('.modal-sheet');
@@ -3019,19 +3032,25 @@ function openReviewModal(encodedPayload) {
   html += '</div>';
   
   // Text area
-  html += '<textarea id="review-ulasan" class="review-textarea" placeholder="Ceritakan pengalaman Anda (opsional)"></textarea>';
+  var prefill = "Produk: \nLayanan: ";
+  if (data.old_ulasan !== undefined) {
+    prefill = data.old_ulasan;
+  }
+  html += '<textarea id="review-ulasan" class="review-textarea">' + escHtml(prefill) + '</textarea>';
   
   // Info points
-  var rate = (catalog && catalog.settings && catalog.settings.POINT_RATE_RP) ? Number(catalog.settings.POINT_RATE_RP) : 1000;
-  // Kita tidak punya total di modal, tapi instruksi user "Setelah submit, Anda akan menerima {poin} poin..." 
-  // Biar simple, pesannya:
-  html += '<div class="review-info-note">Setelah submit, poin akan ditambahkan berdasarkan total belanja Anda. Anda bisa hapus dan ulang review sebelum deadline.</div>';
+  html += '<div class="review-info-note">Ceritakan pengalaman Anda. Boleh hapus panduan bila mau tulis bebas.</div>';
+
   
   html += '<button id="btn-submit-review" class="btn-success-primary" onclick="submitReview()" disabled>Kirim Ulasan</button>';
   html += '</div>'; // pad
   
   sheet.innerHTML = html;
   modal.classList.remove('hidden');
+  
+  if (data.old_rating) {
+    setReviewRating(data.old_rating);
+  }
 }
 
 function closeReviewModal() {
@@ -3042,13 +3061,16 @@ function setReviewRating(rating) {
   currentReviewRating = rating;
   for (var i = 1; i <= 5; i++) {
     var star = document.getElementById('review-star-' + i);
-    if (i <= rating) {
-      star.classList.add('active');
-    } else {
-      star.classList.remove('active');
+    if (star) {
+      if (i <= rating) {
+        star.classList.add('active');
+      } else {
+        star.classList.remove('active');
+      }
     }
   }
-  document.getElementById('btn-submit-review').disabled = false;
+  var btn = document.getElementById('btn-submit-review');
+  if (btn) btn.disabled = false;
 }
 
 async function submitReview() {
@@ -3064,6 +3086,26 @@ async function submitReview() {
   btn.textContent = 'Mengirim...';
   
   var ulasan = document.getElementById('review-ulasan').value.trim();
+  
+  if (currentReviewIsEdit) {
+    try {
+      var delRes = await api('deleteMyReview', { order_id: currentReviewOrderId });
+      if (!delRes.ok) {
+        showToast(delRes.error || 'Gagal menghapus ulasan lama');
+        _submitting = false;
+        btn.disabled = false;
+        btn.textContent = 'Kirim Ulasan';
+        return;
+      }
+      currentReviewIsEdit = false; // hapus sukses, supaya kalau submit error, pas disubmit ulang tidak delete lagi
+    } catch(e) {
+      showToast('Gagal terhubung ke server');
+      _submitting = false;
+      btn.disabled = false;
+      btn.textContent = 'Kirim Ulasan';
+      return;
+    }
+  }
   
   try {
     var res = await api('submitReview', {
