@@ -840,42 +840,18 @@ function orderGetMyOrders(payload, token) {
   var memberId = session.member_id;
 
   // Baca sheet Orders
-  var dbOrders = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Orders');
-  if (!dbOrders) return { ok: true, data: { orders: [] } };
-  var orderData = dbOrders.getDataRange().getValues();
-  if (orderData.length < 2) return { ok: true, data: { orders: [] } };
-
-  var orderHeaders = orderData[0];
-  var orderRows = orderData.slice(1);
-
-  var idxOrderId = orderHeaders.indexOf('order_id');
-  var idxMemberId = orderHeaders.indexOf('member_id');
-  var idxTglAntar = orderHeaders.indexOf('tgl_antar');
-  var idxMetodeKirim = orderHeaders.indexOf('metode_kirim');
-  var idxMetodeBayar = orderHeaders.indexOf('metode_bayar');
-  var idxStatus = orderHeaders.indexOf('status');
-  var idxSubtotal = orderHeaders.indexOf('subtotal');
-  var idxOngkir = orderHeaders.indexOf('ongkir');
-  var idxPoinDipakai = orderHeaders.indexOf('poin_dipakai');
-  var idxTotal = orderHeaders.indexOf('total');
-  var idxCreatedAt = orderHeaders.indexOf('created_at');
-  var idxUpdatedAt = orderHeaders.indexOf('updated_at');
-  var idxTimelineJson = orderHeaders.indexOf('timeline_json');
-  var idxAlamatSnapshot = orderHeaders.indexOf('alamat_snapshot');
-  var idxLokasiPickupId = orderHeaders.indexOf('lokasi_pickup_id');
-  var idxCatatanCustomer = orderHeaders.indexOf('catatan_customer');
-
+  var allOrders = readAll('Orders');
   var userOrders = [];
-  for (var i = 0; i < orderRows.length; i++) {
-    if (orderRows[i][idxMemberId] === memberId) {
-      userOrders.push(orderRows[i]);
+  for (var i = 0; i < allOrders.length; i++) {
+    if (allOrders[i].member_id === memberId) {
+      userOrders.push(allOrders[i]);
     }
   }
 
   // Sort by created_at DESC (terbaru dulu)
   userOrders.sort(function(a, b) {
-    var da = new Date(a[idxCreatedAt]).getTime();
-    var db = new Date(b[idxCreatedAt]).getTime();
+    var da = new Date(a.created_at).getTime();
+    var db = new Date(b.created_at).getTime();
     return db - da;
   });
 
@@ -886,62 +862,48 @@ function orderGetMyOrders(payload, token) {
     return { ok: true, data: { orders: [] } };
   }
 
-  var orderIds = userOrders.map(function(row) { return row[idxOrderId]; });
+  var orderIds = userOrders.map(function(row) { return row.order_id; });
 
   // Baca sheet OrderItems
-  var dbItems = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('OrderItems');
+  var allItems = readAll('OrderItems');
   var itemsByOrderId = {};
-  if (dbItems) {
-    var itemData = dbItems.getDataRange().getValues();
-    if (itemData.length > 1) {
-      var itemHeaders = itemData[0];
-      var itemRows = itemData.slice(1);
-
-      var iIdxOrderId = itemHeaders.indexOf('order_id');
-      var iIdxNama = itemHeaders.indexOf('nama_snapshot');
-      var iIdxHarga = itemHeaders.indexOf('harga_snapshot');
-      var iIdxQty = itemHeaders.indexOf('qty');
-      var iIdxSubtotal = itemHeaders.indexOf('subtotal');
-
-      for (var k = 0; k < itemRows.length; k++) {
-        var oid = itemRows[k][iIdxOrderId];
-        if (orderIds.indexOf(oid) !== -1) {
-          if (!itemsByOrderId[oid]) itemsByOrderId[oid] = [];
-          itemsByOrderId[oid].push({
-            nama_snapshot: itemRows[k][iIdxNama],
-            harga_snapshot: itemRows[k][iIdxHarga],
-            qty: itemRows[k][iIdxQty],
-            subtotal: itemRows[k][iIdxSubtotal]
-          });
-        }
-      }
+  for (var k = 0; k < allItems.length; k++) {
+    var oid = allItems[k].order_id;
+    if (orderIds.indexOf(oid) !== -1) {
+      if (!itemsByOrderId[oid]) itemsByOrderId[oid] = [];
+      itemsByOrderId[oid].push({
+        nama_snapshot: allItems[k].nama_snapshot,
+        harga_snapshot: allItems[k].harga_snapshot,
+        qty: allItems[k].qty,
+        subtotal: allItems[k].subtotal
+      });
     }
   }
 
   var resultOrders = [];
   for (var j = 0; j < userOrders.length; j++) {
     var row = userOrders[j];
-    var oid = row[idxOrderId];
+    var oid = row.order_id;
 
     var timeline = [];
-    try { if (row[idxTimelineJson]) timeline = JSON.parse(row[idxTimelineJson]); } catch(e) { timeline = []; }
+    try { if (row.timeline_json) timeline = JSON.parse(row.timeline_json); } catch(e) { timeline = []; }
 
     resultOrders.push({
       order_id: oid,
-      tgl_antar: row[idxTglAntar],
-      metode_kirim: row[idxMetodeKirim],
-      metode_bayar: row[idxMetodeBayar],
-      status: row[idxStatus],
-      subtotal: row[idxSubtotal],
-      ongkir: row[idxOngkir],
-      poin_dipakai: row[idxPoinDipakai],
-      total: row[idxTotal],
-      created_at: row[idxCreatedAt] ? new Date(row[idxCreatedAt]).toISOString() : null,
-      updated_at: row[idxUpdatedAt] ? new Date(row[idxUpdatedAt]).toISOString() : null,
+      tgl_antar: row.tgl_antar,
+      metode_kirim: row.metode_kirim,
+      metode_bayar: row.metode_bayar,
+      status: row.status,
+      subtotal: row.subtotal,
+      ongkir: row.ongkir,
+      poin_dipakai: row.poin_dipakai,
+      total: row.total,
+      created_at: row.created_at ? new Date(row.created_at).toISOString() : null,
+      updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : null,
       timeline: timeline,
-      alamat_snapshot: row[idxAlamatSnapshot],
-      lokasi_pickup_id: row[idxLokasiPickupId],
-      catatan_customer: row[idxCatatanCustomer],
+      alamat_snapshot: row.alamat_snapshot,
+      lokasi_pickup_id: row.lokasi_pickup_id,
+      catatan_customer: row.catatan_customer,
       items: itemsByOrderId[oid] || []
     });
   }
