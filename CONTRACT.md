@@ -41,7 +41,7 @@ Key wajib (nilai default dalam kurung):
 `member_id | nama | no_hp | tgl_lahir | email | jenis_kelamin | total_poin | total_belanja | created_at | status`
 
 ### 3. MemberAddresses
-`address_id | member_id | label | detail | latitude | longitude | created_at | status`
+`address_id | member_id | label | detail | alamat_snapshot | latitude | longitude | created_at | status`
 
 ### 4. Products
 `product_id | nama | harga | foto_file_id | kategori_id | deskripsi | badge_promo | tersedia | urutan | status`

@@ -1280,14 +1280,14 @@ function renderShippingDetail(method) {
     
     html += '<div id="checkoutMapHint" style="font-size:13-14px; color:var(--brown); padding:8px 0;">💡 Geser pin biru untuk menyesuaikan lokasi pengantaran.</div>';
     html += '<div id="delivery-map-section" class="map-container"></div>';
+    html += '</div>'; // delivery-new-address
 
-    html += '<div class="address-form">';
-    html += '<textarea id="co-alamat-teks" placeholder="Alamat lengkap (otomatis terisi)" readonly rows="2"></textarea>';
+    html += '<div class="address-form" style="margin-top:10px;">';
+    html += '<textarea id="co-alamat-teks" placeholder="Terisi otomatis dari peta — bisa diedit untuk mengoreksi RT/RW/blok" oninput="onCheckoutAlamatChange()" rows="2"></textarea>';
     html += '<input type="text" id="co-label-alamat" placeholder="Label alamat (contoh: Rumah, Kantor)" oninput="onAddressDetailChange()">';
     html += '<textarea id="co-detail-alamat" placeholder="Detail alamat (patokan, blok, dll)" oninput="onAddressDetailChange()" rows="2"></textarea>';
     html += '</div>';
 
-    html += '</div>'; // delivery-new-address
     html += '</div>'; // delivery-address-selection
 
     html += '<div class="co-shipping-note" id="co-ongkir-note">Ongkir: —</div>';
@@ -1373,6 +1373,15 @@ function onSavedAddressChange(val) {
     checkoutState.lat = '';
     checkoutState.lng = '';
     checkoutState.ongkir = null;
+    checkoutState.alamat_teks = '';
+    checkoutState.detail_alamat = '';
+    checkoutState.label_alamat = '';
+    var elAlamat = document.getElementById('co-alamat-teks');
+    if (elAlamat) elAlamat.value = '';
+    var elLabel = document.getElementById('co-label-alamat');
+    if (elLabel) elLabel.value = '';
+    var elDetail = document.getElementById('co-detail-alamat');
+    if (elDetail) elDetail.value = '';
     updateCheckoutSummary();
   } else {
     newAddressContainer.classList.add('hidden');
@@ -1388,7 +1397,15 @@ function onSavedAddressChange(val) {
     if (addr) {
       checkoutState.lat = addr.latitude;
       checkoutState.lng = addr.longitude;
-      checkoutState.alamat_teks = addr.detail;
+      checkoutState.alamat_teks = addr.alamat_snapshot || '';
+      checkoutState.detail_alamat = addr.detail || '';
+      checkoutState.label_alamat = addr.label || '';
+      var elAlamat = document.getElementById('co-alamat-teks');
+      if (elAlamat) elAlamat.value = checkoutState.alamat_teks;
+      var elLabel = document.getElementById('co-label-alamat');
+      if (elLabel) elLabel.value = checkoutState.label_alamat;
+      var elDetail = document.getElementById('co-detail-alamat');
+      if (elDetail) elDetail.value = checkoutState.detail_alamat;
       calculateOngkir();
     }
   }
@@ -1482,21 +1499,30 @@ function onPinMoved(lat, lng) {
   }, 1000);
 }
 
+var _lastGeocodedFor = '';
 async function updateDeliveryLocation(lat, lng) {
   checkoutState.lat = lat;
   checkoutState.lng = lng;
   checkoutState.address_id = '';
   
-  var alamat = '';
-  if (typeof reverseGeocode === 'function') {
-    alamat = await reverseGeocode(lat, lng);
+  var key = lat + ',' + lng;
+  if (_lastGeocodedFor !== key) {
+    var alamat = '';
+    if (typeof reverseGeocode === 'function') {
+      alamat = await reverseGeocode(lat, lng);
+    }
+    _lastGeocodedFor = key;
+    checkoutState.alamat_teks = alamat;
+    var elAlamat = document.getElementById('co-alamat-teks');
+    if (elAlamat) elAlamat.value = alamat;
   }
-  checkoutState.alamat_teks = alamat;
-  
-  var elAlamat = document.getElementById('co-alamat-teks');
-  if (elAlamat) elAlamat.value = alamat;
   
   calculateOngkir();
+}
+
+function onCheckoutAlamatChange() {
+  var el = document.getElementById('co-alamat-teks');
+  if (el) checkoutState.alamat_teks = el.value;
 }
 
 function onAddressDetailChange() {
@@ -2646,9 +2672,12 @@ function renderMyAddressesList(addresses) {
     var addr = addresses[i];
     var encodedAddr = escHtml(JSON.stringify(addr)); // for passing to JS
     html += '<div class="address-card" style="background:#fff; border-radius:var(--r-card); padding:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-weight:600; font-size:1.1rem; color:var(--espresso); margin-bottom:4px;">' + escHtml(addr.label) + '</div>';
-    html += '<div style="color:#666; font-size:0.9rem; line-height:1.4; margin-bottom:8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">' + escHtml(addr.detail) + '</div>';
-    html += '<div style="color:#888; font-size:0.75rem; margin-bottom:12px;">' + addr.latitude + ', ' + addr.longitude + '</div>';
+    html += '<div style="font-weight:600; font-size:1.1rem; color:var(--espresso); margin-bottom:4px;">' + escHtml(addr.label) + ' <span style="font-weight:normal; font-size:1rem;">— ' + escHtml(addr.detail) + '</span></div>';
+    if (addr.alamat_snapshot) {
+      html += '<div style="color:var(--brown); font-size:0.85rem; line-height:1.4; margin-bottom:8px;">' + escHtml(addr.alamat_snapshot) + '</div>';
+    } else {
+      html += '<div style="color:var(--brown); font-size:0.85rem; line-height:1.4; margin-bottom:8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">' + escHtml(addr.detail) + '</div>';
+    }
     html += '<div style="display:flex; gap:8px;">';
     html += '<button class="btn-outline" style="flex:1; padding:8px;" onclick=\'showAddressForm(' + encodedAddr + ')\'>Edit</button>';
     html += '<button class="btn-outline" style="flex:1; padding:8px; color:var(--danger); border-color:var(--danger);" onclick="deleteAddress(\'' + addr.address_id + '\')">Hapus</button>';
@@ -2683,6 +2712,11 @@ function showAddressForm(addr) {
   html += '<div style="display:flex; flex-direction:column; gap:6px;">';
   html += '<label style="font-weight:600; color:var(--brown); font-size:0.9rem;">Detail Alamat (Patokan dsb.)</label>';
   html += '<textarea id="addr-detail" class="co-date-input" rows="3" required minlength="1" maxlength="200" style="padding:12px 14px; border-radius:12px; border:1px solid var(--line); font-size:15px; width:100%;">' + (isEdit ? escHtml(addr.detail) : '') + '</textarea>';
+  html += '</div>';
+
+  html += '<div style="display:flex; flex-direction:column; gap:6px;">';
+  html += '<label style="font-weight:600; color:var(--brown); font-size:0.9rem;">Alamat Lengkap</label>';
+  html += '<textarea id="addr-alamat-teks" class="co-date-input" rows="3" placeholder="Terisi otomatis dari peta — bisa diedit untuk mengoreksi RT/RW/blok" style="padding:12px 14px; border-radius:12px; border:1px solid var(--line); font-size:15px; width:100%;">' + (isEdit ? escHtml(addr.alamat_snapshot || '') : '') + '</textarea>';
   html += '</div>';
 
   html += '<div style="display:flex; flex-direction:column; gap:6px;">';
@@ -2729,16 +2763,36 @@ function showAddressForm(addr) {
       document.getElementById('addr-lng').value = initialLng;
     }
 
+    var _addrLastGeocoded = '';
+    var addrGeocodeTimer = null;
+    window.updateAddrAlamatTeks = function(lat, lng) {
+      clearTimeout(addrGeocodeTimer);
+      addrGeocodeTimer = setTimeout(async function() {
+        var key = lat + ',' + lng;
+        if (_addrLastGeocoded !== key) {
+          var el = document.getElementById('addr-alamat-teks');
+          if (el) el.value = "Mencari alamat...";
+          if (typeof reverseGeocode === 'function') {
+            var addrStr = await reverseGeocode(lat, lng);
+            if (el) el.value = addrStr;
+          }
+          _addrLastGeocoded = key;
+        }
+      }, 1000);
+    };
+
     marker.on('dragend', function(e) {
       var pos = marker.getLatLng();
       document.getElementById('addr-lat').value = pos.lat;
       document.getElementById('addr-lng').value = pos.lng;
+      window.updateAddrAlamatTeks(pos.lat, pos.lng);
     });
 
     window.addrMapInstance.on('click', function(e) {
       marker.setLatLng(e.latlng);
       document.getElementById('addr-lat').value = e.latlng.lat;
       document.getElementById('addr-lng').value = e.latlng.lng;
+      window.updateAddrAlamatTeks(e.latlng.lat, e.latlng.lng);
     });
 
     // Setup photon search for this map
@@ -2772,6 +2826,7 @@ function showAddressForm(addr) {
                 document.getElementById('addr-lng').value = c[0];
                 resEl.classList.add('hidden');
                 searchInput.value = div.textContent;
+                if (window.updateAddrAlamatTeks) window.updateAddrAlamatTeks(c[1], c[0]);
               };
               resEl.appendChild(div);
             });
@@ -2801,6 +2856,7 @@ function addrUseMyLocation() {
         window.addrMapMarker.setLatLng([lat, lng]);
         document.getElementById('addr-lat').value = lat;
         document.getElementById('addr-lng').value = lng;
+        if (window.updateAddrAlamatTeks) window.updateAddrAlamatTeks(lat, lng);
       }
     },
     function(err) {
@@ -2830,6 +2886,7 @@ async function submitAddress(addressId) {
   var payload = {
     label: document.getElementById('addr-label').value,
     detail: document.getElementById('addr-detail').value,
+    alamat_snapshot: document.getElementById('addr-alamat-teks') ? document.getElementById('addr-alamat-teks').value : '',
     latitude: lat,
     longitude: lng
   };

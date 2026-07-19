@@ -19,6 +19,8 @@ function addressAdd(payload, token) {
 
   var label = String(payload.label || '').trim();
   var detail = String(payload.detail || '').trim();
+  var alamat_snapshot = String(payload.alamat_snapshot || '').trim();
+  if (alamat_snapshot.length > 300) alamat_snapshot = alamat_snapshot.substring(0, 300);
   if (payload.latitude === undefined || payload.latitude === '' || payload.longitude === undefined || payload.longitude === '') {
     return { ok: false, code: 'BAD_REQUEST', error: 'Koordinat wajib diisi' };
   }
@@ -45,6 +47,7 @@ function addressAdd(payload, token) {
       member_id: member.member_id,
       label: label,
       detail: detail,
+      alamat_snapshot: alamat_snapshot,
       latitude: lat,
       longitude: lng,
       created_at: nowJkt(),
@@ -96,6 +99,11 @@ function addressUpdate(payload, token) {
       return { ok: false, code: 'BAD_REQUEST', error: 'Detail alamat harus 1-200 karakter' };
     }
     patch.detail = detail;
+  }
+  if (payload.alamat_snapshot !== undefined) {
+    var alamatSnapshot = String(payload.alamat_snapshot).trim();
+    if (alamatSnapshot.length > 300) alamatSnapshot = alamatSnapshot.substring(0, 300);
+    patch.alamat_snapshot = alamatSnapshot;
   }
   if (payload.latitude !== undefined) {
     if (payload.latitude === '') return { ok: false, code: 'BAD_REQUEST', error: 'Latitude wajib diisi' };
