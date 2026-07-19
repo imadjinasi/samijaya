@@ -837,7 +837,7 @@ function orderGetMyOrders(payload, token) {
   var session = requireSession(token);
   if (!session) return { ok: false, code: 'UNAUTHORIZED' };
 
-  var memberId = session.member.member_id;
+  var memberId = session.member_id;
 
   // Baca sheet Orders
   var dbOrders = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Orders');
@@ -924,11 +924,7 @@ function orderGetMyOrders(payload, token) {
     var oid = row[idxOrderId];
 
     var timeline = [];
-    try {
-      if (row[idxTimelineJson]) {
-        timeline = JSON.parse(row[idxTimelineJson]);
-      }
-    } catch(e) {}
+    try { if (row[idxTimelineJson]) timeline = JSON.parse(row[idxTimelineJson]); } catch(e) { timeline = []; }
 
     resultOrders.push({
       order_id: oid,
