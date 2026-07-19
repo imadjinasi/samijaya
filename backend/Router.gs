@@ -108,6 +108,9 @@ function doPost(e) {
       case 'createOrder':
         result = orderCreateOrder(payload, token);
         break;
+      case 'getMyOrders':
+        result = orderGetMyOrders(payload, token);
+        break;
 
       default:
         result = { ok: false, error: 'Unknown action: ' + action, code: 'UNKNOWN_ACTION' };

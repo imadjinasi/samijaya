@@ -2590,3 +2590,250 @@ select {
   .success-payment-box { padding: 16px 14px; }
 }
 
+
+/* ============================================================
+   PESANAN SAYA (My Orders)
+   ============================================================ */
+.screen-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+  background: var(--cream);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  animation: checkoutSlideUp 0.35s ease;
+}
+
+.screen-overlay.hidden {
+  display: none;
+}
+
+.my-order-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+}
+
+.my-order-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.my-order-id {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--espresso);
+  background: var(--latte);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.my-order-date {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.my-order-status-wrap {
+  margin-bottom: 12px;
+}
+
+.my-order-status {
+  display: inline-block;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 20px;
+}
+
+/* Badge Colors */
+.status-menunggu {
+  background: #fdf6e3;
+  color: #d97706;
+}
+.status-diproses {
+  background: #e0f2fe;
+  color: #0284c7;
+}
+.status-siap {
+  background: #dcfce7;
+  color: #16a34a;
+}
+.status-selesai {
+  background: #15803d;
+  color: #fff;
+}
+.status-batal {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.my-order-meta {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--brown);
+  margin-bottom: 8px;
+}
+
+.my-order-items-preview {
+  font-size: 0.9rem;
+  color: var(--espresso);
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--border);
+}
+
+.my-order-item-row {
+  margin-bottom: 4px;
+}
+
+.my-order-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.my-order-total {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--espresso);
+}
+
+.my-order-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.my-order-btn-detail {
+  background: transparent;
+  border: 1.5px solid var(--latte);
+  color: var(--espresso);
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: var(--r-pill);
+}
+
+.my-order-btn-wa {
+  background: var(--espresso);
+  border: 1.5px solid var(--espresso);
+  color: var(--cream);
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: var(--r-pill);
+  text-decoration: none;
+}
+
+.my-order-detail {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  display: block;
+}
+
+.my-order-detail.collapsed {
+  display: none;
+}
+
+/* Timeline */
+.my-order-timeline {
+  margin-bottom: 20px;
+  padding-left: 8px;
+}
+
+.timeline-item {
+  position: relative;
+  padding-left: 24px;
+  padding-bottom: 16px;
+}
+
+.timeline-item:last-child {
+  padding-bottom: 0;
+}
+
+.timeline-item::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 6px;
+  bottom: -6px;
+  width: 2px;
+  background: var(--latte);
+}
+
+.timeline-item:last-child::before {
+  display: none;
+}
+
+.timeline-dot {
+  position: absolute;
+  left: 0;
+  top: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--orange);
+  z-index: 2;
+}
+
+.timeline-status {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--espresso);
+}
+
+.timeline-time {
+  font-size: 0.8rem;
+  color: #888;
+}
+
+.my-order-info-group {
+  margin-bottom: 12px;
+}
+
+.my-order-info-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--brown);
+  opacity: 0.8;
+  margin-bottom: 2px;
+}
+
+.my-order-info-value {
+  font-size: 0.9rem;
+  color: var(--espresso);
+  line-height: 1.4;
+}
+
+.my-order-cost-breakdown {
+  background: var(--cream);
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 16px;
+}
+
+.my-order-cost-breakdown .cost-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: var(--brown);
+  margin-bottom: 6px;
+}
+
+.my-order-cost-breakdown .cost-row.poin {
+  color: var(--orange);
+}
+
+.my-order-cost-breakdown .cost-row.total {
+  border-top: 1px dashed var(--latte);
+  margin-top: 8px;
+  padding-top: 8px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--espresso);
+}

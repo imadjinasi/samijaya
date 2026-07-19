@@ -829,3 +829,126 @@ function orderUpdateStatus(orderId, newStatus, actorChatId) {
     return { ok: true, data: { order: order } };
   });
 }
+
+/**
+ * Mengambil daftar 20 pesanan terakhir milik member.
+ */
+function orderGetMyOrders(payload, token) {
+  var session = requireSession(token);
+  if (!session) return { ok: false, code: 'UNAUTHORIZED' };
+
+  var memberId = session.member.member_id;
+
+  // Baca sheet Orders
+  var dbOrders = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Orders');
+  if (!dbOrders) return { ok: true, data: { orders: [] } };
+  var orderData = dbOrders.getDataRange().getValues();
+  if (orderData.length < 2) return { ok: true, data: { orders: [] } };
+
+  var orderHeaders = orderData[0];
+  var orderRows = orderData.slice(1);
+
+  var idxOrderId = orderHeaders.indexOf('order_id');
+  var idxMemberId = orderHeaders.indexOf('member_id');
+  var idxTglAntar = orderHeaders.indexOf('tgl_antar');
+  var idxMetodeKirim = orderHeaders.indexOf('metode_kirim');
+  var idxMetodeBayar = orderHeaders.indexOf('metode_bayar');
+  var idxStatus = orderHeaders.indexOf('status');
+  var idxSubtotal = orderHeaders.indexOf('subtotal');
+  var idxOngkir = orderHeaders.indexOf('ongkir');
+  var idxPoinDipakai = orderHeaders.indexOf('poin_dipakai');
+  var idxTotal = orderHeaders.indexOf('total');
+  var idxCreatedAt = orderHeaders.indexOf('created_at');
+  var idxUpdatedAt = orderHeaders.indexOf('updated_at');
+  var idxTimelineJson = orderHeaders.indexOf('timeline_json');
+  var idxAlamatSnapshot = orderHeaders.indexOf('alamat_snapshot');
+  var idxLokasiPickupId = orderHeaders.indexOf('lokasi_pickup_id');
+  var idxCatatanCustomer = orderHeaders.indexOf('catatan_customer');
+
+  var userOrders = [];
+  for (var i = 0; i < orderRows.length; i++) {
+    if (orderRows[i][idxMemberId] === memberId) {
+      userOrders.push(orderRows[i]);
+    }
+  }
+
+  // Sort by created_at DESC (terbaru dulu)
+  userOrders.sort(function(a, b) {
+    var da = new Date(a[idxCreatedAt]).getTime();
+    var db = new Date(b[idxCreatedAt]).getTime();
+    return db - da;
+  });
+
+  // Batasi 20 order
+  userOrders = userOrders.slice(0, 20);
+
+  if (userOrders.length === 0) {
+    return { ok: true, data: { orders: [] } };
+  }
+
+  var orderIds = userOrders.map(function(row) { return row[idxOrderId]; });
+
+  // Baca sheet OrderItems
+  var dbItems = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('OrderItems');
+  var itemsByOrderId = {};
+  if (dbItems) {
+    var itemData = dbItems.getDataRange().getValues();
+    if (itemData.length > 1) {
+      var itemHeaders = itemData[0];
+      var itemRows = itemData.slice(1);
+
+      var iIdxOrderId = itemHeaders.indexOf('order_id');
+      var iIdxNama = itemHeaders.indexOf('nama_snapshot');
+      var iIdxHarga = itemHeaders.indexOf('harga_snapshot');
+      var iIdxQty = itemHeaders.indexOf('qty');
+      var iIdxSubtotal = itemHeaders.indexOf('subtotal');
+
+      for (var k = 0; k < itemRows.length; k++) {
+        var oid = itemRows[k][iIdxOrderId];
+        if (orderIds.indexOf(oid) !== -1) {
+          if (!itemsByOrderId[oid]) itemsByOrderId[oid] = [];
+          itemsByOrderId[oid].push({
+            nama_snapshot: itemRows[k][iIdxNama],
+            harga_snapshot: itemRows[k][iIdxHarga],
+            qty: itemRows[k][iIdxQty],
+            subtotal: itemRows[k][iIdxSubtotal]
+          });
+        }
+      }
+    }
+  }
+
+  var resultOrders = [];
+  for (var j = 0; j < userOrders.length; j++) {
+    var row = userOrders[j];
+    var oid = row[idxOrderId];
+
+    var timeline = [];
+    try {
+      if (row[idxTimelineJson]) {
+        timeline = JSON.parse(row[idxTimelineJson]);
+      }
+    } catch(e) {}
+
+    resultOrders.push({
+      order_id: oid,
+      tgl_antar: row[idxTglAntar],
+      metode_kirim: row[idxMetodeKirim],
+      metode_bayar: row[idxMetodeBayar],
+      status: row[idxStatus],
+      subtotal: row[idxSubtotal],
+      ongkir: row[idxOngkir],
+      poin_dipakai: row[idxPoinDipakai],
+      total: row[idxTotal],
+      created_at: row[idxCreatedAt] ? new Date(row[idxCreatedAt]).toISOString() : null,
+      updated_at: row[idxUpdatedAt] ? new Date(row[idxUpdatedAt]).toISOString() : null,
+      timeline: timeline,
+      alamat_snapshot: row[idxAlamatSnapshot],
+      lokasi_pickup_id: row[idxLokasiPickupId],
+      catatan_customer: row[idxCatatanCustomer],
+      items: itemsByOrderId[oid] || []
+    });
+  }
+
+  return { ok: true, data: { orders: resultOrders } };
+}

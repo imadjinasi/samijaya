@@ -217,6 +217,7 @@ function renderHeaderAuth() {
           '<span class="header-user-poin">• ' + poin + ' poin</span>' +
         '</button>' +
         '<div class="header-dropdown hidden" id="header-dropdown">' +
+          '<button onclick="showMyOrders()">Pesanan Saya</button>' +
           '<button onclick="logout()">Keluar</button>' +
         '</div>' +
       '</div>';
@@ -1273,6 +1274,7 @@ function renderShippingDetail(method) {
       html += '<div id="location-error-msg" style="display:none; font-size:0.8rem; color:var(--danger); margin-bottom:8px;"></div>';
     }
     
+    html += '<div id="checkoutMapHint" style="font-size:13-14px; color:var(--brown); padding:8px 0;">💡 Geser pin merah untuk menyesuaikan lokasi pengantaran.</div>';
     html += '<div id="delivery-map-section" class="map-container"></div>';
 
     html += '<div class="address-form">';
@@ -2034,7 +2036,7 @@ function renderSuccessScreen(data) {
   // Tombol sekunder
   html += '<div class="success-actions-secondary">';
   html += '<button class="btn-success-secondary" onclick="closeSuccessScreen()">← Kembali ke Menu</button>';
-  html += '<button class="btn-success-link" onclick="alert(\'Halaman riwayat pesanan akan tersedia di Fase 6.\')">Lihat Pesanan Saya</button>';
+  html += '<button class="btn-success-link" onclick="closeSuccessScreen(); showMyOrders();">Lihat Pesanan Saya</button>';
   html += '</div>';
 
   html += '</div>'; // success-inner
@@ -2115,3 +2117,194 @@ document.addEventListener('DOMContentLoaded', async function () {
     searchInput.addEventListener('input', onSearchInput);
   }
 });
+
+// === PESANAN SAYA ===
+function showMyOrders() {
+  if (document.getElementById('header-dropdown')) {
+    document.getElementById('header-dropdown').classList.add('hidden');
+  }
+  var el = document.getElementById('my-orders-screen');
+  if (!el) return;
+  
+  var html = '<div class="checkout-inner">';
+  html += '<div class="checkout-header">';
+  html += '<button class="checkout-back-btn" onclick="hideMyOrders()" aria-label="Kembali">';
+  html += '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>';
+  html += '</button>';
+  html += '<div class="checkout-header-title">Pesanan Saya</div>';
+  html += '</div>';
+  html += '<div id="my-orders-content" style="padding: 16px;">Memuat pesanan...</div>';
+  html += '</div>';
+  
+  el.innerHTML = html;
+  el.classList.remove('hidden');
+  el.scrollTop = 0;
+  document.body.style.overflow = 'hidden';
+  
+  loadMyOrders();
+}
+
+function hideMyOrders() {
+  var el = document.getElementById('my-orders-screen');
+  if (el) el.classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+async function loadMyOrders() {
+  if (!session.token) {
+    document.getElementById('my-orders-content').innerHTML = '<div style="text-align:center; padding: 40px 0;">Silakan login terlebih dahulu.</div>';
+    return;
+  }
+  
+  try {
+    var res = await api('getMyOrders');
+    if (res.ok) {
+      renderMyOrders(res.data.orders || []);
+    } else {
+      document.getElementById('my-orders-content').innerHTML = '<div style="text-align:center; padding: 40px 0; color:var(--danger)">Gagal memuat pesanan.</div>';
+    }
+  } catch (e) {
+    document.getElementById('my-orders-content').innerHTML = '<div style="text-align:center; padding: 40px 0; color:var(--danger)">Gagal terhubung ke server.</div>';
+  }
+}
+
+function formatDateIndo(isoString) {
+  if (!isoString) return '-';
+  var d = new Date(isoString);
+  var months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'];
+  return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+}
+
+function formatTimeIndo(isoString) {
+  if (!isoString) return '';
+  var d = new Date(isoString);
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+function renderMyOrders(orders) {
+  var container = document.getElementById('my-orders-content');
+  if (!container) return;
+  
+  if (orders.length === 0) {
+    var emptyHtml = '<div style="text-align:center; padding: 40px 20px;">';
+    emptyHtml += '<div style="font-size:3rem; margin-bottom:16px;">☕</div>';
+    emptyHtml += '<div style="font-size:1.1rem; color:var(--dark); font-weight:600; margin-bottom:8px;">Belum ada pesanan</div>';
+    emptyHtml += '<div style="color:#666; margin-bottom:24px;">Yuk pesan minuman pertamamu!</div>';
+    emptyHtml += '<button class="btn-success-primary" style="width:auto; padding:0 32px;" onclick="hideMyOrders()">Lihat Katalog</button>';
+    emptyHtml += '</div>';
+    container.innerHTML = emptyHtml;
+    return;
+  }
+  
+  var html = '';
+  for (var i = 0; i < orders.length; i++) {
+    var order = orders[i];
+    var statusClass = 'status-' + (order.status || '').toLowerCase();
+    var tglAntarStr = order.tgl_antar ? formatDateIndo(order.tgl_antar) : '';
+    
+    html += '<div class="my-order-card">';
+    html += '<div class="my-order-header">';
+    html += '<span class="my-order-id">' + escHtml(order.order_id) + '</span>';
+    html += '<span class="my-order-date">' + formatDateIndo(order.created_at) + '</span>';
+    html += '</div>';
+    
+    html += '<div class="my-order-status-wrap">';
+    html += '<span class="my-order-status ' + statusClass + '">' + escHtml(order.status) + '</span>';
+    html += '</div>';
+    
+    html += '<div class="my-order-meta">';
+    var mtdKirim = (order.metode_kirim === 'AMBIL') ? 'AMBIL SENDIRI' : order.metode_kirim;
+    html += escHtml(mtdKirim) + (tglAntarStr ? ' • ' + tglAntarStr : '');
+    html += '</div>';
+    
+    html += '<div class="my-order-items-preview">';
+    var maxItems = 2;
+    for (var j = 0; j < Math.min(order.items.length, maxItems); j++) {
+      html += '<div class="my-order-item-row">';
+      html += '<span>' + escHtml(order.items[j].nama_snapshot) + ' × ' + order.items[j].qty + '</span>';
+      html += '</div>';
+    }
+    if (order.items.length > maxItems) {
+      html += '<div class="my-order-item-row" style="color:#888; font-size:0.85rem;">+' + (order.items.length - maxItems) + ' item lainnya</div>';
+    }
+    html += '</div>';
+    
+    html += '<div class="my-order-footer">';
+    html += '<div class="my-order-total">' + formatRupiah(order.total) + '</div>';
+    html += '<div class="my-order-actions">';
+    html += '<button class="my-order-btn-detail" onclick="toggleOrderDetail(\'' + escHtml(order.order_id) + '\')">Detail</button>';
+    
+    var waToko = (catalog && catalog.settings && catalog.settings.NOMOR_WA_TOKO) ? catalog.settings.NOMOR_WA_TOKO.replace(/[^0-9]/g, '') : '6285179912504';
+    var waMsg = encodeURIComponent('Halo Samijaya, saya mau tanya pesanan ' + order.order_id);
+    html += '<a class="my-order-btn-wa" href="https://wa.me/' + waToko + '?text=' + waMsg + '" target="_blank" rel="noopener">Hubungi Samijaya</a>';
+    html += '</div>';
+    html += '</div>'; // footer
+    
+    // Expandable detail
+    html += '<div class="my-order-detail collapsed" id="my-order-detail-' + escHtml(order.order_id) + '">';
+    
+    // Timeline
+    if (order.timeline && order.timeline.length > 0) {
+      html += '<div class="my-order-timeline">';
+      for (var t = 0; t < order.timeline.length; t++) {
+        var tm = order.timeline[t];
+        html += '<div class="timeline-item">';
+        html += '<div class="timeline-dot"></div>';
+        html += '<div class="timeline-content">';
+        html += '<div class="timeline-status">' + escHtml(tm.status) + '</div>';
+        html += '<div class="timeline-time">' + formatDateIndo(tm.at) + ' ' + formatTimeIndo(tm.at) + '</div>';
+        html += '</div></div>';
+      }
+      html += '</div>';
+    }
+    
+    // Alamat / Lokasi
+    html += '<div class="my-order-info-group">';
+    html += '<div class="my-order-info-label">' + (order.metode_kirim === 'DIANTAR' ? 'Alamat Pengantaran' : 'Lokasi Pengambilan') + '</div>';
+    if (order.metode_kirim === 'DIANTAR') {
+      html += '<div class="my-order-info-value">' + escHtml(order.alamat_snapshot || '-') + '</div>';
+    } else {
+      var locName = order.lokasi_pickup_id;
+      if (catalog && catalog.pickupLocations) {
+        var foundLoc = catalog.pickupLocations.find(function(l) { return l.lokasi_id === order.lokasi_pickup_id; });
+        if (foundLoc) locName = foundLoc.nama;
+      }
+      html += '<div class="my-order-info-value">' + escHtml(locName || '-') + '</div>';
+    }
+    html += '</div>';
+    
+    if (order.catatan_customer) {
+      html += '<div class="my-order-info-group">';
+      html += '<div class="my-order-info-label">Catatan</div>';
+      html += '<div class="my-order-info-value">' + escHtml(order.catatan_customer) + '</div>';
+      html += '</div>';
+    }
+    
+    html += '<div class="my-order-info-group">';
+    html += '<div class="my-order-info-label">Metode Pembayaran</div>';
+    html += '<div class="my-order-info-value">' + escHtml(order.metode_bayar) + '</div>';
+    html += '</div>';
+    
+    // Rincian Biaya
+    html += '<div class="my-order-cost-breakdown">';
+    html += '<div class="cost-row"><span>Subtotal</span><span>' + formatRupiah(order.subtotal) + '</span></div>';
+    html += '<div class="cost-row"><span>Ongkir</span><span>' + formatRupiah(order.ongkir) + '</span></div>';
+    if (order.poin_dipakai > 0) {
+      html += '<div class="cost-row poin"><span>Potongan Poin</span><span>-' + formatRupiah(order.poin_dipakai) + '</span></div>';
+    }
+    html += '<div class="cost-row total"><span>Total Keseluruhan</span><span>' + formatRupiah(order.total) + '</span></div>';
+    html += '</div>';
+    
+    html += '</div>'; // my-order-detail
+    html += '</div>'; // my-order-card
+  }
+  
+  container.innerHTML = html;
+}
+
+function toggleOrderDetail(orderId) {
+  var detailEl = document.getElementById('my-order-detail-' + orderId);
+  if (detailEl) {
+    detailEl.classList.toggle('collapsed');
+  }
+}
