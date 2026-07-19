@@ -2833,3 +2833,129 @@ select {
   font-size: 0.95rem;
   color: var(--espresso);
 }
+
+/* ============================================================
+   POINTS SCREEN
+   ============================================================ */
+.points-saldo-card {
+  background: var(--cream);
+  border-radius: var(--r-card);
+  padding: 32px 24px;
+  text-align: center;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow);
+}
+.points-saldo-label {
+  font-size: 0.85rem;
+  color: var(--brown);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+.points-saldo-amount {
+  font-family: 'DM Serif Display', serif;
+  font-size: 48px;
+  line-height: 1.1;
+  color: var(--espresso);
+}
+.points-saldo-sub {
+  font-size: 0.8rem;
+  color: var(--brown);
+  opacity: 0.8;
+  margin-top: 4px;
+}
+.points-info-text {
+  font-size: 0.8rem;
+  color: var(--brown);
+  text-align: center;
+  margin: 0 16px 24px;
+  line-height: 1.4;
+  opacity: 0.85;
+}
+.points-empty-state {
+  text-align: center;
+  padding: 40px 20px;
+}
+.points-empty-emoji {
+  font-size: 3rem;
+  margin-bottom: 16px;
+}
+.points-empty-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--espresso);
+  margin-bottom: 24px;
+}
+.points-history-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.2rem;
+  color: var(--espresso);
+  margin: 0 8px 12px;
+}
+.points-history-list {
+  display: flex;
+  flex-direction: column;
+}
+.points-history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  background: var(--white);
+  padding: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.points-history-item:first-child {
+  border-top-left-radius: var(--r-card);
+  border-top-right-radius: var(--r-card);
+}
+.points-history-item:last-child {
+  border-bottom: none;
+  border-bottom-left-radius: var(--r-card);
+  border-bottom-right-radius: var(--r-card);
+}
+.points-history-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.points-history-type {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--espresso);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.points-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  color: var(--white);
+  font-weight: bold;
+}
+.points-icon-plus { background: var(--success); }
+.points-icon-minus { background: var(--orange); }
+.points-icon-koreksi { background: #3498db; }
+.points-history-meta {
+  font-size: 0.75rem;
+  color: #666;
+}
+.points-history-right {
+  text-align: right;
+}
+.points-history-amount {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.points-positive { color: var(--success); }
+.points-negative { color: var(--danger); }
+.points-history-balance {
+  font-size: 0.75rem;
+  color: #888;
+  margin-top: 4px;
+}

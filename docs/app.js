@@ -218,6 +218,7 @@ function renderHeaderAuth() {
         '</button>' +
         '<div class="header-dropdown hidden" id="header-dropdown">' +
           '<button onclick="showMyOrders()">Pesanan Saya</button>' +
+          '<button onclick="showMyPoints()">Poin Saya</button>' +
           '<button onclick="logout()">Keluar</button>' +
         '</div>' +
       '</div>';
@@ -2310,4 +2311,139 @@ function toggleOrderDetail(orderId) {
   if (detailEl) {
     detailEl.classList.toggle('collapsed');
   }
+}
+
+// === POIN SAYA ===
+function showMyPoints() {
+  if (document.getElementById('header-dropdown')) {
+    document.getElementById('header-dropdown').classList.add('hidden');
+  }
+  var el = document.getElementById('my-points-screen');
+  if (!el) return;
+  
+  var html = '<div class="checkout-inner">';
+  html += '<div class="checkout-header">';
+  html += '<button class="checkout-back-btn" onclick="hideMyPoints()" aria-label="Kembali">';
+  html += '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>';
+  html += '</button>';
+  html += '<div class="checkout-header-title">Poin Saya</div>';
+  html += '</div>';
+  html += '<div id="my-points-content" style="padding: 16px;">Memuat poin...</div>';
+  html += '</div>';
+  
+  el.innerHTML = html;
+  el.classList.remove('hidden');
+  el.scrollTop = 0;
+  document.body.style.overflow = 'hidden';
+  
+  loadMyPoints();
+}
+
+function hideMyPoints() {
+  var el = document.getElementById('my-points-screen');
+  if (el) el.classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+async function loadMyPoints() {
+  if (!session.token) {
+    document.getElementById('my-points-content').innerHTML = '<div style="text-align:center; padding: 40px 0;">Silakan login terlebih dahulu.</div>';
+    return;
+  }
+  
+  try {
+    var res = await api('getMyPoints');
+    if (res.ok) {
+      renderMyPoints(res.data);
+    } else {
+      document.getElementById('my-points-content').innerHTML = '<div style="text-align:center; padding: 40px 0; color:var(--danger)">Gagal memuat poin.</div>';
+    }
+  } catch (e) {
+    console.error("Error loadMyPoints:", e);
+    document.getElementById('my-points-content').innerHTML = '<div style="text-align:center; padding: 40px 0; color:var(--danger)">Gagal terhubung ke server.</div>';
+  }
+}
+
+function formatDateShort(isoString) {
+  if (!isoString) return '-';
+  var d = new Date(isoString);
+  var months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'];
+  return d.getDate() + ' ' + months[d.getMonth()] + ' ' + String(d.getFullYear()).slice(-2);
+}
+
+function renderMyPoints(data) {
+  var container = document.getElementById('my-points-content');
+  if (!container) return;
+  
+  var html = '';
+  
+  // Saldo Card
+  var saldo = data.saldo || 0;
+  html += '<div class="points-saldo-card">';
+  html += '<div class="points-saldo-label">Saldo Poin</div>';
+  html += '<div class="points-saldo-amount">' + Number(saldo).toLocaleString('id-ID') + '</div>';
+  html += '<div class="points-saldo-sub">= Rp' + Number(saldo).toLocaleString('id-ID') + '</div>';
+  html += '</div>';
+  
+  // Info text
+  html += '<div class="points-info-text">';
+  html += 'Poin bertambah dari setiap pesanan yang selesai. 1 poin = Rp1. Gunakan poin saat checkout.';
+  html += '</div>';
+  
+  // Riwayat
+  var riwayat = data.riwayat || [];
+  if (riwayat.length === 0 && saldo === 0) {
+    html += '<div class="points-empty-state">';
+    html += '<div class="points-empty-emoji">☕</div>';
+    html += '<div class="points-empty-title">Belum ada poin. Selesaikan pesanan pertamamu!</div>';
+    html += '<button class="btn-success-primary" style="width:auto; padding:0 32px;" onclick="hideMyPoints()">Ke Menu</button>';
+    html += '</div>';
+  } else {
+    html += '<div class="points-history-section">';
+    html += '<div class="points-history-title">Riwayat</div>';
+    html += '<div class="points-history-list">';
+    for (var i = 0; i < riwayat.length; i++) {
+      var rw = riwayat[i];
+      var colorClass = '';
+      var iconHtml = '';
+      var typeLabel = '';
+      
+      if (rw.tipe === 'TAMBAH') {
+        colorClass = 'points-positive';
+        iconHtml = '<span class="points-icon points-icon-plus">+</span>';
+        typeLabel = 'Poin dari pesanan';
+      } else if (rw.tipe === 'PAKAI') {
+        colorClass = 'points-negative';
+        iconHtml = '<span class="points-icon points-icon-minus">−</span>';
+        typeLabel = 'Digunakan untuk pesanan';
+      } else {
+        colorClass = (rw.jumlah > 0) ? 'points-positive' : 'points-negative';
+        if (rw.jumlah === 0) colorClass = '';
+        iconHtml = '<span class="points-icon points-icon-koreksi">↺</span>';
+        typeLabel = 'Poin dikembalikan';
+      }
+      
+      var amt = rw.jumlah;
+      var formattedAmt = (amt > 0 ? '+' : '') + Number(amt).toLocaleString('id-ID');
+      
+      html += '<div class="points-history-item">';
+      html += '<div class="points-history-left">';
+      html += '<div class="points-history-type">' + iconHtml + ' ' + escHtml(typeLabel) + '</div>';
+      var orderIdText = rw.order_id ? escHtml(rw.order_id) + ' &bull; ' : '';
+      var dateStr = formatDateShort(rw.created_at); 
+      html += '<div class="points-history-meta">' + orderIdText + dateStr + '</div>';
+      html += '</div>'; // left
+      
+      html += '<div class="points-history-right">';
+      html += '<div class="points-history-amount ' + colorClass + '">' + formattedAmt + '</div>';
+      html += '<div class="points-history-balance">Saldo: ' + Number(rw.saldo_akhir).toLocaleString('id-ID') + '</div>';
+      html += '</div>'; // right
+      
+      html += '</div>'; // item
+    }
+    html += '</div>'; // list
+    html += '</div>'; // section
+  }
+  
+  container.innerHTML = html;
 }

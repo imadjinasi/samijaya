@@ -111,6 +111,9 @@ function doPost(e) {
       case 'getMyOrders':
         result = orderGetMyOrders(payload, token);
         break;
+      case 'getMyPoints':
+        result = pointGetMyPoints(payload, token);
+        break;
 
       default:
         result = { ok: false, error: 'Unknown action: ' + action, code: 'UNKNOWN_ACTION' };
