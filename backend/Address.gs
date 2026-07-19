@@ -37,7 +37,7 @@ function addressAdd(payload, token) {
   }
 
   var addressId = '';
-  withLock(function() {
+  var lockResult = withLock(function() {
     addressId = genId('ADR');
     // Kolom: address_id | member_id | label | detail | latitude | longitude | created_at | status
     var row = {
@@ -47,11 +47,16 @@ function addressAdd(payload, token) {
       detail: detail,
       latitude: lat,
       longitude: lng,
-      created_at: getNowJkt(),
+      created_at: nowJkt(),
       status: 'aktif'
     };
     appendRowObj('MemberAddresses', row);
+    return { ok: true };
   });
+
+  if (!lockResult || !lockResult.ok) {
+    return lockResult;
+  }
 
   return {
     ok: true,
@@ -109,30 +114,29 @@ function addressUpdate(payload, token) {
     return { ok: true }; // Nothing to update
   }
 
-  var success = false;
-  withLock(function() {
+  var lockResult = withLock(function() {
     // Cari dulu apakah milik dia
     var addresses = readAll('MemberAddresses');
     var found = false;
     for (var i = 0; i < addresses.length; i++) {
       if (addresses[i].address_id === addressId) {
         if (addresses[i].member_id !== member.member_id) {
-          throw new Error('NOT_FOUND'); // Milik orang lain
+          return { ok: false, code: 'NOT_FOUND', error: 'Alamat tidak ditemukan' };
         }
         found = true;
         break;
       }
     }
     if (!found) {
-      throw new Error('NOT_FOUND');
+      return { ok: false, code: 'NOT_FOUND', error: 'Alamat tidak ditemukan' };
     }
 
-    var updated = updateRowById('MemberAddresses', 'address_id', addressId, patch);
-    if (updated) success = true;
+    updateRowById('MemberAddresses', 'address_id', addressId, patch);
+    return { ok: true };
   });
 
-  if (!success) {
-    return { ok: false, code: 'NOT_FOUND', error: 'Alamat tidak ditemukan' };
+  if (!lockResult || !lockResult.ok) {
+    return lockResult;
   }
 
   return { ok: true };
@@ -156,27 +160,26 @@ function addressDelete(payload, token) {
     return { ok: false, code: 'BAD_REQUEST', error: 'address_id dibutuhkan' };
   }
 
-  var success = false;
-  withLock(function() {
+  var lockResult = withLock(function() {
     var addresses = readAll('MemberAddresses');
     var found = false;
     for (var i = 0; i < addresses.length; i++) {
       if (addresses[i].address_id === addressId) {
         if (addresses[i].member_id !== member.member_id) {
-          throw new Error('NOT_FOUND'); // Milik orang lain
+          return { ok: false, code: 'NOT_FOUND', error: 'Alamat tidak ditemukan' };
         }
         found = true;
         break;
       }
     }
-    if (!found) throw new Error('NOT_FOUND');
+    if (!found) return { ok: false, code: 'NOT_FOUND', error: 'Alamat tidak ditemukan' };
 
-    var updated = updateRowById('MemberAddresses', 'address_id', addressId, { status: 'dihapus' });
-    if (updated) success = true;
+    updateRowById('MemberAddresses', 'address_id', addressId, { status: 'dihapus' });
+    return { ok: true };
   });
 
-  if (!success) {
-    return { ok: false, code: 'NOT_FOUND', error: 'Alamat tidak ditemukan' };
+  if (!lockResult || !lockResult.ok) {
+    return lockResult;
   }
 
   return { ok: true };
