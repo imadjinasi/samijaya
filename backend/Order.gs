@@ -569,8 +569,8 @@ function orderCreateOrder(payload, token) {
     // 10. Tulis ke sheet — semua dalam lock
     // ----------------------------------------------------------
     var now    = new Date();
-    var nowIso = now.toISOString();
-    var timeline = JSON.stringify([{ status: 'MENUNGGU', at: nowIso }]);
+    var nowStr = nowJkt();
+    var timeline = JSON.stringify([{ status: 'MENUNGGU', at: nowStr }]);
 
     // a. Orders — satu baris lengkap sesuai kolom CONTRACT
     var orderObj = {
@@ -595,8 +595,8 @@ function orderCreateOrder(payload, token) {
       status:           'MENUNGGU',
       catatan_customer: catatanFinal,
       catatan_admin:    '',
-      created_at:       nowIso,
-      updated_at:       nowIso,
+      created_at:       nowStr,
+      updated_at:       nowStr,
       timeline_json:    timeline
     };
     appendRowObj('Orders', orderObj);
@@ -625,7 +625,7 @@ function orderCreateOrder(payload, token) {
         jumlah:      -poinDipakai,
         saldo_akhir: saldoAkhir,
         keterangan:  'Redeem order ' + orderId,
-        created_at:  nowIso
+        created_at:  nowStr
       });
       updateRowById('Members', 'member_id', member.member_id, {
         total_poin: saldoAkhir
@@ -710,15 +710,15 @@ function orderUpdateStatus(orderId, newStatus, actorChatId) {
     if (!valid) return { ok: false, code: 'TRANSISI_TIDAK_VALID', error: 'Transisi ' + oldStatus + ' ke ' + newStatus + ' tidak valid' };
 
     var now = new Date();
-    var nowIso = now.toISOString();
+    var nowStr = nowJkt();
     
     var timeline = [];
     try { timeline = JSON.parse(order.timeline_json); } catch (e) {}
-    timeline.push({ status: newStatus, at: nowIso, by: actorChatId });
+    timeline.push({ status: newStatus, at: nowStr, by: actorChatId });
     
     var updateData = {
       status: newStatus,
-      updated_at: nowIso,
+      updated_at: nowStr,
       timeline_json: JSON.stringify(timeline)
     };
     
@@ -761,7 +761,7 @@ function orderUpdateStatus(orderId, newStatus, actorChatId) {
               jumlah: poinDipakai,
               saldo_akhir: saldoBaru,
               keterangan: 'Pengembalian poin dari order ' + orderId + ' batal',
-              created_at: nowIso
+              created_at: nowStr
             });
           }
         }
@@ -811,7 +811,7 @@ function orderUpdateStatus(orderId, newStatus, actorChatId) {
               jumlah: poin,
               saldo_akhir: saldoBaru,
               keterangan: 'Poin dari order ' + orderId,
-              created_at: nowIso
+              created_at: nowStr
             });
             
             poin_ditambah = poin;
@@ -898,8 +898,8 @@ function orderGetMyOrders(payload, token) {
       ongkir: row.ongkir,
       poin_dipakai: row.poin_dipakai,
       total: row.total,
-      created_at: row.created_at ? new Date(row.created_at).toISOString() : null,
-      updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : null,
+      created_at: row.created_at ? String(row.created_at) : null,
+      updated_at: row.updated_at ? String(row.updated_at) : null,
       timeline: timeline,
       alamat_snapshot: row.alamat_snapshot,
       lokasi_pickup_id: row.lokasi_pickup_id,

@@ -73,11 +73,18 @@ function readAll(sheetName) {
   // Hanya header, tidak ada baris data
   if (data.length === 1) return [];
 
+  var stringFields = ['no_hp', 'otp', 'value', 'nama_snapshot', 'catatan_customer', 'catatan_admin', 'alamat_snapshot', 'chat_id', 'lat', 'lng'];
+
   var result = [];
   for (var i = 1; i < data.length; i++) {
     var row = {};
     for (var j = 0; j < headers.length; j++) {
-      row[headers[j]] = data[i][j];
+      var key = headers[j];
+      var val = data[i][j];
+      if (stringFields.indexOf(key) !== -1) {
+        val = val == null ? '' : String(val);
+      }
+      row[key] = val;
     }
     result.push(row);
   }
@@ -236,7 +243,7 @@ function clearSettingsCache() {
  */
 function log(tipe, refId, pesan, detail) {
   appendRowObj('Logs', {
-    timestamp: Utilities.formatDate(new Date(), "Asia/Jakarta", "yyyy-MM-dd HH:mm:ss"),
+    timestamp: nowJkt(),
     tipe:        tipe,
     ref_id:      refId,
     pesan:       pesan,
@@ -338,4 +345,17 @@ function testUtil() {
   Logger.log('genId #1: ' + id1);
   Logger.log('genId #2: ' + id2);
   Logger.log('ID berbeda: ' + (id1 !== id2));
+}
+
+// ============================================================
+// 13. nowJkt()
+// ============================================================
+/**
+ * Return timestamp saat ini dalam zona waktu Asia/Jakarta.
+ * Format: yyyy-MM-dd HH:mm:ss
+ *
+ * @return {string}
+ */
+function nowJkt() {
+  return Utilities.formatDate(new Date(), "Asia/Jakarta", "yyyy-MM-dd HH:mm:ss");
 }

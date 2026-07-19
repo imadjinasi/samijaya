@@ -154,7 +154,7 @@ function authRequestOtp(payload) {
       otp_expires_at: otpExpiresAt,
       otp_used: 0,
       session_expires_at: '',
-      created_at: now.toISOString()
+      created_at: nowJkt()
     });
 
     return { ok: true };
@@ -254,7 +254,7 @@ function authVerifyOtp(payload) {
         email: '',
         total_poin: 0,
         total_belanja: 0,
-        created_at: now.toISOString(),
+        created_at: nowJkt(),
         status: 'aktif'
       };
       appendRowObj('Members', member);
