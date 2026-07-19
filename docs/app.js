@@ -2237,7 +2237,7 @@ function renderMyOrders(orders) {
     html += '<div class="my-order-actions">';
     html += '<button class="my-order-btn-detail" onclick="toggleOrderDetail(\'' + escHtml(oid) + '\')">Detail</button>';
     
-    var waToko = (catalog && catalog.settings && catalog.settings.NOMOR_WA_TOKO) ? String(catalog.settings.NOMOR_WA_TOKO).replace(/[^0-9]/g, '') : '6285179912504';
+    var waToko = (catalog && catalog.settings && catalog.settings.NOMOR_WA_TOKO) ? String(catalog.settings.NOMOR_WA_TOKO || '').replace(/[^0-9]/g, '') : '6285179912504';
     var waMsg = encodeURIComponent('Halo Samijaya, saya mau tanya pesanan ' + oid);
     html += '<a class="my-order-btn-wa" href="https://wa.me/' + waToko + '?text=' + waMsg + '" target="_blank" rel="noopener">Hubungi Samijaya</a>';
     html += '</div>';
