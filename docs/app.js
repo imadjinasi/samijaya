@@ -2220,28 +2220,27 @@ function renderMyOrders(orders) {
     html += '</div>';
     
     html += '<div class="my-order-items-preview">';
-    var maxItems = 2;
     var items = order.items || [];
-    for (var j = 0; j < Math.min(items.length, maxItems); j++) {
-      html += '<div class="my-order-item-row">';
-      html += '<span>' + escHtml(items[j].nama_snapshot || '-') + ' × ' + (items[j].qty || 1) + '</span>';
-      html += '</div>';
-    }
-    if (items.length > maxItems) {
-      html += '<div class="my-order-item-row" style="color:#888; font-size:0.85rem;">+' + (items.length - maxItems) + ' item lainnya</div>';
+    if (items.length > 2) {
+      html += '<div class="my-order-item-row">' + escHtml(items[0].nama_snapshot || '-') + ' &times; ' + (items[0].qty || 1) + '</div>';
+      html += '<div class="my-order-item-row" style="color:#888;">+ ' + (items.length - 1) + ' item lainnya</div>';
+    } else {
+      for (var j = 0; j < items.length; j++) {
+        html += '<div class="my-order-item-row">' + escHtml(items[j].nama_snapshot || '-') + ' &times; ' + (items[j].qty || 1) + '</div>';
+      }
     }
     html += '</div>';
     
-    html += '<div class="my-order-footer">';
-    html += '<div class="my-order-total">' + formatRupiah(order.total || 0) + '</div>';
+    html += '<div class="my-order-total-price">' + formatRupiah(order.total || 0) + '</div>';
+    
     html += '<div class="my-order-actions">';
     html += '<button class="my-order-btn-detail" onclick="toggleOrderDetail(\'' + escHtml(oid) + '\')">Detail</button>';
     
     var waToko = (catalog && catalog.settings && catalog.settings.NOMOR_WA_TOKO) ? String(catalog.settings.NOMOR_WA_TOKO || '').replace(/[^0-9]/g, '') : '6285179912504';
     var waMsg = encodeURIComponent('Halo Samijaya, saya mau tanya pesanan ' + oid);
-    html += '<a class="my-order-btn-wa" href="https://wa.me/' + waToko + '?text=' + waMsg + '" target="_blank" rel="noopener">Hubungi Samijaya</a>';
+    var waIcon = '<svg class="wa-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>';
+    html += '<a class="my-order-btn-wa" href="https://wa.me/' + waToko + '?text=' + waMsg + '" target="_blank" rel="noopener">' + waIcon + 'Hubungi Samijaya</a>';
     html += '</div>';
-    html += '</div>'; // footer
     
     // Expandable detail
     html += '<div class="my-order-detail collapsed" id="my-order-detail-' + escHtml(oid) + '">';

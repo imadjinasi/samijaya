@@ -2610,71 +2610,58 @@ select {
 
 .my-order-card {
   background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--r-card);
-  padding: 16px;
-  margin-bottom: 16px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+  border-radius: 16px;
+  padding: 18px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow);
+  border: none;
+  display: flex;
+  flex-direction: column;
 }
 
 .my-order-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .my-order-id {
-  font-size: 0.85rem;
+  font-family: monospace;
+  font-size: 0.9rem;
   font-weight: 700;
   color: var(--espresso);
-  background: var(--latte);
+  background: var(--cream);
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: 6px;
 }
 
 .my-order-date {
-  font-size: 0.85rem;
-  color: #666;
+  font-size: 0.8rem;
+  color: var(--brown);
 }
 
 .my-order-status-wrap {
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .my-order-status {
   display: inline-block;
   font-size: 0.85rem;
   font-weight: 700;
-  padding: 6px 12px;
-  border-radius: 20px;
+  padding: 6px 14px;
+  border-radius: var(--r-pill);
 }
 
 /* Badge Colors */
-.status-menunggu {
-  background: #fdf6e3;
-  color: #d97706;
-}
-.status-diproses {
-  background: #e0f2fe;
-  color: #0284c7;
-}
-.status-siap {
-  background: #dcfce7;
-  color: #16a34a;
-}
-.status-selesai {
-  background: #15803d;
-  color: #fff;
-}
-.status-batal {
-  background: #fee2e2;
-  color: #dc2626;
-}
+.status-menunggu { background: #FFE8CC; color: #8B4513; }
+.status-diproses { background: #FFF3B0; color: #7C5E00; }
+.status-siap { background: #C8E6C9; color: #1B5E20; }
+.status-selesai { background: var(--espresso); color: var(--cream); }
+.status-batal { background: #FFCDD2; color: #8B0000; }
 
 .my-order-meta {
   font-size: 0.85rem;
-  font-weight: 600;
   color: var(--brown);
   margin-bottom: 8px;
 }
@@ -2683,50 +2670,59 @@ select {
   font-size: 0.9rem;
   color: var(--espresso);
   margin-bottom: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px dashed var(--border);
 }
 
 .my-order-item-row {
-  margin-bottom: 4px;
+  margin-bottom: 2px;
+  line-height: 1.4;
 }
 
-.my-order-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.my-order-total {
+.my-order-total-price {
   font-weight: 700;
   font-size: 1.05rem;
   color: var(--espresso);
+  margin-bottom: 14px;
 }
 
 .my-order-actions {
   display: flex;
-  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
 }
 
 .my-order-btn-detail {
+  flex: 0 0 38%;
   background: transparent;
   border: 1.5px solid var(--latte);
   color: var(--espresso);
-  padding: 6px 12px;
+  padding: 10px 0;
   font-size: 0.85rem;
   font-weight: 600;
   border-radius: var(--r-pill);
+  text-align: center;
+  cursor: pointer;
 }
 
 .my-order-btn-wa {
+  flex: 1;
   background: var(--espresso);
-  border: 1.5px solid var(--espresso);
   color: var(--cream);
-  padding: 6px 12px;
-  font-size: 0.85rem;
+  padding: 10px 0;
+  font-size: 0.8rem;
   font-weight: 600;
   border-radius: var(--r-pill);
   text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1.5px solid var(--espresso);
+  white-space: nowrap;
+}
+.wa-icon {
+  width: 16px;
+  height: 16px;
 }
 
 .my-order-detail {
