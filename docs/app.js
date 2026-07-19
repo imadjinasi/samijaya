@@ -1954,8 +1954,7 @@ function renderSuccessScreen(data) {
 
   var html = '<div class="success-inner">';
 
-  // Watermark mascot
-  html += '<div class="success-watermark" aria-hidden="true">☕</div>';
+  // Watermark mascot removed
 
   // Ikon sukses
   html += '<div class="success-icon-wrap">';

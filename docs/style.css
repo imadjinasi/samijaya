@@ -2263,19 +2263,7 @@ select {
   gap: 0;
 }
 
-/* Watermark */
-.success-watermark {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 260px;
-  opacity: 0.035;
-  pointer-events: none;
-  z-index: 0;
-  user-select: none;
-  line-height: 1;
-}
+
 
 .success-inner > * {
   position: relative;
@@ -2353,19 +2341,19 @@ select {
 }
 
 .btn-copy-id {
-  background: rgba(255,255,255,0.15);
-  color: var(--cream);
-  border: 1px solid rgba(255,255,255,0.3);
+  background: var(--cream);
+  color: var(--espresso) !important;
+  border: 1px solid var(--cream);
   border-radius: var(--r-pill);
   padding: 5px 16px;
   font-size: 0.8rem;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   transition: background var(--ease);
 }
 
 .btn-copy-id:hover {
-  background: rgba(255,255,255,0.25);
+  background: var(--white);
 }
 
 /* Cost box */
@@ -2527,17 +2515,18 @@ select {
 .btn-success-primary {
   display: block;
   width: 100%;
+  max-width: 340px;
+  margin: 0 auto;
   background: #25D366;
   color: #fff;
   text-align: center;
   border-radius: var(--r-pill);
-  padding: 15px 20px;
-  font-size: 0.95rem;
+  padding: 12px 20px;
+  font-size: 0.9rem;
   font-weight: 700;
   text-decoration: none;
   cursor: pointer;
   transition: opacity var(--ease), transform var(--ease);
-  box-shadow: 0 4px 20px rgba(37, 211, 102, 0.3);
 }
 
 .btn-success-primary:hover {
@@ -2561,12 +2550,14 @@ select {
 
 .btn-success-secondary {
   width: 100%;
+  max-width: 340px;
+  margin: 0 auto;
   background: var(--white);
   color: var(--espresso);
   border: 1.5px solid var(--latte);
   border-radius: var(--r-pill);
-  padding: 14px 20px;
-  font-size: 0.95rem;
+  padding: 12px 20px;
+  font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
   transition: all var(--ease);
