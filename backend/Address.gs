@@ -19,6 +19,10 @@ function addressAdd(payload, token) {
 
   var label = String(payload.label || '').trim();
   var detail = String(payload.detail || '').trim();
+  if (payload.latitude === undefined || payload.latitude === '' || payload.longitude === undefined || payload.longitude === '') {
+    return { ok: false, code: 'BAD_REQUEST', error: 'Koordinat wajib diisi' };
+  }
+  
   var lat = Number(payload.latitude);
   var lng = Number(payload.longitude);
 
@@ -89,11 +93,13 @@ function addressUpdate(payload, token) {
     patch.detail = detail;
   }
   if (payload.latitude !== undefined) {
+    if (payload.latitude === '') return { ok: false, code: 'BAD_REQUEST', error: 'Latitude wajib diisi' };
     var lat = Number(payload.latitude);
     if (isNaN(lat)) return { ok: false, code: 'BAD_REQUEST', error: 'Latitude tidak valid' };
     patch.latitude = lat;
   }
   if (payload.longitude !== undefined) {
+    if (payload.longitude === '') return { ok: false, code: 'BAD_REQUEST', error: 'Longitude wajib diisi' };
     var lng = Number(payload.longitude);
     if (isNaN(lng)) return { ok: false, code: 'BAD_REQUEST', error: 'Longitude tidak valid' };
     patch.longitude = lng;

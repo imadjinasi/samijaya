@@ -2851,8 +2851,10 @@ async function submitAddress(addressId) {
   _submitting = true;
 
   var action = addressId ? 'updateAddress' : 'addAddress';
+  console.log("SUBMIT ALAMAT payload:", payload);
   try {
     var res = await api(action, payload);
+    console.log("RESPONSE:", res);
     if (res.ok) {
       alert('Alamat berhasil disimpan');
       hideAddressForm();
@@ -2861,6 +2863,7 @@ async function submitAddress(addressId) {
       alert('Gagal: ' + (res.error || 'Gagal menyimpan alamat'));
     }
   } catch (e) {
+    console.log("ERROR:", e);
     alert('Gagal terhubung ke server');
   }
 
