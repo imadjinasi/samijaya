@@ -1897,8 +1897,9 @@ async function handleCreateOrder() {
         if (errNm) errNm.style.display = 'none';
       }
 
-      var hpClean = hp.replace(/^\\+/, '');
-      if (!/^\\d{10,14}$/.test(hpClean) || (!hpClean.startsWith('08') && !hpClean.startsWith('628'))) {
+      var inputHp = String(hp).trim();
+      var testHp = inputHp.replace(/^\+/, '');
+      if (!/^\d+$/.test(testHp) || testHp.length < 10 || testHp.length > 14 || !/^(08|628)/.test(testHp)) {
         if (errHp) { errHp.textContent = "Nomor HP tidak valid"; errHp.style.display = 'block'; }
         validPenerima = false;
       } else {
