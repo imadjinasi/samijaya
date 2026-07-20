@@ -3179,8 +3179,8 @@ function renderPublicReviews() {
   if (total >= 3) {
     badgeContainer.classList.remove('hidden');
     badgeContainer.innerHTML = 
-      '<div onclick="document.getElementById(\'reviews-section\').scrollIntoView({behavior:\'smooth\'})" style="cursor:pointer; text-align:center; margin: 4px 0 16px;">' +
-        '<span style="font-weight:600; color:var(--orange); font-size: 0.95rem;">Apa kata mereka? <span style="font-size:1.1em; text-decoration:none;">&rarr;</span></span>' +
+      '<div onclick="document.getElementById(\'reviews-section\').scrollIntoView({behavior:\'smooth\'})" style="cursor:pointer; text-align:left; margin: 16px 0 0 0;">' +
+        '<span style="font-weight:600; color:var(--orange); font-size: 0.95rem;">Samijaya kata mereka <span style="font-size:1.1em; text-decoration:none;">&rarr;</span></span>' +
       '</div>';
   } else {
     badgeContainer.classList.add('hidden');

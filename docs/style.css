@@ -280,14 +280,22 @@ h1, h2, h3, .font-serif {
 }
 
 .hero-heading {
-  font-size: 1.85rem;
-  line-height: 1.2;
   color: var(--espresso);
   margin-bottom: 12px;
 }
 
-.hero-heading span {
-  color: var(--brown);
+.hero-line1 {
+  display: block;
+  font-size: clamp(1.15rem, 5.5vw, 1.85rem);
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.hero-line2 {
+  display: block;
+  font-style: italic;
+  font-size: clamp(1.15rem, 5.5vw, 1.85rem);
+  line-height: 1.35;
 }
 
 .hero-tagline {
@@ -391,7 +399,7 @@ h1, h2, h3, .font-serif {
    MENU SECTION
    ============================================================ */
 #menu-section {
-  padding: 24px 0 60px;
+  padding: 12px 0 60px;
 }
 
 .section-title {
@@ -803,6 +811,7 @@ h1, h2, h3, .font-serif {
   border-radius: 2px;
   margin: 0 auto 20px;
 }
+
 
 .modal-title {
   font-family: 'DM Serif Display', serif;
