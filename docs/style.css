@@ -303,24 +303,27 @@ h1, h2, h3, .font-serif {
    ============================================================ */
 #feature-strip {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0;
-  padding: 0 16px 8px;
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 0 16px 16px;
   background: var(--cream);
+  justify-content: space-between;
 }
 
 .feature-item {
-  flex: 1 1 50%;
+  flex: 1 1 33%;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 12px 8px;
+  text-align: center;
+  gap: 6px;
+  padding: 8px 4px;
   min-width: 0;
 }
 
 .feature-icon {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   flex-shrink: 0;
   color: var(--brown);
 }
@@ -392,7 +395,7 @@ h1, h2, h3, .font-serif {
    MENU SECTION
    ============================================================ */
 #menu-section {
-  padding: 24px 0 100px;
+  padding: 24px 0 60px;
 }
 
 .section-title {
@@ -517,6 +520,7 @@ h1, h2, h3, .font-serif {
   border-bottom: 1px solid var(--line);
   transition: opacity var(--ease);
   position: relative;
+  cursor: pointer;
 }
 
 .product-card:last-child {

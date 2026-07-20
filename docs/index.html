@@ -46,13 +46,9 @@
   <!-- ===== HERO SECTION (lega, no login) ===== -->
   <section id="hero-section">
     <div class="hero-content">
-      <h1 class="hero-heading">Halo,<br><span>mau pesan apa hari ini?</span></h1>
-      <p class="hero-tagline">Teman kopi sehari-hari.</p>
+      <h1 class="hero-heading">Halo,<br><i>ngopi</i> apa hari ini?</h1>
     </div>
   </section>
-
-  <!-- Container for Rating Badge -->
-  <div id="rating-badge-container" class="hidden"></div>
 
   <!-- ===== FEATURE STRIP ===== -->
   <section id="feature-strip">
@@ -75,22 +71,17 @@
     </div>
     <div class="feature-item">
       <svg class="feature-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="4" y="8" width="24" height="18" rx="3"/>
-        <path d="M4 14h24"/>
-        <circle cx="8" cy="22" r="1.5" fill="currentColor"/>
-      </svg>
-      <span>Harga Bersahabat</span>
-    </div>
-    <div class="feature-item">
-      <svg class="feature-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="9" cy="26" r="2.5"/>
         <circle cx="23" cy="26" r="2.5"/>
         <path d="M2 8h5l2 15h14l3-10H10"/>
         <path d="M23 13v-3a3 3 0 00-3-3h-2"/>
       </svg>
-      <span>Free Ongkir — area terdekat</span>
+      <span><strong style="display:block;font-weight:600;">Free Ongkir</strong><span style="font-size:0.7rem;opacity:0.8;">area terdekat</span></span>
     </div>
   </section>
+
+  <!-- Container for Rating Badge -->
+  <div id="rating-badge-container" class="hidden"></div>
 
   <!-- ===== BANNER SLIDER ===== -->
   <div id="banner-slider" class="hidden"></div>
@@ -128,7 +119,7 @@
   <!-- ===== REVIEWS SECTION ===== -->
   <section id="reviews-section" class="hidden">
     <h2 class="section-title" style="font-family:'DM Serif Display', serif; font-size:1.5rem; margin-bottom:4px;">Ulasan Pelanggan</h2>
-    <p class="section-subtitle" style="font-size:0.85rem; color:#666; margin-bottom:16px; padding:0 20px;">Cerita dari mereka yang sudah pesan</p>
+    <p id="reviews-summary" class="section-subtitle" style="font-size:0.85rem; color:#666; margin-bottom:16px; padding:0 20px;">Cerita dari mereka yang sudah pesan</p>
     <div id="reviews-slider" class="reviews-slider"></div>
   </section>
 
@@ -138,6 +129,11 @@
   <!-- ===== CART MODAL (bottom sheet) ===== -->
   <div id="cart-modal" class="modal-overlay hidden">
     <div class="modal-sheet"></div>
+  </div>
+
+  <!-- ===== PRODUCT DETAIL MODAL ===== -->
+  <div id="product-modal" class="modal-overlay hidden">
+    <div class="modal-sheet" style="padding:0; overflow:hidden;"></div>
   </div>
 
   <!-- ===== LOGIN MODAL ===== -->
@@ -189,6 +185,7 @@
     <div class="footer-inner">
       <img src="assets/logo-light-web.png" alt="Samijaya" class="footer-logo">
       <p class="footer-tagline">Kopi untuk perjalanan sehari-hari</p>
+      <p style="font-style:italic; font-size:0.85rem; color:var(--cream); text-align:center; margin-top:-6px; margin-bottom: 12px; opacity:0.8;">Teman aktivitas sehari-hari</p>
       <div class="footer-socials">
         <a href="https://instagram.com/kopisamijaya" target="_blank" rel="noopener" aria-label="Instagram">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
