@@ -123,10 +123,16 @@ function _notifyAdminNewOrder(orderObj) {
   var tglAntar = String(orderObj.tgl_antar || '');
   var catatan  = String(orderObj.catatan_customer || '-');
 
+  var infoPenerima = '';
+  if (String(orderObj.nama_penerima) !== String(orderObj.nama) || String(orderObj.no_hp_penerima) !== String(orderObj.no_hp)) {
+    infoPenerima = '🤝 Penerima: ' + orderObj.nama_penerima + ' (' + orderObj.no_hp_penerima + ')\n';
+  }
+
   var pesan = '🛒 <b>Order Baru!</b>\n\n'
     + '📋 ID: <code>' + orderObj.order_id + '</code>\n'
     + '👤 Nama: ' + orderObj.nama + '\n'
     + '📞 No HP: ' + orderObj.no_hp + '\n'
+    + infoPenerima
     + '📦 Metode: ' + metodeInfo + '\n'
     + '📅 Tgl Antar: ' + tglAntar + '\n'
     + '💳 Bayar: ' + orderObj.metode_bayar + '\n\n'

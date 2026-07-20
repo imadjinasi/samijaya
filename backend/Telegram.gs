@@ -628,9 +628,15 @@ function handleAdminCommand(chatId, text) {
       }
     } catch (e) { tl = '-'; }
 
+    var infoPenerima = '';
+    if (String(order.nama_penerima) !== String(order.nama) || String(order.no_hp_penerima) !== String(order.no_hp)) {
+      infoPenerima = '🤝 Penerima: ' + esc(order.nama_penerima) + ' (' + esc(order.no_hp_penerima) + ')\n';
+    }
+
     var msg = '📄 <b>Detail Order ' + oid + '</b>\n\n'
       + '👤 Nama: ' + esc(order.nama) + '\n'
       + '📞 HP: ' + esc(order.no_hp) + '\n'
+      + infoPenerima
       + '📦 Metode: ' + esc(order.metode_kirim) + '\n'
       + '📅 Tgl Antar: ' + esc(order.tgl_antar) + '\n'
       + '📍 Alamat/Tujuan: ' + esc(order.alamat_snapshot) + '\n\n'
