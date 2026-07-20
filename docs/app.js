@@ -407,47 +407,56 @@ function renderViewMode() {
 // === RENDER: PRODUCTS ===
 function renderProducts(products) {
   var grid = document.getElementById('product-grid');
-  var html = '';
-  for (var i = 0; i < products.length; i++) {
-    var p = products[i];
-    var isHabis = (Number(p.tersedia) === 0);
-    var imgHtml = '';
-    if (p.foto_url) {
-      var fullUrl = p.foto_file_id ? 'https://lh3.googleusercontent.com/d/' + escHtml(p.foto_file_id) + '=w1200' : escHtml(p.foto_url);
-      imgHtml = '<img src="' + escHtml(p.foto_url) + '" alt="' + escHtml(p.nama) + '" loading="lazy" style="cursor: pointer;" onclick="event.stopPropagation(); window.open(\'' + fullUrl + '\', \'_blank\')">';
-    } else {
-      imgHtml = '<div class="product-img-placeholder">' + ICON.bottle + '</div>';
-    }
-
-    var badgeHtml = '';
-    if (isHabis) {
-      badgeHtml = '<div class="product-badge" style="background:#8B2E2E;color:#fff;">HABIS</div>';
-    } else {
-      var badge = String(p.badge_promo || '').trim();
-      if (badge) {
-        badgeHtml = '<div class="product-badge">' + escHtml(badge) + '</div>';
-      }
-    }
-
-    var addBtn = isHabis
-      ? '<div class="btn-add btn-habis" style="background:#e0e0e0;color:#999;width:auto;padding:0 12px;border-radius:var(--r-pill);font-size:0.75rem;font-weight:bold;cursor:not-allowed;">Habis</div>'
-      : '<button class="btn-add" onclick="event.stopPropagation(); onAddToCart(\'' + escHtml(p.product_id) + '\')" aria-label="Tambah ' + escHtml(p.nama) + '">' + ICON.plus + '</button>';
-
-    html +=
-      '<div class="product-card ' + (isHabis ? 'out-of-stock' : '') + '" data-category="' + escHtml(p.kategori_id || '') + '" data-name="' + escHtml(p.nama) + '" data-pid="' + escHtml(p.product_id) + '" onclick="openProductModal(\'' + escHtml(p.product_id) + '\')">' +
-        '<div class="product-img-wrap">' +
-          imgHtml +
-        '</div>' +
-        badgeHtml +
-        '<div class="product-info">' +
-          '<div class="product-name">' + escHtml(p.nama) + '</div>' +
-          '<div class="product-desc">' + escHtml(p.deskripsi || '') + '</div>' +
-          '<div class="product-price">' + formatRupiah(p.harga) + '</div>' +
-        '</div>' +
-        addBtn +
-      '</div>';
+  var BATCH_SIZE = 12;
+  var firstBatch = products.slice(0, BATCH_SIZE);
+  var remaining = products.slice(BATCH_SIZE);
+  
+  grid.innerHTML = firstBatch.map(renderOneProduct).join('');
+  
+  if (remaining.length > 0) {
+    setTimeout(function() {
+      grid.insertAdjacentHTML('beforeend', remaining.map(renderOneProduct).join(''));
+    }, 0);
   }
-  grid.innerHTML = html;
+}
+
+function renderOneProduct(p) {
+  var isHabis = (Number(p.tersedia) === 0);
+  var imgHtml = '';
+  if (p.foto_url || p.foto_file_id) {
+    var fullUrl = p.foto_file_id ? 'https://lh3.googleusercontent.com/d/' + escHtml(p.foto_file_id) + '=w1200' : escHtml(p.foto_url);
+    var thumbUrl = p.foto_file_id ? 'https://lh3.googleusercontent.com/d/' + escHtml(p.foto_file_id) + '=w400' : escHtml(p.foto_url);
+    imgHtml = '<img src="' + thumbUrl + '" alt="' + escHtml(p.nama) + '" loading="lazy" style="cursor: pointer;" onclick="event.stopPropagation(); window.open(\'' + fullUrl + '\', \'_blank\')">';
+  } else {
+    imgHtml = '<div class="product-img-placeholder">' + ICON.bottle + '</div>';
+  }
+
+  var badgeHtml = '';
+  if (isHabis) {
+    badgeHtml = '<div class="product-badge" style="background:#8B2E2E;color:#fff;">HABIS</div>';
+  } else {
+    var badge = String(p.badge_promo || '').trim();
+    if (badge) {
+      badgeHtml = '<div class="product-badge">' + escHtml(badge) + '</div>';
+    }
+  }
+
+  var addBtn = isHabis
+    ? '<div class="btn-add btn-habis" style="background:#e0e0e0;color:#999;width:auto;padding:0 12px;border-radius:var(--r-pill);font-size:0.75rem;font-weight:bold;cursor:not-allowed;">Habis</div>'
+    : '<button class="btn-add" onclick="event.stopPropagation(); onAddToCart(\'' + escHtml(p.product_id) + '\')" aria-label="Tambah ' + escHtml(p.nama) + '">' + ICON.plus + '</button>';
+
+  return '<div class="product-card ' + (isHabis ? 'out-of-stock' : '') + '" data-category="' + escHtml(p.kategori_id || '') + '" data-name="' + escHtml(p.nama) + '" data-pid="' + escHtml(p.product_id) + '" onclick="openProductModal(\'' + escHtml(p.product_id) + '\')">' +
+    '<div class="product-img-wrap">' +
+      imgHtml +
+    '</div>' +
+    badgeHtml +
+    '<div class="product-info">' +
+      '<div class="product-name">' + escHtml(p.nama) + '</div>' +
+      '<div class="product-desc">' + escHtml(p.deskripsi || '') + '</div>' +
+      '<div class="product-price">' + formatRupiah(p.harga) + '</div>' +
+    '</div>' +
+    addBtn +
+  '</div>';
 }
 
 function onAddToCart(productId) {
