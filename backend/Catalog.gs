@@ -75,6 +75,14 @@ function catalogGetCatalog() {
   }
   products.sort(function (a, b) { return Number(a.urutan) - Number(b.urutan); });
 
+  // === BARU: attach varian per produk ===
+  var variantsGrouped = variantsGroupByProduct();
+  products = products.map(function(p) {
+    var vs = variantsGrouped[p.product_id] || [];
+    p.variants = vs; // array (kosong kalau tanpa varian)
+    p.has_variants = vs.length > 0; // helper flag untuk frontend
+    return p;
+  });
   function toHHMM(v) {
     if (v instanceof Date) return Utilities.formatDate(v, "Asia/Jakarta", "HH:mm");
     if (typeof v === 'string') return v;
