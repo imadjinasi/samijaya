@@ -1081,14 +1081,15 @@ function renderCheckoutScreen() {
   // === 4. METODE PENGIRIMAN ===
   html += '<div class="co-section" id="checkout-shipping">';
   html += '<div class="co-section-title"><span class="co-step">4</span>Metode Pengiriman</div>';
-  html += '<div class="co-pill-group" id="co-shipping-pills">';
-  html += '<button class="co-pill" data-method="AMBIL" onclick="selectShippingMethod(\'AMBIL\')">';
-  html += '📍 Ambil Sendiri</button>';
-  html += '<button class="co-pill" data-method="DIANTAR" onclick="selectShippingMethod(\'DIANTAR\')">';
-  html += '🛵 Diantar</button>';
-  html += '<button class="co-pill" data-method="OJOL" onclick="selectShippingMethod(\'OJOL\')">';
-  html += '📱 Ojol</button>';
-  html += '</div>';
+  var selAmbil = checkoutState.metode_kirim === 'AMBIL' ? 'selected' : '';
+  var selDiantar = checkoutState.metode_kirim === 'DIANTAR' ? 'selected' : '';
+  var selOjol = checkoutState.metode_kirim === 'OJOL' ? 'selected' : '';
+  html += '<select id="co-shipping-select" class="co-date-input" style="margin-bottom:10px;" onchange="selectShippingMethod(this.value)">';
+  html += '<option value="">— Pilih metode —</option>';
+  html += '<option value="AMBIL" ' + selAmbil + '>📍 Ambil Sendiri</option>';
+  html += '<option value="DIANTAR" ' + selDiantar + '>🛵 Diantar</option>';
+  html += '<option value="OJOL" ' + selOjol + '>📱 Ojol</option>';
+  html += '</select>';
   html += '<div id="co-shipping-detail"></div>';
   html += '</div>';
 
@@ -1250,11 +1251,7 @@ function selectShippingMethod(method) {
   checkoutState.ongkir = null;
   checkoutState.jarak_km = 0;
 
-  // Highlight pill
-  var pills = document.querySelectorAll('#co-shipping-pills .co-pill');
-  pills.forEach(function(p) {
-    p.classList.toggle('active', p.getAttribute('data-method').trim() === method);
-  });
+
 
   renderShippingDetail(method);
 
@@ -1353,17 +1350,19 @@ function renderShippingDetail(method) {
     
     html += '<div style="margin-top: 15px; border-top: 1px dashed var(--border); padding-top: 15px;">';
     html += '<div class="co-section-title" style="font-size:1rem; margin-bottom:10px;">Pilih Slot Waktu</div>';
-    html += '<div class="co-pill-group" id="co-slot-pills">';
+    html += '<select id="co-slot-select" class="co-date-input" style="margin-bottom:10px;" onchange="selectSlot(this.value)">';
+    html += '<option value="">— Pilih jam pengantaran —</option>';
     var slots = (catalog && catalog.deliverySlots) ? catalog.deliverySlots : [];
     for (var s = 0; s < slots.length; s++) {
       var sl = slots[s];
       if (String(sl.status).toLowerCase() === 'aktif' || String(sl.status) === '1' || sl.status === true) {
-        html += '<button class="co-pill co-slot-pill" data-slotid="' + escHtml(sl.slot_id) + '" onclick="selectSlot(\'' + escHtml(sl.slot_id) + '\')">';
+        var selected = checkoutState.slot_id === sl.slot_id ? 'selected' : '';
+        html += '<option value="' + escHtml(sl.slot_id) + '" ' + selected + '>';
         html += escHtml(sl.jam_mulai) + ' – ' + escHtml(sl.jam_selesai);
-        html += '</button>';
+        html += '</option>';
       }
     }
-    html += '</div>';
+    html += '</select>';
     html += '<div class="co-slot-note" style="font-size:0.85rem; color:#666; text-align:center; margin-top:5px;">Waktu bersifat estimasi dan dapat disesuaikan Samijaya.</div>';
     html += '</div>';
   }
@@ -1624,10 +1623,7 @@ function calculateOngkir() {
 // === SLOT ===
 function selectSlot(slotId) {
   checkoutState.slot_id = slotId;
-  var pills = document.querySelectorAll('#co-slot-pills .co-pill');
-  pills.forEach(function(p) {
-    p.classList.toggle('active', p.getAttribute('data-slotid') === slotId);
-  });
+
   updateCheckoutSummary();
 }
 
