@@ -1058,18 +1058,9 @@ function renderCheckoutScreen() {
   html += '</div>'; // co-summary-items
   html += '</div>'; // co-section
 
-  // === 2. CUSTOMER DATA ===
-  html += '<div class="co-section" id="checkout-customer">';
-  html += '<div class="co-section-title"><span class="co-step">2</span>Data Customer</div>';
-  html += '<div class="co-customer-info">';
-  html += '<div class="co-customer-row"><span class="co-label">Nama</span><span class="co-value">' + escHtml(member.nama || '-') + '</span></div>';
-  html += '<div class="co-customer-row"><span class="co-label">HP</span><span class="co-value">' + escHtml(member.no_hp || '-') + '</span></div>';
-  html += '</div>';
-  html += '</div>';
-
-  // === 3. TANGGAL PENGANTARAN ===
+  // === 2. TANGGAL PENGANTARAN ===
   html += '<div class="co-section" id="checkout-date">';
-  html += '<div class="co-section-title"><span class="co-step">3</span>Tanggal Pengantaran</div>';
+  html += '<div class="co-section-title"><span class="co-step">2</span>Tanggal Pengantaran</div>';
   html += '<div class="co-date-wrap">';
   html += '<label class="co-date-label" for="co-date-input">Tanggal Pengantaran (bukan tanggal order)</label>';
   html += '<input type="date" id="co-date-input" class="co-date-input" min="' + minStr + '" onchange="onCheckoutDateChange(this.value)">';
@@ -1078,9 +1069,9 @@ function renderCheckoutScreen() {
   html += '</div>';
   html += '</div>';
 
-  // === 4. METODE PENGIRIMAN ===
+  // === 3. METODE PENGIRIMAN ===
   html += '<div class="co-section" id="checkout-shipping">';
-  html += '<div class="co-section-title"><span class="co-step">4</span>Metode Pengiriman</div>';
+  html += '<div class="co-section-title"><span class="co-step">3</span>Metode Pengiriman</div>';
   var selAmbil = checkoutState.metode_kirim === 'AMBIL' ? 'selected' : '';
   var selDiantar = checkoutState.metode_kirim === 'DIANTAR' ? 'selected' : '';
   var selOjol = checkoutState.metode_kirim === 'OJOL' ? 'selected' : '';
@@ -1093,7 +1084,7 @@ function renderCheckoutScreen() {
   html += '<div id="co-shipping-detail"></div>';
   html += '</div>';
 
-  // === 4.5 DATA PENERIMA ===
+  // === 3.5 DATA PENERIMA ===
   var displayPenerima = (checkoutState.metode_kirim === 'DIANTAR' || checkoutState.metode_kirim === 'OJOL') ? 'block' : 'none';
   html += '<div class="co-section" id="checkout-penerima" style="display:' + displayPenerima + ';">';
   html += '<div class="co-section-title"><span class="co-step" style="visibility:hidden;"></span>Data Penerima</div>';
@@ -1115,9 +1106,9 @@ function renderCheckoutScreen() {
   html += '</div>';
   html += '</div>';
 
-  // === 5. PEMBAYARAN ===
+  // === 4. PEMBAYARAN ===
   html += '<div class="co-section" id="checkout-payment">';
-  html += '<div class="co-section-title"><span class="co-step">5</span>Pembayaran</div>';
+  html += '<div class="co-section-title"><span class="co-step">4</span>Pembayaran</div>';
   html += '<div class="co-pill-group" id="co-payment-pills">';
   html += '<button class="co-pill" data-pay="COD" onclick="selectPayment(\'COD\')">💵 COD</button>';
   html += '<button class="co-pill" data-pay="TRANSFER" onclick="selectPayment(\'TRANSFER\')">🏦 Transfer</button>';
@@ -1125,11 +1116,11 @@ function renderCheckoutScreen() {
   html += '<div id="co-payment-detail"></div>';
   html += '</div>';
 
-  // === 6. GUNAKAN POIN ===
+  // === 5. GUNAKAN POIN ===
   var pointMinRedeem = Number(settings.POINT_MIN_REDEEM || 0);
   var poinDisabled = poin < pointMinRedeem || poin <= 0;
   html += '<div class="co-section" id="checkout-points">';
-  html += '<div class="co-section-title"><span class="co-step">6</span>Gunakan Poin</div>';
+  html += '<div class="co-section-title"><span class="co-step">5</span>Gunakan Poin</div>';
   html += '<div class="co-points-wrap">';
   html += '<div class="co-points-check">';
   html += '<input type="checkbox" id="co-use-points" ' + (poinDisabled ? 'disabled' : '') + ' onchange="onTogglePoints(this.checked)">';
@@ -1145,7 +1136,7 @@ function renderCheckoutScreen() {
   html += '</div>';
   html += '</div>';
 
-  // === 7. CATATAN ===
+  // === 6. CATATAN ===
   html += '<div class="co-section" id="checkout-note">';
   html += '<div class="co-catatan-wrap" style="margin-top:0;">';
   html += '<label class="co-label" for="co-catatan">Catatan untuk Samijaya (opsional)</label>';
@@ -1153,7 +1144,7 @@ function renderCheckoutScreen() {
   html += '</div>';
   html += '</div>';
 
-  // === 8. RINGKASAN BIAYA ===
+  // === 7. RINGKASAN BIAYA ===
   html += '<div class="co-cost-summary" id="checkout-cost-summary">';
   
   html += '<div class="co-cost-header" onclick="toggleCostDetails()">';
