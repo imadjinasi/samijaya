@@ -1072,6 +1072,28 @@ function renderCheckoutScreen() {
   html += '<div id="co-shipping-detail"></div>';
   html += '</div>';
 
+  // === 4.5 DATA PENERIMA ===
+  var displayPenerima = (checkoutState.metode_kirim === 'DIANTAR' || checkoutState.metode_kirim === 'OJOL') ? 'block' : 'none';
+  html += '<div class="co-section" id="checkout-penerima" style="display:' + displayPenerima + ';">';
+  html += '<div class="co-section-title"><span class="co-step" style="visibility:hidden;"></span>Data Penerima</div>';
+  html += '<div class="co-customer-info">';
+  html += '<div class="co-points-check" style="margin-bottom: 15px;">';
+  html += '<input type="checkbox" id="co-penerima-sama" checked onchange="onTogglePenerimaSama(this.checked)">';
+  html += '<label for="co-penerima-sama">Penerima sama dengan pemesan</label>';
+  html += '</div>';
+  html += '<div id="co-penerima-readonly">';
+  html += '<div class="co-customer-row"><span class="co-label">Nama</span><span class="co-value">' + escHtml(member.nama || '-') + '</span></div>';
+  html += '<div class="co-customer-row"><span class="co-label">HP</span><span class="co-value">' + escHtml(member.no_hp || '-') + '</span></div>';
+  html += '</div>';
+  html += '<div id="co-penerima-input" style="display:none;">';
+  html += '<input type="text" id="co-penerima-nama" class="co-date-input" placeholder="Nama penerima" style="margin-bottom:5px;">';
+  html += '<div id="co-penerima-nama-error" style="color:var(--danger); font-size:0.85rem; margin-bottom:10px; display:none;"></div>';
+  html += '<input type="text" inputmode="tel" id="co-penerima-hp" class="co-date-input" placeholder="08xxxxxxxxxx" style="margin-bottom:5px;">';
+  html += '<div id="co-penerima-hp-error" style="color:var(--danger); font-size:0.85rem; margin-bottom:10px; display:none;"></div>';
+  html += '</div>';
+  html += '</div>';
+  html += '</div>';
+
   // === 5. PEMBAYARAN ===
   html += '<div class="co-section" id="checkout-payment">';
   html += '<div class="co-section-title"><span class="co-step">5</span>Pembayaran</div>';
@@ -1153,6 +1175,18 @@ function toggleOrderSummary() {
   items.classList.toggle('collapsed');
 }
 
+window.onTogglePenerimaSama = function(checked) {
+  var ro = document.getElementById('co-penerima-readonly');
+  var inp = document.getElementById('co-penerima-input');
+  if (checked) {
+    if (ro) ro.style.display = 'block';
+    if (inp) inp.style.display = 'none';
+  } else {
+    if (ro) ro.style.display = 'none';
+    if (inp) inp.style.display = 'block';
+  }
+}
+
 // === DATE ===
 function onCheckoutDateChange(val) {
   checkoutState.tgl_antar = val;
@@ -1203,6 +1237,15 @@ function selectShippingMethod(method) {
   });
 
   renderShippingDetail(method);
+
+  var penerimaSec = document.getElementById('checkout-penerima');
+  if (penerimaSec) {
+    if (method === 'DIANTAR' || method === 'OJOL') {
+      penerimaSec.style.display = 'block';
+    } else {
+      penerimaSec.style.display = 'none';
+    }
+  }
 
   if (method === 'DIANTAR') {
     setTimeout(function() {
@@ -1791,6 +1834,17 @@ function buildCreateOrderPayload() {
   // Tanggal antar dikirim untuk semua metode
   payload.tgl_antar = checkoutState.tgl_antar;
 
+  if (checkoutState.metode_kirim === 'DIANTAR' || checkoutState.metode_kirim === 'OJOL') {
+    var cb = document.getElementById('co-penerima-sama');
+    if (cb && !cb.checked) {
+      payload.nama_penerima = document.getElementById('co-penerima-nama').value.trim();
+      payload.no_hp_penerima = document.getElementById('co-penerima-hp').value.trim();
+    } else {
+      payload.nama_penerima = "";
+      payload.no_hp_penerima = "";
+    }
+  }
+
   if (checkoutState.metode_kirim === 'DIANTAR') {
     payload.address_id = checkoutState.address_id || '';
     // Susun alamat_snapshot: gabungkan label + alamat_teks + detail
@@ -1826,6 +1880,36 @@ async function handleCreateOrder() {
     if (!checkoutState.slot_id) missing.push('Slot pengiriman');
   }
   if (!checkoutState.metode_bayar) missing.push('Metode pembayaran');
+
+  if (checkoutState.metode_kirim === 'DIANTAR' || checkoutState.metode_kirim === 'OJOL') {
+    var cb = document.getElementById('co-penerima-sama');
+    if (cb && !cb.checked) {
+      var nm = document.getElementById('co-penerima-nama').value.trim();
+      var hp = document.getElementById('co-penerima-hp').value.trim();
+      var errNm = document.getElementById('co-penerima-nama-error');
+      var errHp = document.getElementById('co-penerima-hp-error');
+      var validPenerima = true;
+
+      if (nm.length < 2) {
+        if (errNm) { errNm.textContent = "Nama penerima minimal 2 karakter"; errNm.style.display = 'block'; }
+        validPenerima = false;
+      } else {
+        if (errNm) errNm.style.display = 'none';
+      }
+
+      var hpClean = hp.replace(/^\\+/, '');
+      if (!/^\\d{10,14}$/.test(hpClean) || (!hpClean.startsWith('08') && !hpClean.startsWith('628'))) {
+        if (errHp) { errHp.textContent = "Nomor HP tidak valid"; errHp.style.display = 'block'; }
+        validPenerima = false;
+      } else {
+        if (errHp) errHp.style.display = 'none';
+      }
+
+      if (!validPenerima) {
+        return;
+      }
+    }
+  }
 
   if (missing.length > 0) {
     var msgEl = document.getElementById('co-validation-msg');
@@ -1878,6 +1962,14 @@ async function handleCreateOrder() {
         errMsg = 'Alamat di luar jangkauan antar.';
       } else if (code === 'MIN_ORDER') {
         errMsg = 'Belum memenuhi minimal order untuk diantar.';
+      } else if (code === 'NAMA_PENERIMA_TIDAK_VALID') {
+        errMsg = 'Nama penerima tidak valid.';
+        var errNm = document.getElementById('co-penerima-nama-error');
+        if (errNm) { errNm.textContent = errMsg; errNm.style.display = 'block'; }
+      } else if (code === 'NO_HP_PENERIMA_TIDAK_VALID') {
+        errMsg = 'Nomor HP penerima tidak valid.';
+        var errHp = document.getElementById('co-penerima-hp-error');
+        if (errHp) { errHp.textContent = errMsg; errHp.style.display = 'block'; }
       } else if (code === 'TANGGAL_TERLALU_CEPAT') {
         errMsg = res.error || 'Tanggal pengantaran terlalu cepat, pilih tanggal lain.';
       } else if (code === 'PRODUK_TIDAK_TERSEDIA') {
