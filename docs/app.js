@@ -511,12 +511,12 @@ function openProductModal(productId) {
     } else if (p.badge_promo) {
       html += '<div class="product-badge" style="top:16px;">' + escHtml(p.badge_promo) + '</div>';
     }
-    html += '<button class="modal-close" onclick="closeProductModal()" style="top:12px; right:12px; background:var(--white); color:var(--espresso); box-shadow:0 2px 10px rgba(0,0,0,0.1); width:32px; height:32px; font-size:1.5rem; display:flex; align-items:center; justify-content:center;">&times;</button>';
+    html += '<button class="modal-close" onclick="closeProductModal()" style="position:absolute; top:8px; right:8px; margin:0; width:44px; height:44px; background:transparent; box-shadow:none; color:#ffffff; text-shadow:0 1px 4px rgba(0,0,0,0.8), 0 0 2px rgba(0,0,0,0.8); font-size:2rem; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; z-index:10;">&times;</button>';
     html += '</div>';
   } else {
     html += '<div style="position:relative; width:100%; aspect-ratio:1/1; background:var(--latte); display:flex; align-items:center; justify-content:center; color:var(--brown);">' + ICON.bottle;
     if (isHabis) html += '<div class="product-badge" style="background:#8B2E2E;color:#fff;top:16px;">HABIS</div>';
-    html += '<button class="modal-close" onclick="closeProductModal()" style="top:12px; right:12px; width:32px; height:32px; font-size:1.5rem; display:flex; align-items:center; justify-content:center;">&times;</button>';
+    html += '<button class="modal-close" onclick="closeProductModal()" style="position:absolute; top:8px; right:8px; margin:0; width:44px; height:44px; background:transparent; box-shadow:none; color:#ffffff; text-shadow:0 1px 4px rgba(0,0,0,0.8), 0 0 2px rgba(0,0,0,0.8); font-size:2rem; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; z-index:10;">&times;</button>';
     html += '</div>';
   }
 
