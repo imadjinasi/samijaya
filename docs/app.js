@@ -47,6 +47,19 @@ async function api(action, payload) {
 }
 
 // === FORMAT HELPERS ===
+function setPageTitle(screenName) {
+  var titles = {
+    'home': 'Samijaya - Teman aktivitas sehari-hari',
+    'checkout': 'Checkout · Samijaya',
+    'orders': 'Pesanan Saya · Samijaya',
+    'profile': 'Profil · Samijaya',
+    'points': 'Poin Saya · Samijaya',
+    'addresses': 'Alamat Saya · Samijaya',
+    'order-detail': 'Detail Pesanan · Samijaya'
+  };
+  document.title = titles[screenName] || 'Samijaya - Teman aktivitas sehari-hari';
+}
+
 function formatRupiah(n) {
   return 'Rp' + Number(n).toLocaleString('id-ID');
 }
@@ -672,6 +685,7 @@ async function requestOtpFlow(hp) {
 }
 
 function showOtpModal(no_hp, cooldownSeconds) {
+  setPageTitle('otp');
   var modal = document.getElementById('otp-modal');
   modal.classList.remove('hidden');
 
@@ -786,6 +800,7 @@ async function resendOtp(no_hp) {
 }
 
 function closeOtpModal() {
+  setPageTitle('home');
   document.getElementById('otp-modal').classList.add('hidden');
   if (_otpCooldownTimer) {
     clearInterval(_otpCooldownTimer);
@@ -843,6 +858,7 @@ async function handleVerifyOtp(no_hp, nama) {
 
 // === REGISTER MODAL ===
 function showRegisterModal(no_hp) {
+  setPageTitle('register');
   var modal = document.getElementById('register-modal');
   modal.classList.remove('hidden');
 
@@ -866,6 +882,7 @@ function showRegisterModal(no_hp) {
 }
 
 function closeRegisterModal() {
+  setPageTitle('home');
   document.getElementById('register-modal').classList.add('hidden');
   _pendingOtp = '';
 }
@@ -914,6 +931,7 @@ async function handleRegister(no_hp) {
 }
 
 function showOtpModalWithName(no_hp, nama, cooldownSeconds) {
+  setPageTitle('otp');
   var modal = document.getElementById('otp-modal');
   modal.classList.remove('hidden');
 
@@ -972,6 +990,7 @@ function resetCheckoutState() {
 }
 
 function openCheckoutScreen() {
+  setPageTitle('checkout');
   resetCheckoutState();
   renderCheckoutScreen();
   document.getElementById('checkout-screen').classList.remove('hidden');
@@ -981,6 +1000,7 @@ function openCheckoutScreen() {
 }
 
 function closeCheckoutScreen() {
+  setPageTitle('home');
   document.getElementById('checkout-screen').classList.add('hidden');
   document.body.style.overflow = '';
   // Re-open cart modal
@@ -2246,6 +2266,8 @@ function showMyOrders() {
   var el = document.getElementById('my-orders-screen');
   if (!el) return;
   
+  setPageTitle('orders');
+  
   var html = '<div class="checkout-inner">';
   html += '<div class="checkout-header">';
   html += '<button class="checkout-back-btn" onclick="hideMyOrders()" aria-label="Kembali">';
@@ -2268,6 +2290,7 @@ function hideMyOrders() {
   var el = document.getElementById('my-orders-screen');
   if (el) el.classList.add('hidden');
   document.body.style.overflow = '';
+  setPageTitle('home');
 }
 
 async function loadMyOrders() {
@@ -2485,7 +2508,12 @@ function renderMyOrders(orders, reviewableMap) {
 function toggleOrderDetail(orderId) {
   var detailEl = document.getElementById('my-order-detail-' + orderId);
   if (detailEl) {
-    detailEl.classList.toggle('collapsed');
+    var isCollapsed = !detailEl.classList.toggle('collapsed');
+    if (!isCollapsed) {
+      setPageTitle('order-detail');
+    } else {
+      setPageTitle('orders');
+    }
   }
 }
 
@@ -2496,6 +2524,8 @@ function showMyPoints() {
   }
   var el = document.getElementById('my-points-screen');
   if (!el) return;
+  
+  setPageTitle('points');
   
   var html = '<div class="checkout-inner">';
   html += '<div class="checkout-header">';
@@ -2519,6 +2549,7 @@ function hideMyPoints() {
   var el = document.getElementById('my-points-screen');
   if (el) el.classList.add('hidden');
   document.body.style.overflow = '';
+  setPageTitle('home');
 }
 
 async function loadMyPoints() {
@@ -2632,6 +2663,8 @@ function showProfile() {
   var el = document.getElementById('profile-screen');
   if (!el) return;
 
+  setPageTitle('profile');
+
   var html = '<div class="checkout-inner">';
   html += '<div class="checkout-header">';
   html += '<button class="checkout-back-btn" onclick="hideProfile()" aria-label="Kembali">';
@@ -2654,6 +2687,7 @@ function hideProfile() {
   var el = document.getElementById('profile-screen');
   if (el) el.classList.add('hidden');
   document.body.style.overflow = '';
+  setPageTitle('home');
 }
 
 async function loadProfile() {
@@ -2764,6 +2798,8 @@ function showMyAddresses() {
   var el = document.getElementById('address-screen');
   if (!el) return;
 
+  setPageTitle('addresses');
+
   var html = '<div class="checkout-inner">';
   html += '<div class="checkout-header">';
   html += '<button class="checkout-back-btn" onclick="hideMyAddresses()" aria-label="Kembali">';
@@ -2787,6 +2823,7 @@ function hideMyAddresses() {
   var el = document.getElementById('address-screen');
   if (el) el.classList.add('hidden');
   document.body.style.overflow = '';
+  setPageTitle('home');
 }
 
 async function loadMyAddresses() {
