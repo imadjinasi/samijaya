@@ -367,8 +367,18 @@ function handleTelegramWebhook(update) {
         return '-';
       }
 
+      function getWaButtons(ord, waUrl) {
+        var buttons = [{text: '💬 WA Customer', url: waUrl}];
+        if (String(ord.nama_penerima) !== String(ord.nama) || String(ord.no_hp_penerima) !== String(ord.no_hp)) {
+          var rawText = decodeURIComponent((waUrl.split('?text=')[1] || ''));
+          var waUrlPenerima = waLink(ord.no_hp_penerima, rawText);
+          buttons.push({text: '💬 WA Penerima', url: waUrlPenerima});
+        }
+        return buttons;
+      }
+
       function buildActionRow(ord, waUrl) {
-        var row = [{text: '💬 WA Customer', url: waUrl}];
+        var row = getWaButtons(ord, waUrl);
         if (ord.metode_kirim === 'DIANTAR' && ord.lat && ord.lng) {
           row.push({text: '🗺️ Buka Maps ke Lokasi Antar', url: 'https://www.google.com/maps/dir/?api=1&destination=' + ord.lat + ',' + ord.lng});
         }
@@ -467,7 +477,7 @@ function handleTelegramWebhook(update) {
           tgApi('editMessageText', {
             chat_id: chatMsgId, message_id: msgId,
             text: textLama + '\n\n❌ Status: BATAL',
-            reply_markup: { inline_keyboard: [[{text: '💬 WA Customer', url: waUrl}]] }
+            reply_markup: { inline_keyboard: [getWaButtons(order, waUrl)] }
           });
         }
       }
@@ -494,7 +504,7 @@ function handleTelegramWebhook(update) {
           tgApi('editMessageText', {
             chat_id: chatMsgId, message_id: msgId,
             text: textLama + '\n\n✅ Status: SELESAI (+' + tmplData.POINT + ' poin)',
-            reply_markup: { inline_keyboard: [[{text: '💬 WA Customer', url: waUrl}]] }
+            reply_markup: { inline_keyboard: [getWaButtons(order, waUrl)] }
           });
         }
       }
