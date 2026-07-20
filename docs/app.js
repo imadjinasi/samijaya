@@ -33,6 +33,49 @@ var checkoutState = {
   address_id: ''
 };
 
+// === CATALOG CACHE HELPER ===
+var CATALOG_CACHE_KEY = 'sj_catalog_v1';
+var CATALOG_CACHE_TTL_MS = 5 * 60 * 1000; // 5 menit
+
+function isHardRefresh() {
+  try {
+    var navEntries = performance.getEntriesByType('navigation');
+    if (navEntries && navEntries.length > 0) {
+      return navEntries[0].type === 'reload';
+    }
+    if (performance.navigation) {
+      return performance.navigation.type === 1;
+    }
+  } catch(e) {}
+  return false;
+}
+
+function getCatalogCache() {
+  try {
+    var raw = sessionStorage.getItem(CATALOG_CACHE_KEY);
+    if (!raw) return null;
+    var obj = JSON.parse(raw);
+    if (!obj || !obj.data || !obj.savedAt) return null;
+    var age = Date.now() - obj.savedAt;
+    return { data: obj.data, age: age, expired: age > CATALOG_CACHE_TTL_MS };
+  } catch(e) {
+    return null;
+  }
+}
+
+function setCatalogCache(data) {
+  try {
+    var payload = { data: data, savedAt: Date.now() };
+    sessionStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify(payload));
+  } catch(e) {}
+}
+
+function clearCatalogCache() {
+  try {
+    sessionStorage.removeItem(CATALOG_CACHE_KEY);
+  } catch(e) {}
+}
+
 // === API HELPER ===
 async function api(action, payload) {
   if (!payload) payload = {};
@@ -2214,20 +2257,58 @@ document.addEventListener('DOMContentLoaded', async function () {
 
   // Fetch catalog & reviews
   try {
-    var [catRes, revRes] = await Promise.all([
-      api('getCatalog'),
-      api('getPublicReviews')
-    ]);
+    var isRefresh = isHardRefresh();
+    var cache = getCatalogCache();
+    var reviewsPromise = api('getPublicReviews'); // Fetch reviews paralel
 
-    if (catRes.ok) {
-      catalog = catRes.data;
+    if (isRefresh || !cache || !cache.data) {
+      clearCatalogCache();
+      var catRes = await api('getCatalog');
+      if (catRes.ok) {
+        catalog = catRes.data;
+        setCatalogCache(catalog);
+        renderCategories(catalog.categories);
+        renderProducts(catalog.products);
+        renderViewMode();
+      } else {
+        if (cache && cache.data) {
+          catalog = cache.data;
+          renderCategories(catalog.categories);
+          renderProducts(catalog.products);
+          renderViewMode();
+        } else {
+          showToast('Gagal memuat katalog');
+        }
+      }
+    } else {
+      // Render instan dari cache
+      catalog = cache.data;
       renderCategories(catalog.categories);
       renderProducts(catalog.products);
       renderViewMode();
-    } else {
-      showToast('Gagal memuat katalog');
+      
+      // Stale-while-revalidate di background
+      if (cache.expired) {
+        api('getCatalog').then(function(catResBg) {
+          if (catResBg.ok) {
+            setCatalogCache(catResBg.data);
+            var oldCount = (catalog.products || []).length + (catalog.categories || []).length;
+            var newCount = (catResBg.data.products || []).length + (catResBg.data.categories || []).length;
+            if (oldCount !== newCount) {
+              catalog = catResBg.data;
+              renderCategories(catalog.categories);
+              renderProducts(catalog.products);
+              renderViewMode();
+            } else {
+              catalog = catResBg.data;
+            }
+          }
+        }).catch(function() {});
+      }
     }
 
+    // Tunggu fetch reviews selesai
+    var revRes = await reviewsPromise;
     if (revRes && revRes.ok) {
       publicReviewsData = revRes.data;
       renderPublicReviews();
