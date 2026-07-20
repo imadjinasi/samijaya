@@ -69,6 +69,30 @@ Key wajib (nilai default dalam kurung):
 ### 10. OrderItems
 `order_id | product_id | nama_snapshot | harga_snapshot | qty | subtotal`
 
+### Sheet ProductVariants (BARU — Fase 7.8)
+Menyimpan varian per produk. Produk bisa punya 0 varian (produk tanpa varian) atau 1-6 varian (produk bervarian, 1-axis).
+
+Kolom:
+- `variant_id` (string, unique) — ID varian, format `var-{timestamp}-{rand}`.
+- `product_id` (string) — FK ke Products.product_id.
+- `nama_axis` (string) — Nama dimensi bebas, misal "Ukuran", "Level Manis". Sama untuk semua varian dalam 1 produk.
+- `nama_varian` (string) — Nama varian, misal "350ml", "500ml".
+- `harga` (number) — Harga varian.
+- `urutan` (number) — Urutan tampil di popup varian (1, 2, 3...).
+- `aktif` (boolean) — TRUE/FALSE. Varian aktif = tampil di menu customer.
+- `created_at`, `updated_at` — Timestamp WIB "yyyy-MM-dd HH:mm:ss".
+
+### Perubahan Sheet OrderItems (Fase 7.8)
+Tambahan 3 kolom snapshot varian:
+- `variant_id` (string) — ID varian yang dipilih customer. Kosong untuk produk tanpa varian.
+- `variant_nama_snapshot` (string) — Snapshot nama varian saat order dibuat (misal "500ml").
+- `nama_axis_snapshot` (string) — Snapshot nama axis saat order dibuat (misal "Ukuran").
+
+### Perilaku sheet Products vs ProductVariants
+- Untuk produk TANPA varian: kolom `harga` di Products dipakai apa adanya.
+- Untuk produk DENGAN varian: kolom `harga` di Products dipakai sebagai "harga starting from" (untuk display kartu produk); harga aktual per order diambil dari ProductVariants.harga.
+- Sistem detect produk bervarian dengan query ProductVariants.
+
 ### 11. PointHistory
 `id | member_id | order_id | tipe | jumlah | saldo_akhir | keterangan | created_at`
 - `tipe`: `TAMBAH | PAKAI | KOREKSI`
