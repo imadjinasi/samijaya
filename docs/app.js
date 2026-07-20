@@ -2445,6 +2445,13 @@ function renderMyOrders(orders, reviewableMap) {
       html += '<div class="my-order-info-value">' + escHtml(locName || '-') + '</div>';
     }
     html += '</div>';
+
+    if (String(order.nama_penerima) !== String(order.nama) || String(order.no_hp_penerima) !== String(order.no_hp)) {
+      html += '<div class="my-order-info-group">';
+      html += '<div class="my-order-info-label">Diterima oleh</div>';
+      html += '<div class="my-order-info-value">' + escHtml(order.nama_penerima) + ' (' + escHtml(order.no_hp_penerima) + ')</div>';
+      html += '</div>';
+    }
     
     if (order.catatan_customer) {
       html += '<div class="my-order-info-group">';

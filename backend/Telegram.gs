@@ -367,18 +367,29 @@ function handleTelegramWebhook(update) {
         return '-';
       }
 
-      function getWaButtons(ord, waUrl) {
-        var buttons = [{text: '💬 WA Customer', url: waUrl}];
+      function buildPesanWaPemesan(ord, kodeStatus, tmplData) {
+        return fillTemplate(resolveTemplateCode(kodeStatus, ord.metode_kirim), tmplData);
+      }
+
+      function buildPesanWaPenerima(ord, kodeStatus, tmplData) {
+        var penerimaData = JSON.parse(JSON.stringify(tmplData));
+        penerimaData.NAMA = ord.nama_penerima;
+        penerimaData.ORDER_ID = 'atas nama ' + ord.nama + ' dengan No. Pesanan #' + ord.order_id;
+        return fillTemplate(resolveTemplateCode(kodeStatus, ord.metode_kirim), penerimaData);
+      }
+
+      function getWaButtons(ord, kodeStatus, tmplData) {
+        var pesanPemesan = buildPesanWaPemesan(ord, kodeStatus, tmplData);
+        var buttons = [{text: '💬 WA Customer', url: waLink(ord.no_hp, pesanPemesan)}];
         if (String(ord.nama_penerima) !== String(ord.nama) || String(ord.no_hp_penerima) !== String(ord.no_hp)) {
-          var rawText = decodeURIComponent((waUrl.split('?text=')[1] || ''));
-          var waUrlPenerima = waLink(ord.no_hp_penerima, rawText);
-          buttons.push({text: '💬 WA Penerima', url: waUrlPenerima});
+          var pesanPenerima = buildPesanWaPenerima(ord, kodeStatus, tmplData);
+          buttons.push({text: '💬 WA Penerima', url: waLink(ord.no_hp_penerima, pesanPenerima)});
         }
         return buttons;
       }
 
-      function buildActionRow(ord, waUrl) {
-        var row = getWaButtons(ord, waUrl);
+      function buildActionRow(ord, kodeStatus, tmplData) {
+        var row = getWaButtons(ord, kodeStatus, tmplData);
         if (ord.metode_kirim === 'DIANTAR' && ord.lat && ord.lng) {
           row.push({text: '🗺️ Buka Maps ke Lokasi Antar', url: 'https://www.google.com/maps/dir/?api=1&destination=' + ord.lat + ',' + ord.lng});
         }
@@ -394,10 +405,10 @@ function handleTelegramWebhook(update) {
           kb.push([{text: '✅ Proses', callback_data: 'st:PROSES:'+ord.order_id}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+ord.order_id}]);
         } else if (st === 'DIPROSES') {
           kb.push([{text: '🟢 Siap', callback_data: 'st:SIAP:'+ord.order_id}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+ord.order_id}]);
-          kb.push(buildActionRow(ord, waLink(ord.no_hp, fillTemplate(resolveTemplateCode('ORDER_DIPROSES', ord.metode_kirim), td))));
+          kb.push(buildActionRow(ord, 'ORDER_DIPROSES', td));
         } else if (st === 'SIAP') {
           kb.push([{text: '✅ Selesai', callback_data: 'st:SELESAI_ASK:'+ord.order_id}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+ord.order_id}]);
-          kb.push(buildActionRow(ord, waLink(ord.no_hp, fillTemplate(resolveTemplateCode('ORDER_SIAP', ord.metode_kirim), td))));
+          kb.push(buildActionRow(ord, 'ORDER_SIAP', td));
         }
         return kb;
       }
@@ -435,11 +446,10 @@ function handleTelegramWebhook(update) {
         res = orderUpdateStatus(orderId, 'DIPROSES', chatId);
         if (res && res.ok) {
           notifyOtherAdmins('DIPROSES');
-          waUrl = waLink(order.no_hp, fillTemplate(resolveTemplateCode('ORDER_DIPROSES', order.metode_kirim), tmplData));
           tgApi('editMessageText', {
             chat_id: chatMsgId, message_id: msgId,
             text: textLama + '\n\n🟡 Status: DIPROSES',
-            reply_markup: { inline_keyboard: [[{text: '🟢 Siap', callback_data: 'st:SIAP:'+orderId}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+orderId}], buildActionRow(order, waUrl)] }
+            reply_markup: { inline_keyboard: [[{text: '🟢 Siap', callback_data: 'st:SIAP:'+orderId}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+orderId}], buildActionRow(order, 'ORDER_DIPROSES', tmplData)] }
           });
         }
       }
@@ -447,11 +457,10 @@ function handleTelegramWebhook(update) {
         res = orderUpdateStatus(orderId, 'SIAP', chatId);
         if (res && res.ok) {
           notifyOtherAdmins('SIAP');
-          waUrl = waLink(order.no_hp, fillTemplate(resolveTemplateCode('ORDER_SIAP', order.metode_kirim), tmplData));
           tgApi('editMessageText', {
             chat_id: chatMsgId, message_id: msgId,
             text: textLama + '\n\n🟢 Status: SIAP',
-            reply_markup: { inline_keyboard: [[{text: '✅ Selesai', callback_data: 'st:SELESAI_ASK:'+orderId}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+orderId}], buildActionRow(order, waUrl)] }
+            reply_markup: { inline_keyboard: [[{text: '✅ Selesai', callback_data: 'st:SELESAI_ASK:'+orderId}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+orderId}], buildActionRow(order, 'ORDER_SIAP', tmplData)] }
           });
         }
       }
@@ -473,11 +482,10 @@ function handleTelegramWebhook(update) {
         res = orderUpdateStatus(orderId, 'BATAL', chatId);
         if (res && res.ok) {
           notifyOtherAdmins('BATAL');
-          waUrl = waLink(order.no_hp, fillTemplate(resolveTemplateCode('ORDER_BATAL', order.metode_kirim), tmplData));
           tgApi('editMessageText', {
             chat_id: chatMsgId, message_id: msgId,
             text: textLama + '\n\n❌ Status: BATAL',
-            reply_markup: { inline_keyboard: [getWaButtons(order, waUrl)] }
+            reply_markup: { inline_keyboard: [getWaButtons(order, 'ORDER_BATAL', tmplData)] }
           });
         }
       }
@@ -500,11 +508,10 @@ function handleTelegramWebhook(update) {
         if (res && res.ok) {
           notifyOtherAdmins('SELESAI');
           tmplData.POINT = res.data.poin_ditambah || 0;
-          waUrl = waLink(order.no_hp, fillTemplate(resolveTemplateCode('ORDER_SELESAI', order.metode_kirim), tmplData));
           tgApi('editMessageText', {
             chat_id: chatMsgId, message_id: msgId,
             text: textLama + '\n\n✅ Status: SELESAI (+' + tmplData.POINT + ' poin)',
-            reply_markup: { inline_keyboard: [getWaButtons(order, waUrl)] }
+            reply_markup: { inline_keyboard: [getWaButtons(order, 'ORDER_SELESAI', tmplData)] }
           });
         }
       }
