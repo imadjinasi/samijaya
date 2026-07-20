@@ -348,38 +348,42 @@ h1, h2, h3, .font-serif {
 }
 .tooltip-content {
   position: absolute;
-  bottom: 150%;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 150%;
+  right: -8px;
+  left: auto;
+  transform: none;
   background: var(--espresso);
   color: var(--cream);
-  padding: 6px 10px;
+  padding: 8px 10px;
   border-radius: 6px;
-  font-size: 0.65rem;
+  font-size: 12.5px;
   font-weight: 400;
-  white-space: nowrap;
+  white-space: normal;
+  width: max-content;
+  max-width: 240px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
   opacity: 0;
   visibility: hidden;
   transition: all var(--ease);
   z-index: 10;
   pointer-events: none;
+  text-align: right;
 }
 .tooltip-content::after {
   content: '';
   position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: 100%;
+  right: 10px;
+  transform: none;
   border-width: 5px;
   border-style: solid;
-  border-color: var(--espresso) transparent transparent transparent;
+  border-color: transparent transparent var(--espresso) transparent;
 }
 .tooltip-trigger:hover .tooltip-content,
 .tooltip-trigger:focus .tooltip-content {
   opacity: 1;
   visibility: visible;
-  bottom: 120%;
+  top: 130%;
 }
 
 

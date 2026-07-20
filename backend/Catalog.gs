@@ -33,7 +33,7 @@ var _CATALOG_CACHE_TTL = 300; // 5 menit
  * Return satu object berisi semua data publik.
  * Di-cache pakai CacheService 5 menit.
  *
- * @return {Object} {ok:true, data:{banners, categories, products, pickupLocations, deliverySlots, holidays, settings}}
+ * @return {Object} {ok:true, data:{categories, products, pickupLocations, deliverySlots, holidays, settings}}
  */
 function catalogGetCatalog() {
   // Cek cache dulu
@@ -47,15 +47,7 @@ function catalogGetCatalog() {
     }
   }
 
-  // --- Banners ---
-  var allBanners = readAll('Banners');
-  var banners = [];
-  for (var i = 0; i < allBanners.length; i++) {
-    if (String(allBanners[i].status) === 'aktif') {
-      banners.push(allBanners[i]);
-    }
-  }
-  banners.sort(function (a, b) { return Number(a.urutan) - Number(b.urutan); });
+
 
   // --- Categories ---
   var allCategories = readAll('Categories');
@@ -149,7 +141,6 @@ function catalogGetCatalog() {
 
   // Susun result
   var catalogData = {
-    banners: banners,
     categories: categories,
     products: products,
     pickupLocations: pickupLocations,

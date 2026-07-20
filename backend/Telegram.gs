@@ -551,7 +551,6 @@ function handleAdminCommand(chatId, text) {
       + '/tutupslot &lt;id&gt; — nonaktifkan slot antar\n'
       + '/bukaslot &lt;id&gt; — aktifkan slot antar\n'
       + '/produk &lt;id&gt; on|off — ubah ketersediaan produk\n'
-      + '/banner &lt;id&gt; on|off — ubah status banner\n'
       + '/ulasan — list 20 ulasan terbaru\n'
       + '/ulasan hide &lt;id&gt; — sembunyikan ulasan\n'
       + '/ulasan show &lt;id&gt; — tampilkan ulasan\n'
@@ -904,54 +903,6 @@ function handleAdminCommand(chatId, text) {
     return;
   }
 
-  if (cmd === '/banner') {
-    if (args.length < 1) {
-      var banners = readAll('Banners');
-      var lines = ['🖼 <b>Daftar Banner</b>\n'];
-      var max = Math.min(banners.length, 50);
-      for (var i = 0; i < max; i++) {
-        var b = banners[i];
-        lines.push('<code>' + b.banner_id + '</code> • ' + esc(b.judul) + ' • ' + b.status);
-      }
-      if (banners.length > 50) lines.push('\n<i>(Menampilkan 50 baris pertama)</i>');
-      tgSend(chatId, lines.join('\n'));
-      return;
-    }
-
-    if (args.length < 2) {
-      tgSend(chatId, '⚠️ Format: /banner &lt;id&gt; on|off\nAtau ketik /banner untuk melihat daftar.');
-      return;
-    }
-    var bid = args[0];
-    var state = args[1].toLowerCase();
-    if (state !== 'on' && state !== 'off') {
-      tgSend(chatId, '⚠️ Format: /banner &lt;id&gt; on|off');
-      return;
-    }
-
-    var banners = readAll('Banners');
-    var banner = null;
-    for (var i = 0; i < banners.length; i++) {
-      if (String(banners[i].banner_id) === bid) {
-        banner = banners[i];
-        break;
-      }
-    }
-    if (!banner) {
-      tgSend(chatId, '❌ Banner tidak ditemukan.');
-      return;
-    }
-
-    var status = state === 'on' ? 'aktif' : 'nonaktif';
-    withLock(function() {
-      updateRowById('Banners', 'banner_id', bid, { status: status });
-    });
-    clearSettingsCache();
-    CacheService.getScriptCache().remove('catalog_cache');
-    
-    tgSend(chatId, '🖼 Banner <b>' + esc(banner.judul) + '</b> → ' + status);
-    return;
-  }
 
   if (cmd === '/ulasan') {
     if (args.length === 0) {
