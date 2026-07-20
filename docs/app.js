@@ -3179,7 +3179,7 @@ function renderPublicReviews() {
   if (total >= 3) {
     badgeContainer.classList.remove('hidden');
     badgeContainer.innerHTML = 
-      '<div onclick="document.getElementById(\'reviews-section\').scrollIntoView({behavior:\'smooth\'})" style="cursor:pointer; text-align:left; margin: 8px 0 0 0;">' +
+      '<div onclick="document.getElementById(\'reviews-section\').scrollIntoView({behavior:\'smooth\'})" style="cursor:pointer; text-align:left; margin: 0;">' +
         '<span style="font-weight:600; color:var(--orange); font-size: 0.85rem;">Samijaya kata mereka <span style="font-size:1.1em; text-decoration:none;">&rarr;</span></span>' +
       '</div>';
   } else {
@@ -3242,3 +3242,26 @@ function renderPublicReviews() {
     }
   }, 5000);
 }
+
+// === TOOLTIP POSITIONING ===
+document.addEventListener('DOMContentLoaded', function() {
+  var triggers = document.querySelectorAll('.tooltip-trigger');
+  triggers.forEach(function(trigger) {
+    function adjustTooltip() {
+      var content = trigger.querySelector('.tooltip-content');
+      if (content) {
+        content.style.transform = 'none';
+        var rect = content.getBoundingClientRect();
+        if (rect.left < 12) {
+          var shift = 12 - rect.left;
+          content.style.transform = 'translateX(' + shift + 'px)';
+        }
+      }
+    }
+    trigger.addEventListener('mouseenter', adjustTooltip);
+    trigger.addEventListener('focus', adjustTooltip);
+    trigger.addEventListener('touchstart', function() {
+      setTimeout(adjustTooltip, 10);
+    }, {passive: true});
+  });
+});

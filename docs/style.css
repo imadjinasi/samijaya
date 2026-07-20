@@ -365,18 +365,15 @@ h1, h2, h3, .font-serif {
   font-size: 12px !important;
   font-weight: 400 !important;
   line-height: 1.4 !important;
-  white-space: normal !important;
-  word-wrap: break-word !important;
+  white-space: nowrap !important;
   box-sizing: border-box !important;
   width: max-content;
-  max-width: 240px !important;
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
   opacity: 0;
   visibility: hidden;
-  transition: all var(--ease);
+  transition: opacity var(--ease), top var(--ease);
   z-index: 10;
   pointer-events: none;
-  text-align: right !important;
 }
 .tooltip-content::after {
   content: '';
