@@ -254,7 +254,7 @@ h1, h2, h3, .font-serif {
 #hero-section {
   position: relative;
   background: var(--cream);
-  padding: 56px 24px 48px;
+  padding: 56px 24px 24px;
   overflow: hidden;
   /* Watermark mascot as background — fully visible, never cropped */
   background-image: url('assets/logo-dark.png');
@@ -281,21 +281,19 @@ h1, h2, h3, .font-serif {
 
 .hero-heading {
   color: var(--espresso);
-  margin-bottom: 12px;
+  margin-bottom: 0;
 }
 
-.hero-line1 {
+.hero-line1,
+.hero-line2 {
   display: block;
   font-size: clamp(1.15rem, 5.5vw, 1.85rem);
   line-height: 1.35;
   white-space: nowrap;
 }
 
-.hero-line2 {
-  display: block;
+.hero-line1 em {
   font-style: italic;
-  font-size: clamp(1.15rem, 5.5vw, 1.85rem);
-  line-height: 1.35;
 }
 
 .hero-tagline {
