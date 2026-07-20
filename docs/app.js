@@ -7,8 +7,6 @@
 var catalog = null;
 var cart = [];
 var session = { token: null, member: null };
-var _bannerInterval = null;
-var _bannerIndex = 0;
 var _activeCategory = null; // null = Semua
 var _viewMode = 'list';
 var _otpCooldownTimer = null;
@@ -277,77 +275,6 @@ function closeLoginModal() {
   document.getElementById('login-modal').classList.add('hidden');
 }
 
-// === RENDER: BANNERS ===
-function renderBanners(banners) {
-  var slider = document.getElementById('banner-slider');
-  if (!banners || banners.length === 0) {
-    slider.classList.add('hidden');
-    stopBannerAutoScroll();
-    return;
-  }
-  slider.classList.remove('hidden');
-
-  var trackHtml = '<div class="banner-track" id="banner-track">';
-  for (var i = 0; i < banners.length; i++) {
-    var fotoId = String(banners[i].foto_file_id || '').trim();
-    var imgUrl = fotoId
-      ? 'https://drive.google.com/thumbnail?id=' + fotoId + '&sz=w800'
-      : '';
-    trackHtml += '<div class="banner-slide">';
-    if (imgUrl) {
-      trackHtml += '<img src="' + imgUrl + '" alt="' + escHtml(banners[i].judul || '') + '" loading="lazy">';
-    }
-    trackHtml += '</div>';
-  }
-  trackHtml += '</div>';
-
-  var dotsHtml = '<div class="banner-dots" id="banner-dots">';
-  for (var i = 0; i < banners.length; i++) {
-    dotsHtml += '<button class="banner-dot' + (i === 0 ? ' active' : '') + '" data-idx="' + i + '"></button>';
-  }
-  dotsHtml += '</div>';
-
-  slider.innerHTML = trackHtml + dotsHtml;
-
-  _bannerIndex = 0;
-  startBannerAutoScroll(banners.length);
-
-  // Dot clicks
-  var dots = document.querySelectorAll('.banner-dot');
-  dots.forEach(function (dot) {
-    dot.addEventListener('click', function () {
-      _bannerIndex = Number(this.getAttribute('data-idx'));
-      slideBannerTo(_bannerIndex, banners.length);
-    });
-  });
-}
-
-function slideBannerTo(idx, total) {
-  var track = document.getElementById('banner-track');
-  if (!track) return;
-  track.style.transform = 'translateX(-' + (idx * 100) + '%)';
-  var dots = document.querySelectorAll('.banner-dot');
-  dots.forEach(function (d, i) {
-    d.classList.toggle('active', i === idx);
-  });
-}
-
-function startBannerAutoScroll(total) {
-  stopBannerAutoScroll();
-  if (total <= 1) return;
-  _bannerInterval = setInterval(function () {
-    if (document.hidden) return;
-    _bannerIndex = (_bannerIndex + 1) % total;
-    slideBannerTo(_bannerIndex, total);
-  }, 4000);
-}
-
-function stopBannerAutoScroll() {
-  if (_bannerInterval) {
-    clearInterval(_bannerInterval);
-    _bannerInterval = null;
-  }
-}
 
 // === RENDER: CATEGORIES ===
 function renderCategories(categories) {
@@ -2194,7 +2121,6 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     if (catRes.ok) {
       catalog = catRes.data;
-      renderBanners(catalog.banners);
       renderCategories(catalog.categories);
       renderProducts(catalog.products);
       renderViewMode();
@@ -3253,9 +3179,8 @@ function renderPublicReviews() {
   if (total >= 3) {
     badgeContainer.classList.remove('hidden');
     badgeContainer.innerHTML = 
-      '<div class="rating-badge" onclick="document.getElementById(\'reviews-section\').scrollIntoView({behavior:\'smooth\'})" style="display:flex; justify-content:center; align-items:center;">' +
-        '<span style="font-weight:600;">Apa kata mereka? ★ ' + rata.toFixed(1) + '</span>' +
-        '<span style="font-size:0.75rem; opacity:0.8; margin-left:6px;">(lihat ulasan)</span>' +
+      '<div onclick="document.getElementById(\'reviews-section\').scrollIntoView({behavior:\'smooth\'})" style="cursor:pointer; text-align:center; margin: 4px 0 16px;">' +
+        '<span style="font-weight:600; color:var(--orange); font-size: 0.95rem;">Apa kata mereka? <span style="font-size:1.1em; text-decoration:none;">&rarr;</span></span>' +
       '</div>';
   } else {
     badgeContainer.classList.add('hidden');
