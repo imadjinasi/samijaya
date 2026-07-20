@@ -301,6 +301,9 @@ function orderCreateOrder(payload, token) {
       productMap[String(allProducts[i].product_id)] = allProducts[i];
     }
 
+    // Ambil data varian grouped sekali untuk semua produk aktif
+    var variantsGrouped = variantsGroupByProduct();
+
     var lineItems = [];
     var subtotal  = 0; // subtotal = harga produk saja, TIDAK termasuk ongkir
     for (var i = 0; i < items.length; i++) {
@@ -313,16 +316,49 @@ function orderCreateOrder(payload, token) {
         return { ok: false, code: 'PRODUK_TIDAK_TERSEDIA', error: prodName + ' tidak tersedia' };
       }
 
-      var harga        = Number(prod.harga);  // harga dari sheet
-      var subtotalItem = harga * qty;
+      var hargaItem = 0;
+      var varIdSnapshot = '';
+      var varNamaSnapshot = '';
+      var axisNamaSnapshot = '';
+      
+      var variantsForThisProduct = variantsGrouped[pid] || [];
+      var isProductBervarian = variantsForThisProduct.length > 0;
+      
+      if (items[i].variant_id) {
+        var varian = variantFindById(items[i].variant_id);
+        if (!varian) {
+          return { ok: false, code: 'VARIANT_NOT_FOUND', error: 'Varian tidak ditemukan' };
+        }
+        if (String(varian.aktif) !== 'TRUE' && String(varian.aktif) !== 'true' && varian.aktif !== true) {
+          return { ok: false, code: 'VARIANT_INACTIVE', error: 'Varian "' + varian.nama_varian + '" sedang tidak tersedia' };
+        }
+        if (String(varian.product_id) !== pid) {
+          return { ok: false, code: 'VARIANT_MISMATCH', error: 'Varian tidak sesuai dengan produk' };
+        }
+        
+        hargaItem = Number(varian.harga) || 0;
+        varIdSnapshot = String(varian.variant_id);
+        varNamaSnapshot = String(varian.nama_varian);
+        axisNamaSnapshot = String(varian.nama_axis || '');
+      } else {
+        if (isProductBervarian) {
+          return { ok: false, code: 'VARIANT_REQUIRED', error: 'Produk "' + prod.nama + '" wajib pilih varian' };
+        }
+        hargaItem = Number(prod.harga) || 0;
+      }
+
+      var subtotalItem = hargaItem * qty;
       subtotal += subtotalItem;
 
       lineItems.push({
         product_id:     pid,
         nama_snapshot:  String(prod.nama),
-        harga_snapshot: harga,
+        harga_snapshot: hargaItem,
         qty:            qty,
-        subtotal:       subtotalItem
+        subtotal:       subtotalItem,
+        variant_id:     varIdSnapshot,
+        variant_nama_snapshot: varNamaSnapshot,
+        nama_axis_snapshot: axisNamaSnapshot
       });
     }
 
@@ -649,7 +685,10 @@ function orderCreateOrder(payload, token) {
         nama_snapshot:  lineItems[i].nama_snapshot,
         harga_snapshot: lineItems[i].harga_snapshot,
         qty:            lineItems[i].qty,
-        subtotal:       lineItems[i].subtotal
+        subtotal:       lineItems[i].subtotal,
+        variant_id:     lineItems[i].variant_id,
+        variant_nama_snapshot: lineItems[i].variant_nama_snapshot,
+        nama_axis_snapshot: lineItems[i].nama_axis_snapshot
       });
     }
 

@@ -2,7 +2,7 @@
 
 ## 1. Aturan Umum
 - Database: Google Spreadsheet, ID dibaca dari Script Properties `SPREADSHEET_ID`.
-- Semua response API: `{ok:true, data:...}` atau `{ok:false, error:"pesan", code:"KODE"}`. (Error codes baru: `NAMA_PENERIMA_TIDAK_VALID`, `NO_HP_PENERIMA_TIDAK_VALID`).
+- Semua response API: `{ok:true, data:...}` atau `{ok:false, error:"pesan", code:"KODE"}`. (Error codes baru: `NAMA_PENERIMA_TIDAK_VALID`, `NO_HP_PENERIMA_TIDAK_VALID`, `VARIANT_REQUIRED`, `VARIANT_NOT_FOUND`, `VARIANT_INACTIVE`, `VARIANT_MISMATCH`).
 - Request FE→BE: HTTP POST, `Content-Type: text/plain`, body JSON string `{action, payload, token?}`.
 - Status order (enum, dilarang menambah): `MENUNGGU, DIPROSES, SIAP, DIANTAR, SELESAI, BATAL`.
 - `order_id`: `SJ` + YYMMDD + 3 digit urut harian (contoh `SJ260717001`), digenerate DI DALAM lock.
