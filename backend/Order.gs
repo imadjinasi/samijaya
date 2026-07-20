@@ -470,7 +470,11 @@ function orderCreateOrder(payload, token) {
         };
       }
 
-      ongkir       = Math.ceil(jarakTerkoreksi) * ongkirPerKm;
+      if (jarakTerkoreksi <= 5) {
+        ongkir = 0;
+      } else {
+        ongkir = Math.round(jarakTerkoreksi) * ongkirPerKm;
+      }
       jarakKmFinal = Math.round(jarakTerkoreksi * 100) / 100; // 2 desimal
       latFinal     = latTujuan;
       lngFinal     = lngTujuan;

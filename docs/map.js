@@ -153,7 +153,12 @@ function hitungOngkir(jarakKmLurus) {
   var tarif = Number(settings.ONGKIR_PER_KM || 1000);
   
   var jarak_terkoreksi = jarakKmLurus * faktor;
-  var ongkir = Math.ceil(jarak_terkoreksi) * tarif;
+  var ongkir;
+  if (jarak_terkoreksi <= 5) {
+    ongkir = 0;
+  } else {
+    ongkir = Math.round(jarak_terkoreksi) * tarif;
+  }
   
   return {
     jarak_km: Number(jarak_terkoreksi.toFixed(2)),
