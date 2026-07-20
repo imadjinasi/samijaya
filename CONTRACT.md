@@ -2,7 +2,7 @@
 
 ## 1. Aturan Umum
 - Database: Google Spreadsheet, ID dibaca dari Script Properties `SPREADSHEET_ID`.
-- Semua response API: `{ok:true, data:...}` atau `{ok:false, error:"pesan", code:"KODE"}`.
+- Semua response API: `{ok:true, data:...}` atau `{ok:false, error:"pesan", code:"KODE"}`. (Error codes baru: `NAMA_PENERIMA_TIDAK_VALID`, `NO_HP_PENERIMA_TIDAK_VALID`).
 - Request FE→BE: HTTP POST, `Content-Type: text/plain`, body JSON string `{action, payload, token?}`.
 - Status order (enum, dilarang menambah): `MENUNGGU, DIPROSES, SIAP, DIANTAR, SELESAI, BATAL`.
 - `order_id`: `SJ` + YYMMDD + 3 digit urut harian (contoh `SJ260717001`), digenerate DI DALAM lock.
@@ -59,10 +59,12 @@ Key wajib (nilai default dalam kurung):
 `tanggal | keterangan`
 
 ### 9. Orders
-`order_id | member_id | nama | no_hp | tgl_antar | metode_kirim | lokasi_pickup_id | address_id | alamat_snapshot | lat | lng | jarak_km | ongkir | slot_id | subtotal | poin_dipakai | total | metode_bayar | status | catatan_customer | catatan_admin | created_at | updated_at | timeline_json`
+`order_id | member_id | nama | no_hp | tgl_antar | metode_kirim | lokasi_pickup_id | address_id | alamat_snapshot | lat | lng | jarak_km | ongkir | slot_id | subtotal | poin_dipakai | total | metode_bayar | status | catatan_customer | catatan_admin | created_at | updated_at | timeline_json | nama_penerima | no_hp_penerima`
 
 - `metode_kirim`: `AMBIL | DIANTAR | OJOL`
 - `metode_bayar`: `COD | TRANSFER`
+- `nama_penerima`: string; nama orang yang akan menerima pesanan. Kalau customer tidak specify, server isi dengan snapshot nama pemesan.
+- `no_hp_penerima`: string; nomor HP penerima. Aturan validasi: hanya digit setelah trim, panjang 10-14, awalan 08/628/62 dgn digit ke-3 = 8. Kalau customer tidak specify, server isi dengan snapshot no_hp pemesan.
 
 ### 10. OrderItems
 `order_id | product_id | nama_snapshot | harga_snapshot | qty | subtotal`

@@ -527,6 +527,34 @@ function orderCreateOrder(payload, token) {
     }
 
     // ----------------------------------------------------------
+    // 6. Validasi Penerima (DIANTAR / OJOL)
+    // ----------------------------------------------------------
+    var namaPenerimaFinal = String(member.nama);
+    var noHpPenerimaFinal = String(member.no_hp);
+
+    if (metodeKirim === 'DIANTAR' || metodeKirim === 'OJOL') {
+      var rawNamaPenerima = payload.nama_penerima;
+      var rawNoHpPenerima = payload.no_hp_penerima;
+
+      if (rawNamaPenerima !== undefined && rawNamaPenerima !== null && String(rawNamaPenerima).trim() !== '') {
+        var strNama = String(rawNamaPenerima).trim();
+        if (strNama.length < 2) {
+          return { ok: false, code: 'NAMA_PENERIMA_TIDAK_VALID', error: 'Nama penerima tidak valid' };
+        }
+        namaPenerimaFinal = strNama;
+      }
+
+      if (rawNoHpPenerima !== undefined && rawNoHpPenerima !== null && String(rawNoHpPenerima).trim() !== '') {
+        var inputHp = String(rawNoHpPenerima).trim();
+        var testHp = inputHp.replace(/^\+/, '');
+        if (!/^\d+$/.test(testHp) || testHp.length < 10 || testHp.length > 14 || !/^(08|628)/.test(testHp)) {
+          return { ok: false, code: 'NO_HP_PENERIMA_TIDAK_VALID', error: 'Nomor HP penerima tidak valid' };
+        }
+        noHpPenerimaFinal = inputHp;
+      }
+    }
+
+    // ----------------------------------------------------------
     // 7. Hitung poin
     //    subtotal = harga produk saja (TIDAK termasuk ongkir)
     //    total    = subtotal + ongkir − poin_dipakai
@@ -601,7 +629,9 @@ function orderCreateOrder(payload, token) {
       catatan_admin:    '',
       created_at:       nowStr,
       updated_at:       nowStr,
-      timeline_json:    timeline
+      timeline_json:    timeline,
+      nama_penerima:    namaPenerimaFinal,
+      no_hp_penerima:   noHpPenerimaFinal
     };
     appendRowObj('Orders', orderObj);
 

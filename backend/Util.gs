@@ -73,7 +73,7 @@ function readAll(sheetName) {
   // Hanya header, tidak ada baris data
   if (data.length === 1) return [];
 
-  var stringFields = ['no_hp', 'otp', 'value', 'nama_snapshot', 'catatan_customer', 'catatan_admin', 'alamat_snapshot', 'chat_id', 'lat', 'lng'];
+  var stringFields = ['no_hp', 'otp', 'value', 'nama_snapshot', 'catatan_customer', 'catatan_admin', 'alamat_snapshot', 'chat_id', 'lat', 'lng', 'nama_penerima', 'no_hp_penerima'];
 
   var result = [];
   for (var i = 1; i < data.length; i++) {

@@ -105,7 +105,7 @@ var SHEET_DEFS = [
      'lokasi_pickup_id', 'address_id', 'alamat_snapshot', 'lat', 'lng',
      'jarak_km', 'ongkir', 'slot_id', 'subtotal', 'poin_dipakai', 'total',
      'metode_bayar', 'status', 'catatan_customer', 'catatan_admin',
-     'created_at', 'updated_at', 'timeline_json'],
+     'created_at', 'updated_at', 'timeline_json', 'nama_penerima', 'no_hp_penerima'],
     null
   ],
 
