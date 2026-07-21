@@ -952,6 +952,15 @@ function orderGetMyOrders(payload, token) {
     var timeline = [];
     try { if (row.timeline_json) timeline = JSON.parse(row.timeline_json); } catch(e) { timeline = []; }
 
+    var namaPemesan = String(row.nama || '');
+    var noHpPemesan = String(row.no_hp || '');
+    var namaPenerima = String(row.nama_penerima || '');
+    var noHpPenerima = String(row.no_hp_penerima || '');
+    
+    // Fallback untuk order lama yang kolom penerima-nya kosong
+    if (!namaPenerima) namaPenerima = namaPemesan;
+    if (!noHpPenerima) noHpPenerima = noHpPemesan;
+
     resultOrders.push({
       order_id: oid,
       tgl_antar: row.tgl_antar,
@@ -968,6 +977,10 @@ function orderGetMyOrders(payload, token) {
       alamat_snapshot: row.alamat_snapshot,
       lokasi_pickup_id: row.lokasi_pickup_id,
       catatan_customer: row.catatan_customer,
+      nama: namaPemesan,
+      no_hp: noHpPemesan,
+      nama_penerima: namaPenerima,
+      no_hp_penerima: noHpPenerima,
       items: itemsByOrderId[oid] || [],
       review: reviewsByOrderId[oid] || null
     });
