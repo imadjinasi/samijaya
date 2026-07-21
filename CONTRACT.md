@@ -60,7 +60,7 @@ Key wajib (nilai default dalam kurung):
 `tanggal | keterangan`
 
 ### 9. Orders
-`order_id | member_id | nama | no_hp | tgl_antar | metode_kirim | lokasi_pickup_id | address_id | alamat_snapshot | lat | lng | jarak_km | ongkir | slot_id | subtotal | poin_dipakai | total | metode_bayar | status | catatan_customer | catatan_admin | created_at | updated_at | timeline_json | nama_penerima | no_hp_penerima | status_updated_at | promo_id | promo_code | promo_nama | ongkir_sebelum_promo | promo_diskon_subtotal | promo_diskon_produk | promo_diskon_ongkir | promo_diskon_total | promo_bonus_poin | promo_multiplier_poin | poin_earn_dasar | poin_earn_final | promo_snapshot_json | client_request_id | request_fingerprint | commit_status | commit_stage | commit_error_code | commit_snapshot_json | committed_at`
+`order_id | member_id | nama | no_hp | tgl_antar | metode_kirim | lokasi_pickup_id | address_id | alamat_snapshot | lat | lng | jarak_km | ongkir | slot_id | subtotal | poin_dipakai | total | metode_bayar | status | catatan_customer | catatan_admin | created_at | updated_at | timeline_json | nama_penerima | no_hp_penerima | status_updated_at | promo_id | promo_code | promo_nama | ongkir_sebelum_promo | promo_diskon_subtotal | promo_diskon_produk | promo_diskon_ongkir | promo_diskon_total | promo_bonus_poin | promo_multiplier_poin | poin_earn_dasar | poin_earn_final | promo_snapshot_json | client_request_id | request_fingerprint | commit_status | commit_stage | commit_error_code | commit_snapshot_json | committed_at | transaction_status | transaction_stage | transaction_error_code | transaction_snapshot_json | cancelled_at | cancelled_by | cancel_reason`
 
 - `metode_kirim`: `AMBIL | DIANTAR | OJOL`
 - `metode_bayar`: `COD | TRANSFER`
@@ -131,7 +131,7 @@ Snapshot add-on yang dipilih customer per item order.
 Harga 1 item = Products.harga (dasar) + ProductVariants.harga (selisih varian, 0 kalau tanpa varian) + Σ ProductAddons.harga (semua add-on terpilih).
 
 ### 11. PointHistory
-`id | member_id | order_id | tipe | jumlah | saldo_akhir | keterangan | created_at`
+`id | member_id | order_id | tipe | jumlah | saldo_akhir | keterangan | created_at | event_code | saldo_sebelum | event_status | event_snapshot_json`
 - `tipe`: `TAMBAH | PAKAI | KOREKSI`
 
 ### 12. Sessions
@@ -168,7 +168,7 @@ Harga 1 item = Products.harga (dasar) + ProductVariants.harga (selisih varian, 0
 - Campaign aktif bila status aktif dan hari ini tidak sebelum tanggal mulai valid serta tidak setelah tanggal selesai valid.
 
 ### 16. Reviews
-`review_id | order_id | member_id | rating | ulasan | status | created_at`
+`review_id | order_id | member_id | rating | ulasan | status | created_at | request_fingerprint | updated_at`
 - `status`: `aktif` / `hidden` / `dihapus`
 - `rating`: 1-5 (integer)
 - `ulasan`: teks bebas, opsional
@@ -239,7 +239,47 @@ tersebut tidak dianggap terverifikasi oleh GAS.
 - Poin diberikan SAAT ULASAN DISUBMIT, bukan saat status SELESAI.
 - Deadline review: 7 hari dari waktu status jadi SELESAI.
 - Kalau lewat deadline → poin HANGUS (tidak diberikan sama sekali).
-- Ulasan bisa dihapus dan disubmit ulang selama masih dalam deadline 7 hari.
+- Review pertama yang sah melepaskan tepat satu reward sebesar snapshot `Orders.poin_earn_final`; bonus dan multiplier promo tidak dihitung ulang.
+- Edit adalah upsert terhadap review kanonik order dan tidak memberikan reward lagi.
+- Mengedit, menyembunyikan, atau menghapus review tidak menarik reward yang sudah diberikan; ledger immutable.
+
+## 4A. Hardening transaksi Fase 8-A3
+
+### State machine
+
+- Hanya admin Telegram aktif yang dapat mengubah status; otorisasi diperiksa lagi di dalam script lock.
+- Transisi: `MENUNGGU -> DIPROSES|BATAL`, `DIPROSES -> SIAP|BATAL`, `SIAP -> SELESAI|BATAL`, dan `DIANTAR -> SELESAI|BATAL`.
+- `SIAP -> DIANTAR` hanya valid bila `metode_kirim=DIANTAR`. Jalur kompatibel `SIAP -> SELESAI` tetap berlaku.
+- `SELESAI` dan `BATAL` terminal. Request ke status yang sudah sama adalah replay sukses `unchanged` dan tidak mengirim notifikasi ulang.
+- Order `CREATING` atau `RECOVERY_REQUIRED` tidak boleh diproses lewat state machine bisnis.
+
+### Ledger dan recovery
+
+- ID deterministik: `PTH_ORDER_REDEEM_{order_id}`, `PTH_ORDER_REFUND_{order_id}`, dan `PTH_ORDER_REWARD_{order_id}`.
+- `event_code`: `ORDER_REDEEMED`, `ORDER_REDEEM_REFUNDED`, atau `ORDER_REWARD_RELEASED_BY_REVIEW`.
+- Saldo hanya boleh bergerak dari `saldo_sebelum` ke `saldo_akhir`. Kondisi selain before/after yang diharapkan menghasilkan konflik dan tidak boleh ditimpa.
+- `transaction_status`: `PENDING | APPLIED | RECOVERY_REQUIRED`. Snapshot Orders menyimpan source/target status, actor, waktu, serta before/after saldo atau `total_belanja`.
+- Pembatalan mengembalikan redeem dan mengubah tepat satu PromoUsage `DIGUNAKAN -> DIBATALKAN`; duplicate atau status lain adalah konflik.
+- `total_belanja` bertambah maksimal satu kali saat pertama menjadi `SELESAI`; reward poin tetap menunggu review.
+- Ledger legacy yang ambigu menghasilkan `POINT_LEGACY_AMBIGUOUS` dan membutuhkan rekonsiliasi manual.
+
+### Review
+
+- Hanya pemilik committed order `SELESAI` yang boleh membuat atau mengedit review, maksimal 7 hari dari `status_updated_at` dengan fallback timestamp legacy.
+- Rating harus integer 1-5. Komentar maksimal 500 karakter, control character dibuang, dan prefix formula Sheets ditulis sebagai literal.
+- Review baru memakai ID `REV_ORDER_{order_id}` dan fingerprint payload. Replay identik idempotent; payload berbeda meng-update row kanonik tanpa reward ulang.
+- Public reader hanya memuat review aktif dengan relasi member/order valid dan rating valid.
+
+### Error operasional baru
+
+`UNAUTHORIZED_ACTOR`, `TRANSISI_METODE_TIDAK_VALID`, `CANCEL_REASON_INVALID`, `ORDER_TRANSACTION_RECOVERY_REQUIRED`, `ORDER_TRANSACTION_CONFLICT`, `POINT_EVENT_DUPLICATE`, `POINT_EVENT_CONFLICT`, `POINT_BALANCE_CONFLICT`, `POINT_LEGACY_AMBIGUOUS`, `PROMO_USAGE_DUPLICATE`, `PROMO_USAGE_STATUS_CONFLICT`, `REVIEW_RATING_INVALID`, `REVIEW_TEXT_INVALID`, `REVIEW_DUPLICATE_CONFLICT`, `REVIEW_OWNERSHIP_CONFLICT`, `REVIEW_RECOVERY_REQUIRED`, `REVIEW_REWARD_RECOVERY_REQUIRED`.
+
+### Migration dan prosedur operasional
+
+- Jalankan manual `migrateTransactionHardening_8_A3()` setelah backup dan sebelum deployment kode. Migration hanya menambah header dan aman dijalankan ulang.
+- Verifikasi header baru pada `Orders`, `PointHistory`, dan `Reviews` sesuai schema di atas.
+- Untuk `RECOVERY_REQUIRED`, hentikan perubahan order terkait, cocokkan snapshot dengan saldo/member/ledger/promo, perbaiki hanya berdasarkan bukti audit, lalu retry request target yang sama.
+- Jangan menghapus row ledger, review, order, atau PromoUsage untuk menyelesaikan konflik.
 
 ## 5. Struktur Repo
 

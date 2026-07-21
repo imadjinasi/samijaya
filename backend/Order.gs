@@ -304,7 +304,7 @@ function _orderCommitSnapshot(snapshot, existingOrder) {
         if (balance !== Number(snapshot.saldo_poin_sebelum)) return _orderMarkRecoveryRequired(orderId, stage, 'ORDER_POINT_BALANCE_CONFLICT');
         var pointWrite = appendRowsObj('PointHistory', [snapshot.point_ledger]);
         if (pointWrite.written !== 1) return _orderMarkRecoveryRequired(orderId, stage, 'ORDER_POINT_WRITE_FAILED');
-      } else if (!_orderRowsEqual(pointExisting, snapshot.point_ledger, ['id','member_id','order_id','tipe','jumlah','saldo_akhir'])) {
+      } else if (!_orderRowsEqual(pointExisting, snapshot.point_ledger, ['id','member_id','order_id','tipe','jumlah','saldo_akhir','event_code','saldo_sebelum'])) {
         return _orderMarkRecoveryRequired(orderId, stage, 'ORDER_POINT_EVENT_CONFLICT');
       }
       if (balance === Number(snapshot.saldo_poin_sebelum)) {
@@ -1043,7 +1043,11 @@ function orderCreateOrder(payload, token) {
         order_id:    orderId,
         tipe:        'PAKAI',
         jumlah:      -poinDipakai,
+        saldo_sebelum: saldoPoinLama,
         saldo_akhir: saldoAkhir,
+        event_code: 'ORDER_REDEEMED',
+        event_status: 'APPLIED',
+        event_snapshot_json: JSON.stringify({ before: saldoPoinLama, after: saldoAkhir, amount: -poinDipakai }),
         keterangan:  'Redeem order ' + orderId,
         created_at:  nowStr
       };
@@ -1149,8 +1153,17 @@ function orderGetByRequestId(payload, token) {
  * @param  {string} actorChatId
  * @return {Object}
  */
-function orderUpdateStatus(orderId, newStatus, actorChatId) {
+function orderUpdateStatus(orderId, newStatus, actorChatId, cancelReason) {
+  orderId = transactionNormalizeOrderId(orderId);
+  newStatus = String(newStatus == null ? '' : newStatus).trim().toUpperCase();
+  actorChatId = String(actorChatId == null ? '' : actorChatId).trim();
+  if (!orderId || ['MENUNGGU','DIPROSES','SIAP','DIANTAR','SELESAI','BATAL'].indexOf(newStatus) === -1) return { ok: false, code: 'BAD_REQUEST', error: 'Input status tidak valid' };
+  if (!actorChatId || typeof isAdmin !== 'function' || !isAdmin(actorChatId)) return { ok: false, code: 'UNAUTHORIZED_ACTOR', error: 'Aktor tidak berwenang' };
+  var safeReason = transactionSafeText(cancelReason || 'Dibatalkan oleh admin', 300);
+  if (newStatus === 'BATAL' && safeReason === null) return { ok: false, code: 'CANCEL_REASON_INVALID', error: 'Alasan pembatalan tidak valid' };
+
   return withLock(function () {
+    if (!isAdmin(actorChatId)) return { ok: false, code: 'UNAUTHORIZED_ACTOR', error: 'Aktor tidak berwenang' };
     var allOrders = readAll('Orders');
     var order = null;
     for (var i = 0; i < allOrders.length; i++) {
@@ -1161,19 +1174,18 @@ function orderUpdateStatus(orderId, newStatus, actorChatId) {
     }
     if (!order) return { ok: false, code: 'ORDER_NOT_FOUND', error: 'Order tidak ditemukan' };
 
-    var oldStatus = String(order.status);
-    
-    // Validasi transisi
-    var valid = false;
-    if (oldStatus === 'SELESAI' || oldStatus === 'BATAL') {
-      return { ok: false, code: 'STATUS_FINAL', error: 'Order sudah final' };
-    }
-    
-    if (oldStatus === 'MENUNGGU' && (newStatus === 'DIPROSES' || newStatus === 'BATAL')) valid = true;
-    else if (oldStatus === 'DIPROSES' && (newStatus === 'SIAP' || newStatus === 'BATAL')) valid = true;
-    else if (oldStatus === 'SIAP' && (newStatus === 'SELESAI' || newStatus === 'BATAL')) valid = true;
-    
-    if (!valid) return { ok: false, code: 'TRANSISI_TIDAK_VALID', error: 'Transisi ' + oldStatus + ' ke ' + newStatus + ' tidak valid' };
+    var oldStatus = String(order.status || '').trim().toUpperCase();
+    if (oldStatus === newStatus) return { ok: true, data: { order: order, unchanged: true, poin_ditambah: 0 } };
+    if (oldStatus === 'SELESAI' || oldStatus === 'BATAL') return { ok: false, code: 'STATUS_FINAL', error: 'Order sudah final' };
+    var allowed = {
+      MENUNGGU: { DIPROSES: true, BATAL: true },
+      DIPROSES: { SIAP: true, BATAL: true },
+      SIAP: { SELESAI: true, BATAL: true, DIANTAR: true },
+      DIANTAR: { SELESAI: true, BATAL: true }
+    };
+    if (!allowed[oldStatus] || !allowed[oldStatus][newStatus]) return { ok: false, code: 'TRANSISI_TIDAK_VALID', error: 'Transisi ' + oldStatus + ' ke ' + newStatus + ' tidak valid' };
+    var metode = String(order.metode_kirim || '').trim().toUpperCase();
+    if (newStatus === 'DIANTAR' && metode !== 'DIANTAR') return { ok: false, code: 'TRANSISI_METODE_TIDAK_VALID', error: 'Status DIANTAR hanya untuk pengantaran internal' };
 
     var now = new Date();
     var nowStr = nowJkt();
@@ -1189,78 +1201,67 @@ function orderUpdateStatus(orderId, newStatus, actorChatId) {
       timeline_json: JSON.stringify(timeline)
     };
     
+    var snapshot = null;
+    var transactionState = String(order.transaction_status || '').trim().toUpperCase();
+    if ((transactionState === 'PENDING' || transactionState === 'RECOVERY_REQUIRED') && String(order.transaction_snapshot_json || '').trim()) {
+      try { snapshot = JSON.parse(order.transaction_snapshot_json); } catch (_) { return { ok: false, code: 'ORDER_TRANSACTION_SNAPSHOT_INVALID', error: 'Snapshot transaksi tidak valid' }; }
+      if (String(snapshot.target_status) !== newStatus || String(snapshot.source_status) !== oldStatus) return { ok: false, code: 'ORDER_TRANSACTION_CONFLICT', error: 'Order memiliki transaksi tertunda yang berbeda' };
+    }
+    var members = readAll('Members');
+    var member = null;
+    for (var mi = 0; mi < members.length; mi++) if (String(members[mi].member_id) === String(order.member_id)) member = members[mi];
+    if (!member) return { ok: false, code: 'MEMBER_NOT_FOUND', error: 'Member tidak ditemukan' };
+    if (!snapshot) {
+      var pointBalance = transactionStrictInteger(member.total_poin, 0, 1000000000);
+      var spendBalance = transactionStrictInteger(member.total_belanja || 0, 0, 1000000000000);
+      var orderPointUsed = transactionStrictInteger(order.poin_dipakai || 0, 0, 1000000000);
+      var orderTotal = transactionStrictInteger(order.total || 0, 0, 1000000000000);
+      if (pointBalance === null || spendBalance === null || orderPointUsed === null || orderTotal === null) return { ok: false, code: 'MEMBER_BALANCE_INVALID', error: 'Nilai transaksi tidak valid' };
+      snapshot = { version: 1, order_id: orderId, member_id: String(order.member_id), source_status: oldStatus,
+        target_status: newStatus, actor: actorChatId, at: nowStr, cancel_reason: newStatus === 'BATAL' ? safeReason : '',
+        point_before: pointBalance, point_after: pointBalance + (newStatus === 'BATAL' ? orderPointUsed : 0),
+        spend_before: spendBalance, spend_after: spendBalance + (newStatus === 'SELESAI' ? orderTotal : 0) };
+      if (!updateRowById('Orders', 'order_id', orderId, { transaction_status: 'PENDING', transaction_stage: 'SNAPSHOT_WRITTEN', transaction_error_code: '', transaction_snapshot_json: JSON.stringify(snapshot) })) return { ok: false, code: 'ORDER_TRANSACTION_WRITE_FAILED', error: 'Transaksi tidak dapat dimulai' };
+      try { _orderStatusFailpoint('SNAPSHOT_WRITTEN'); } catch (_) { return _orderStatusRecovery(orderId, 'SNAPSHOT_WRITTEN', 'ORDER_STATUS_FAILPOINT'); }
+    }
     var poin_ditambah = 0;
-    
+
     if (newStatus === 'BATAL') {
       var poinDipakai = Number(order.poin_dipakai) || 0;
       if (poinDipakai > 0) {
         var histories = readAll('PointHistory');
-        var alreadyRefunded = false;
+        var legacyAmbiguous = false;
         for (var j = 0; j < histories.length; j++) {
-          if (String(histories[j].order_id) === String(orderId) && String(histories[j].tipe) === 'KOREKSI') {
-            alreadyRefunded = true;
-            break;
-          }
+          if (String(histories[j].order_id) === String(orderId) && String(histories[j].tipe).toUpperCase() === 'KOREKSI' && String(histories[j].id) !== 'PTH_ORDER_REFUND_' + orderId) legacyAmbiguous = true;
         }
-        
-        if (!alreadyRefunded) {
-          var allMembers = readAll('Members');
-          var member = null;
-          for (var m = 0; m < allMembers.length; m++) {
-            if (String(allMembers[m].member_id) === String(order.member_id)) {
-              member = allMembers[m];
-              break;
-            }
-          }
-          
-          if (member) {
-            var saldoBaru = (Number(member.total_poin) || 0) + poinDipakai;
-            
-            updateRowById('Members', 'member_id', member.member_id, {
-              total_poin: saldoBaru
-            });
-            
-            appendRowObj('PointHistory', {
-              id: genId('PTH'),
-              member_id: member.member_id,
-              order_id: orderId,
-              tipe: 'KOREKSI',
-              jumlah: poinDipakai,
-              saldo_akhir: saldoBaru,
-              keterangan: 'Pengembalian poin dari order ' + orderId + ' batal',
-              created_at: nowStr
-            });
-          }
-        }
+        if (legacyAmbiguous) return _orderStatusRecovery(orderId, 'REFUND_REDEEM', 'POINT_LEGACY_AMBIGUOUS');
+        var refund = pointEnsureBalanceEvent({ id: 'PTH_ORDER_REFUND_' + orderId, member_id: order.member_id, order_id: orderId,
+          tipe: 'KOREKSI', jumlah: poinDipakai, saldo_sebelum: snapshot.point_before, saldo_akhir: snapshot.point_after,
+          event_code: 'ORDER_REDEEM_REFUNDED', keterangan: 'Pengembalian poin order batal ' + orderId, created_at: snapshot.at });
+        if (!refund.ok) return _orderStatusRecovery(orderId, 'REFUND_REDEEM', refund.code);
+        try { _orderStatusFailpoint('REFUND_REDEEM'); } catch (_) { return _orderStatusRecovery(orderId, 'REFUND_REDEEM', 'ORDER_STATUS_FAILPOINT'); }
       }
-
-      // Soft-refund pemakaian promo. Poin batal existing sengaja tidak diubah.
       if (String(order.promo_id || '').trim()) {
-        _promoRefundUsageByOrder(orderId, nowStr);
+        var promoRefund = _promoRefundUsageByOrder(orderId, snapshot.at);
+        if (!promoRefund.ok) return _orderStatusRecovery(orderId, 'PROMO_CANCEL', promoRefund.code);
+        try { _orderStatusFailpoint('PROMO_CANCEL'); } catch (_) { return _orderStatusRecovery(orderId, 'PROMO_CANCEL', 'ORDER_STATUS_FAILPOINT'); }
       }
+      updateData.cancelled_at = snapshot.at;
+      updateData.cancelled_by = actorChatId;
+      updateData.cancel_reason = safeReason;
     }
-    
     if (newStatus === 'SELESAI') {
-      var total = Number(order.total) || 0;
-      var allMembers = readAll('Members');
-      var member = null;
-      for (var m = 0; m < allMembers.length; m++) {
-        if (String(allMembers[m].member_id) === String(order.member_id)) {
-          member = allMembers[m];
-          break;
-        }
-      }
-      
-      if (member) {
-        var totalBelanjaBaru = (Number(member.total_belanja) || 0) + total;
-        updateRowById('Members', 'member_id', member.member_id, {
-          total_belanja: totalBelanjaBaru
-        });
-      }
-      // Poin tidak ditambah di sini. Diberikan saat customer submit ulasan (max 7 hari).
+      var currentSpend = transactionStrictInteger(member.total_belanja || 0, 0, 1000000000000);
+      if (currentSpend === snapshot.spend_before) {
+        if (!updateRowById('Members', 'member_id', member.member_id, { total_belanja: snapshot.spend_after })) return _orderStatusRecovery(orderId, 'TOTAL_BELANJA', 'MEMBER_SPEND_WRITE_FAILED');
+      } else if (currentSpend !== snapshot.spend_after) return _orderStatusRecovery(orderId, 'TOTAL_BELANJA', 'MEMBER_SPEND_CONFLICT');
+      try { _orderStatusFailpoint('TOTAL_BELANJA'); } catch (_) { return _orderStatusRecovery(orderId, 'TOTAL_BELANJA', 'ORDER_STATUS_FAILPOINT'); }
     }
-    
-    updateRowById('Orders', 'order_id', orderId, updateData);
+    updateData.transaction_status = 'APPLIED';
+    updateData.transaction_stage = 'ORDER_UPDATED';
+    updateData.transaction_error_code = '';
+    try { _orderStatusFailpoint('ORDER_UPDATED'); } catch (_) { return _orderStatusRecovery(orderId, 'ORDER_UPDATED', 'ORDER_STATUS_FAILPOINT'); }
+    if (!updateRowById('Orders', 'order_id', orderId, updateData)) return _orderStatusRecovery(orderId, 'ORDER_UPDATED', 'ORDER_STATUS_WRITE_FAILED');
     order.status = newStatus; // update obyek lokal untuk return
     
     if (newStatus === 'SELESAI') {
@@ -1268,6 +1269,15 @@ function orderUpdateStatus(orderId, newStatus, actorChatId) {
     }
     return { ok: true, data: { order: order } };
   });
+}
+
+function _orderStatusRecovery(orderId, stage, code) {
+  updateRowById('Orders', 'order_id', orderId, { transaction_status: 'RECOVERY_REQUIRED', transaction_stage: stage, transaction_error_code: code });
+  return { ok: false, code: 'ORDER_TRANSACTION_RECOVERY_REQUIRED', error: 'Transaksi order memerlukan rekonsiliasi', detail_code: code };
+}
+
+function _orderStatusFailpoint(stage) {
+  if (typeof ORDER_STATUS_TEST_FAIL_STAGE !== 'undefined' && String(ORDER_STATUS_TEST_FAIL_STAGE) === String(stage)) throw new Error('ORDER_STATUS_FAILPOINT_' + stage);
 }
 
 /**
@@ -1349,10 +1359,11 @@ function orderGetMyOrders(payload, token) {
   var reviewsByOrderId = {};
   for (var r = 0; r < allReviews.length; r++) {
     var rev = allReviews[r];
-    if (String(rev.status) === 'aktif' && orderIds.indexOf(rev.order_id) !== -1) {
+    if (String(rev.status) !== 'expired' && orderIds.indexOf(rev.order_id) !== -1) {
       reviewsByOrderId[rev.order_id] = {
         rating: rev.rating,
-        ulasan: rev.ulasan
+        ulasan: rev.ulasan,
+        status: rev.status
       };
     }
   }

@@ -649,13 +649,16 @@ function _promoRefundUsageByOrder(orderId, cancelledAt) {
   if (orderColumn === -1 || statusColumn === -1 || cancelledColumn === -1) {
     throw new Error('Header PromoUsage tidak lengkap');
   }
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][orderColumn]) === String(orderId) && String(data[i][statusColumn]).toUpperCase() === 'DIGUNAKAN') {
-      data[i][statusColumn] = 'DIBATALKAN';
-      data[i][cancelledColumn] = cancelledAt || nowJkt();
-      sheet.getRange(i + 1, 1, 1, headers.length).setValues([data[i]]);
-      return true;
-    }
-  }
-  return false;
+  var matches = [];
+  for (var i = 1; i < data.length; i++) if (String(data[i][orderColumn]) === String(orderId)) matches.push(i);
+  if (matches.length === 0) return { ok: true, existing: true, absent: true };
+  if (matches.length > 1) return { ok: false, code: 'PROMO_USAGE_DUPLICATE' };
+  var rowIndex = matches[0];
+  var status = String(data[rowIndex][statusColumn] || '').trim().toUpperCase();
+  if (status === 'DIBATALKAN') return { ok: true, existing: true };
+  if (status !== 'DIGUNAKAN') return { ok: false, code: 'PROMO_USAGE_STATUS_CONFLICT' };
+  data[rowIndex][statusColumn] = 'DIBATALKAN';
+  data[rowIndex][cancelledColumn] = cancelledAt || nowJkt();
+  sheet.getRange(rowIndex + 1, 1, 1, headers.length).setValues([data[rowIndex]]);
+  return { ok: true, existing: false };
 }

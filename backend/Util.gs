@@ -158,6 +158,26 @@ function isOrderCommittedRow(order) {
   return status === '' || status === 'COMMITTED';
 }
 
+/** Nilai teks transaksi yang aman ditulis ke Google Sheets sebagai literal. */
+function transactionSafeText(value, maxLength) {
+  var text = String(value == null ? '' : value).replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim();
+  if (text.length > maxLength) return null;
+  if (/^[=+\-@]/.test(text)) text = "'" + text;
+  return text;
+}
+
+function transactionNormalizeOrderId(value) {
+  var id = String(value == null ? '' : value).trim().toUpperCase();
+  return /^SJ\d{9}$/.test(id) || /^O[A-Z0-9_-]{1,48}$/.test(id) ? id : '';
+}
+
+function transactionStrictInteger(value, min, max) {
+  if (typeof value === 'string' && !/^-?\d+$/.test(value.trim())) return null;
+  var number = Number(value);
+  if (!Number.isInteger(number) || number < min || number > max) return null;
+  return number;
+}
+
 // ============================================================
 // 5. updateRowById(sheetName, idColumnName, idValue, patchObj)
 // ============================================================

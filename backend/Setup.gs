@@ -112,7 +112,9 @@ var SHEET_DEFS = [
      'promo_multiplier_poin', 'poin_earn_dasar', 'poin_earn_final',
      'promo_snapshot_json', 'client_request_id', 'request_fingerprint',
      'commit_status', 'commit_stage', 'commit_error_code', 'commit_snapshot_json',
-     'committed_at'],
+     'committed_at', 'transaction_status', 'transaction_stage',
+     'transaction_error_code', 'transaction_snapshot_json', 'cancelled_at',
+     'cancelled_by', 'cancel_reason'],
     null
   ],
 
@@ -125,7 +127,8 @@ var SHEET_DEFS = [
 
   // --- 11. PointHistory ---
   ['PointHistory',
-    ['id', 'member_id', 'order_id', 'tipe', 'jumlah', 'saldo_akhir', 'keterangan', 'created_at'],
+    ['id', 'member_id', 'order_id', 'tipe', 'jumlah', 'saldo_akhir', 'keterangan', 'created_at',
+     'event_code', 'saldo_sebelum', 'event_status', 'event_snapshot_json'],
     null
   ],
 
@@ -147,7 +150,8 @@ var SHEET_DEFS = [
       ['ORDER_SIAP_AMBIL',            'Halo Kak {NAMA}, pesanan {ORDER_ID} sudah siap! Silakan diambil di {CABANG} ya ☕', 'Order siap diambil'],
       ['ORDER_SIAP_DIANTAR',          'Halo Kak {NAMA}, pesanan {ORDER_ID} sudah siap dan segera kami antar ke lokasi Anda ya 🛵', 'Order siap diantar kurir'],
       ['ORDER_SIAP_OJOL',             'Halo Kak {NAMA}, pesanan {ORDER_ID} sudah siap! Kami sedang menyiapkan ojol untuk pengantaran ya 📱', 'Order siap diantar ojol'],
-      ['ORDER_SELESAI',               'Halo Kak {NAMA}, pesanan {ORDER_ID} sudah selesai. Anda mendapat {POINT} poin. Terima kasih sudah ngopi di Samijaya 🙏', 'Order selesai'],
+      ['ORDER_DIANTAR',                'Halo Kak {NAMA}, pesanan {ORDER_ID} sedang dalam perjalanan.', 'Order sedang diantar'],
+      ['ORDER_SELESAI',               'Halo Kak {NAMA}, pesanan {ORDER_ID} sudah selesai. Silakan beri ulasan untuk menerima reward poin pesanan. Terima kasih sudah ngopi di Samijaya 🙏', 'Order selesai'],
       ['ORDER_BATAL',                 'Halo Kak {NAMA}, mohon maaf pesanan {ORDER_ID} dibatalkan. Kalau ada pertanyaan, silakan balas pesan ini ya 🙏', 'Order dibatalkan'],
       ['ORDER_DIPROSES_PENERIMA',     'Halo Kak {NAMA}, ada pesanan atas nama {NAMA_PEMESAN} ({ORDER_ID}) yang sedang kami siapkan untuk diantar ke Anda ya 🙏', 'Order diproses (penerima)'],
       ['ORDER_SIAP_DIANTAR_PENERIMA', 'Halo Kak {NAMA}, ada pesanan atas nama {NAMA_PEMESAN} ({ORDER_ID}) yang sudah siap dan segera kami antar ke Anda ya 🛵', 'Order siap diantar kurir (penerima)'],
@@ -188,7 +192,14 @@ var SHEET_DEFS = [
     null
   ],
 
-  // --- 18. PromoCodes ---
+  // --- 18. Reviews ---
+  ['Reviews',
+    ['review_id', 'order_id', 'member_id', 'rating', 'ulasan', 'status', 'created_at',
+     'request_fingerprint', 'updated_at'],
+    null
+  ],
+
+  // --- 19. PromoCodes ---
   ['PromoCodes',
     ['promo_id', 'kode', 'nama', 'deskripsi', 'catatan_customer', 'aktif',
      'mulai_at', 'berakhir_at', 'hari_berlaku', 'jam_mulai', 'jam_berakhir',
@@ -203,7 +214,7 @@ var SHEET_DEFS = [
     null
   ],
 
-  // --- 19. PromoUsage ---
+  // --- 20. PromoUsage ---
   ['PromoUsage',
     ['usage_id', 'promo_id', 'promo_code', 'order_id', 'member_id', 'status',
      'used_at', 'used_date', 'cancelled_at', 'promo_diskon_subtotal',

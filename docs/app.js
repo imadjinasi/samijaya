@@ -4360,26 +4360,6 @@ async function submitReview() {
   
   var ulasan = document.getElementById('review-ulasan').value.trim();
   
-  if (currentReviewIsEdit) {
-    try {
-      var delRes = await api('deleteMyReview', { order_id: currentReviewOrderId });
-      if (!delRes.ok) {
-        showToast(delRes.error || 'Gagal menghapus ulasan lama');
-        _submitting = false;
-        btn.disabled = false;
-        btn.textContent = 'Kirim Ulasan';
-        return;
-      }
-      currentReviewIsEdit = false; // hapus sukses, supaya kalau submit error, pas disubmit ulang tidak delete lagi
-    } catch(e) {
-      showToast('Gagal terhubung ke server');
-      _submitting = false;
-      btn.disabled = false;
-      btn.textContent = 'Kirim Ulasan';
-      return;
-    }
-  }
-  
   try {
     var res = await api('submitReview', {
       order_id: currentReviewOrderId,
@@ -4414,7 +4394,7 @@ async function submitReview() {
 }
 
 async function deleteReview(orderId) {
-  if (!confirm('Hapus ulasan untuk mengulas ulang?')) return;
+  if (!confirm('Sembunyikan ulasan ini? Reward poin yang sudah diberikan tidak berubah.')) return;
   
   try {
     // Kita butuh review_id, tapi dari My Orders kita tidak menyimpan review_id.
@@ -4427,7 +4407,7 @@ async function deleteReview(orderId) {
     // Untuk saat ini mari kita kirim order_id juga, lalu nanti saya modifikasi Review.gs.
     var res = await api('deleteMyReview', { order_id: orderId });
     if (res.ok) {
-      showToast('Ulasan dihapus, poin telah dikoreksi.');
+      showToast('Ulasan disembunyikan. Reward poin tidak berubah.');
       loadMyOrders();
     } else {
       showToast(res.error || 'Gagal menghapus ulasan');

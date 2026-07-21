@@ -120,6 +120,10 @@ function doPost(e) {
     var payload = body.payload || {};
     var token   = body.token || '';
 
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return jsonResponse({ ok: false, error: 'Payload tidak valid', code: 'BAD_REQUEST' });
+    }
+
     if (!action) {
       return jsonResponse({
         ok: false,

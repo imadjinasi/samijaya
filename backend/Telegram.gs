@@ -443,10 +443,18 @@ function tgBuildOrderKeyboard(order) {
     templateCode = 'ORDER_DIPROSES';
   } else if (status === 'SIAP') {
     keyboard.push([
-      { text: '✅ Selesai', callback_data: 'st:SELESAI_ASK:' + order.order_id },
+      String(order.metode_kirim) === 'DIANTAR'
+        ? { text: 'Diantar', callback_data: 'st:DIANTAR:' + order.order_id }
+        : { text: 'Selesai', callback_data: 'st:SELESAI_ASK:' + order.order_id },
       { text: '❌ Batal', callback_data: 'st:BATAL_ASK:' + order.order_id }
     ]);
     templateCode = 'ORDER_SIAP';
+  } else if (status === 'DIANTAR') {
+    keyboard.push([
+      { text: 'Selesai', callback_data: 'st:SELESAI_ASK:' + order.order_id },
+      { text: 'Batal', callback_data: 'st:BATAL_ASK:' + order.order_id }
+    ]);
+    templateCode = 'ORDER_DIANTAR';
   } else if (status === 'SELESAI') {
     templateCode = 'ORDER_SELESAI';
   } else if (status === 'BATAL') {
@@ -737,7 +745,7 @@ function handleTelegramWebhook(update) {
       var aksi = parts[1];
       var orderId = parts[2];
       var knownActions = {
-        PROSES: true, SIAP: true, BATAL_ASK: true, BATAL_NO: true,
+        PROSES: true, SIAP: true, DIANTAR: true, BATAL_ASK: true, BATAL_NO: true,
         BATAL_YES: true, SELESAI_ASK: true, SELESAI_NO: true, SELESAI_YES: true
       };
       if (!knownActions[aksi]) {
@@ -856,7 +864,7 @@ function handleTelegramWebhook(update) {
       
       if (aksi === 'PROSES') {
         res = orderUpdateStatus(orderId, 'DIPROSES', chatId);
-        if (res && res.ok) {
+        if (res && res.ok && !res.data.unchanged) {
           notifyOtherAdmins('DIPROSES');
           tgApi('editMessageText', {
             chat_id: chatMsgId, message_id: msgId,
@@ -867,12 +875,25 @@ function handleTelegramWebhook(update) {
       }
       else if (aksi === 'SIAP') {
         res = orderUpdateStatus(orderId, 'SIAP', chatId);
-        if (res && res.ok) {
+        if (res && res.ok && !res.data.unchanged) {
           notifyOtherAdmins('SIAP');
+          order.status = 'SIAP';
           tgApi('editMessageText', {
             chat_id: chatMsgId, message_id: msgId,
             text: statusMessageText('🟢 Status: SIAP'),
-            reply_markup: { inline_keyboard: [[{text: '✅ Selesai', callback_data: 'st:SELESAI_ASK:'+orderId}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+orderId}], buildActionRow(order, 'ORDER_SIAP', tmplData)] }
+            reply_markup: { inline_keyboard: tgBuildOrderKeyboard(order) }
+          });
+        }
+      }
+      else if (aksi === 'DIANTAR') {
+        res = orderUpdateStatus(orderId, 'DIANTAR', chatId);
+        if (res && res.ok && !res.data.unchanged) {
+          notifyOtherAdmins('DIANTAR');
+          order.status = 'DIANTAR';
+          tgApi('editMessageText', {
+            chat_id: chatMsgId, message_id: msgId,
+            text: statusMessageText('Status: DIANTAR'),
+            reply_markup: { inline_keyboard: tgBuildOrderKeyboard(order) }
           });
         }
       }
@@ -892,7 +913,7 @@ function handleTelegramWebhook(update) {
       }
       else if (aksi === 'BATAL_YES') {
         res = orderUpdateStatus(orderId, 'BATAL', chatId);
-        if (res && res.ok) {
+        if (res && res.ok && !res.data.unchanged) {
           notifyOtherAdmins('BATAL');
           tgApi('editMessageText', {
             chat_id: chatMsgId, message_id: msgId,
@@ -917,12 +938,12 @@ function handleTelegramWebhook(update) {
       }
       else if (aksi === 'SELESAI_YES') {
         res = orderUpdateStatus(orderId, 'SELESAI', chatId);
-        if (res && res.ok) {
+        if (res && res.ok && !res.data.unchanged) {
           notifyOtherAdmins('SELESAI');
           tmplData.POINT = res.data.poin_ditambah || 0;
           tgApi('editMessageText', {
             chat_id: chatMsgId, message_id: msgId,
-            text: statusMessageText('✅ Status: SELESAI (+' + tmplData.POINT + ' poin)'),
+            text: statusMessageText('✅ Status: SELESAI'),
             reply_markup: { inline_keyboard: [getWaButtons(order, 'ORDER_SELESAI', tmplData)] }
           });
         }
@@ -1058,7 +1079,7 @@ function handleAdminCommand(chatId, text) {
     for (var i = 0; i < orders.length; i++) {
       if (!isOrderCommittedRow(orders[i])) continue;
       var st = String(orders[i].status);
-      if (st === 'MENUNGGU' || st === 'DIPROSES' || st === 'SIAP') {
+      if (st === 'MENUNGGU' || st === 'DIPROSES' || st === 'SIAP' || st === 'DIANTAR') {
         pendingList.push(orders[i]);
       }
     }
@@ -1152,7 +1173,7 @@ function handleAdminCommand(chatId, text) {
     for (var i = 0; i < orders.length; i++) {
       if (!isOrderCommittedRow(orders[i])) continue;
       var d = getJktDateStr(new Date(orders[i].created_at));
-      if (d === today && String(orders[i].status) !== 'BATAL') {
+      if (d === today && String(orders[i].status) === 'SELESAI') {
         count++;
         sumSub += Number(orders[i].subtotal) || 0;
         sumOngkir += Number(orders[i].ongkir) || 0;
@@ -1210,7 +1231,7 @@ function handleAdminCommand(chatId, text) {
         var oJkt = new Date(oUtc + jktOffset);
         var oStr = getJktDateStr(oJkt);
         
-        if (daysData[oStr] && String(orders[i].status) !== 'BATAL') {
+        if (daysData[oStr] && isOrderCommittedRow(orders[i]) && String(orders[i].status) === 'SELESAI') {
           daysData[oStr].count++;
           daysData[oStr].omzet += (Number(orders[i].total) || 0);
           totalOrder++;
@@ -1264,7 +1285,7 @@ function handleAdminCommand(chatId, text) {
         var oUtc = oDt.getTime() + (oDt.getTimezoneOffset() * 60000);
         var oJkt = new Date(oUtc + jktOffset);
         
-        if (String(orders[i].status) === 'BATAL') continue;
+        if (!isOrderCommittedRow(orders[i]) || String(orders[i].status) !== 'SELESAI') continue;
         
         for (var w = 0; w < weeksData.length; w++) {
           if (oJkt >= weeksData[w].start && oJkt <= new Date(weeksData[w].end.getTime() + 86399999)) {
