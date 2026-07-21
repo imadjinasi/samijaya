@@ -303,6 +303,7 @@ function orderCreateOrder(payload, token) {
 
     // Ambil data varian grouped sekali untuk semua produk aktif
     var variantsGrouped = variantsGroupByProduct();
+    var addonsGrouped = addonsGroupByProduct();
 
     var lineItems = [];
     var subtotal  = 0; // subtotal = harga produk saja, TIDAK termasuk ongkir
@@ -347,6 +348,21 @@ function orderCreateOrder(payload, token) {
         hargaItem = Number(prod.harga) || 0;
       }
 
+      var selectedAddonIds = items[i].addon_ids || [];
+      var addonSnapshots = [];
+      var addonTotal = 0;
+
+      for (var ai = 0; ai < selectedAddonIds.length; ai++) {
+        var addon = addonFindById(selectedAddonIds[ai]);
+        if (!addon) return { ok: false, code: 'ADDON_NOT_FOUND', error: 'Add-on tidak ditemukan' };
+        if (!addon.aktif) return { ok: false, code: 'ADDON_INACTIVE', error: 'Add-on "' + addon.nama_addon + '" tidak tersedia' };
+        if (String(addon.product_id) !== pid) return { ok: false, code: 'ADDON_MISMATCH', error: 'Add-on tidak sesuai produk' };
+        addonTotal += addon.harga;
+        addonSnapshots.push({ addon_id: addon.addon_id, nama_addon: addon.nama_addon, harga: addon.harga });
+      }
+
+      hargaItem = hargaItem + addonTotal; // harga final = dasar + varian + Σaddon
+
       var subtotalItem = hargaItem * qty;
       subtotal += subtotalItem;
 
@@ -358,7 +374,8 @@ function orderCreateOrder(payload, token) {
         subtotal:       subtotalItem,
         variant_id:     varIdSnapshot,
         variant_nama_snapshot: varNamaSnapshot,
-        nama_axis_snapshot: axisNamaSnapshot
+        nama_axis_snapshot: axisNamaSnapshot,
+        addon_snapshots: addonSnapshots
       });
     }
 
@@ -679,7 +696,9 @@ function orderCreateOrder(payload, token) {
 
     // b. OrderItems — satu baris per item
     for (var i = 0; i < lineItems.length; i++) {
+      var itemRef = orderId + '_' + i;
       appendRowObj('OrderItems', {
+        order_item_ref: itemRef,
         order_id:       orderId,
         product_id:     lineItems[i].product_id,
         nama_snapshot:  lineItems[i].nama_snapshot,
@@ -690,6 +709,19 @@ function orderCreateOrder(payload, token) {
         variant_nama_snapshot: lineItems[i].variant_nama_snapshot,
         nama_axis_snapshot: lineItems[i].nama_axis_snapshot
       });
+
+      var snaps = lineItems[i].addon_snapshots;
+      for (var s = 0; s < snaps.length; s++) {
+        appendRowObj('OrderItemAddons', {
+          id: genId('OIA'),
+          order_id: orderId,
+          order_item_ref: itemRef,
+          addon_id: snaps[s].addon_id,
+          nama_addon_snapshot: snaps[s].nama_addon,
+          harga_snapshot: snaps[s].harga,
+          created_at: nowStr
+        });
+      }
     }
 
     // c. Poin — tulis PointHistory & update Members.total_poin (hanya jika poin dipakai)

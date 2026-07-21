@@ -77,10 +77,15 @@ function catalogGetCatalog() {
 
   // === BARU: attach varian per produk ===
   var variantsGrouped = variantsGroupByProduct();
+  var addonsGrouped = addonsGroupByProduct();
   products = products.map(function(p) {
     var vs = variantsGrouped[p.product_id] || [];
     p.variants = vs; // array (kosong kalau tanpa varian)
     p.has_variants = vs.length > 0; // helper flag untuk frontend
+
+    var addons = addonsGrouped[p.product_id] || [];
+    p.addons = addons;              // array (kosong kalau tanpa add-on)
+    p.has_addons = addons.length > 0;
     return p;
   });
   function toHHMM(v) {
