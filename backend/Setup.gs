@@ -111,7 +111,8 @@ var SHEET_DEFS = [
 
   // --- 10. OrderItems ---
   ['OrderItems',
-    ['order_id', 'product_id', 'nama_snapshot', 'harga_snapshot', 'qty', 'subtotal'],
+    ['order_id', 'product_id', 'nama_snapshot', 'harga_snapshot', 'qty', 'subtotal',
+     'variant_id', 'variant_nama_snapshot', 'nama_axis_snapshot', 'order_item_ref'],
     null
   ],
 

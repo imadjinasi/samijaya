@@ -947,6 +947,24 @@ function orderGetMyOrders(payload, token) {
 
   var orderIds = userOrders.map(function(row) { return row.order_id; });
 
+  // Baca add-on sekali, lalu kelompokkan berdasarkan order_item_ref.
+  var allAddons = readAll('OrderItemAddons');
+  var addonsByRef = {};
+  for (var a = 0; a < allAddons.length; a++) {
+    var addonOrderId = allAddons[a].order_id;
+    if (orderIds.indexOf(addonOrderId) !== -1) {
+      var addonRef = String(allAddons[a].order_item_ref || '');
+      if (!addonRef) continue;
+      var addonKey = '$' + addonRef;
+      if (!addonsByRef[addonKey]) addonsByRef[addonKey] = [];
+      addonsByRef[addonKey].push({
+        addon_id: String(allAddons[a].addon_id || ''),
+        nama_addon_snapshot: String(allAddons[a].nama_addon_snapshot || ''),
+        harga_snapshot: allAddons[a].harga_snapshot
+      });
+    }
+  }
+
   // Baca sheet OrderItems
   var allItems = readAll('OrderItems');
   var itemsByOrderId = {};
@@ -954,11 +972,17 @@ function orderGetMyOrders(payload, token) {
     var oid = allItems[k].order_id;
     if (orderIds.indexOf(oid) !== -1) {
       if (!itemsByOrderId[oid]) itemsByOrderId[oid] = [];
+      var itemRef = String(allItems[k].order_item_ref || '');
       itemsByOrderId[oid].push({
-        nama_snapshot: allItems[k].nama_snapshot,
+        order_item_ref: itemRef,
+        variant_id: String(allItems[k].variant_id || ''),
+        variant_nama_snapshot: String(allItems[k].variant_nama_snapshot || ''),
+        nama_axis_snapshot: String(allItems[k].nama_axis_snapshot || ''),
+        nama_snapshot: String(allItems[k].nama_snapshot || ''),
         harga_snapshot: allItems[k].harga_snapshot,
         qty: allItems[k].qty,
-        subtotal: allItems[k].subtotal
+        subtotal: allItems[k].subtotal,
+        addons: addonsByRef['$' + itemRef] || []
       });
     }
   }

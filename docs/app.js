@@ -1286,8 +1286,18 @@ function renderCheckoutScreen() {
   html += '<div class="co-summary-items" id="co-summary-items">';
   for (var i = 0; i < cart.length; i++) {
     var item = cart[i];
+    var checkoutVariantHtml = item.nama_varian
+      ? '<span style="display:block;font-size:0.8rem;color:#777;margin-top:2px;">' + (item.nama_axis ? escHtml(item.nama_axis) + ': ' : '') + escHtml(item.nama_varian) + '</span>'
+      : '';
+    var checkoutAddonsHtml = '';
+    if (item.addons_snapshot && item.addons_snapshot.length > 0) {
+      var checkoutAddonNames = item.addons_snapshot.map(function(addon) {
+        return addon.nama_addon;
+      }).join(', ');
+      checkoutAddonsHtml = '<span style="display:block;font-size:0.75rem;color:#777;margin-top:2px;">+ ' + escHtml(checkoutAddonNames) + '</span>';
+    }
     html += '<div class="co-summary-row">';
-    html += '<span class="item-name">' + escHtml(item.nama) + ' × ' + item.qty + '</span>';
+    html += '<span class="item-name">' + escHtml(item.nama) + ' × ' + item.qty + checkoutVariantHtml + checkoutAddonsHtml + '</span>';
     html += '<span class="item-sub">' + formatRupiah(item.harga * item.qty) + '</span>';
     html += '</div>';
   }
@@ -2646,6 +2656,31 @@ function formatTimeIndo(isoString) {
   return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
 }
 
+function renderMyOrderItem(item) {
+  item = item || {};
+  var itemHtml = '<div class="my-order-item-row">' + escHtml(item.nama_snapshot || '-') + ' &times; ' + (item.qty || 1);
+
+  if (item.variant_nama_snapshot) {
+    itemHtml += '<div style="font-size:0.8rem;color:#777;margin-top:2px;">' +
+      (item.nama_axis_snapshot ? escHtml(item.nama_axis_snapshot) + ': ' : '') +
+      escHtml(item.variant_nama_snapshot) + '</div>';
+  }
+
+  if (item.addons && item.addons.length > 0) {
+    var addonNames = item.addons.map(function(addon) {
+      return addon.nama_addon_snapshot;
+    }).filter(function(name) {
+      return !!name;
+    });
+    if (addonNames.length > 0) {
+      itemHtml += '<div style="font-size:0.75rem;color:#777;margin-top:2px;">+ ' + escHtml(addonNames.join(', ')) + '</div>';
+    }
+  }
+
+  itemHtml += '</div>';
+  return itemHtml;
+}
+
 function renderMyOrders(orders, reviewableMap) {
   reviewableMap = reviewableMap || {};
   var container = document.getElementById('my-orders-content');
@@ -2687,11 +2722,11 @@ function renderMyOrders(orders, reviewableMap) {
     html += '<div class="my-order-items-preview">';
     var items = order.items || [];
     if (items.length > 2) {
-      html += '<div class="my-order-item-row">' + escHtml(items[0].nama_snapshot || '-') + ' &times; ' + (items[0].qty || 1) + '</div>';
+      html += renderMyOrderItem(items[0]);
       html += '<div class="my-order-item-row" style="color:#888;">+ ' + (items.length - 1) + ' item lainnya</div>';
     } else {
       for (var j = 0; j < items.length; j++) {
-        html += '<div class="my-order-item-row">' + escHtml(items[j].nama_snapshot || '-') + ' &times; ' + (items[j].qty || 1) + '</div>';
+        html += renderMyOrderItem(items[j]);
       }
     }
     html += '</div>';
@@ -2746,6 +2781,17 @@ function renderMyOrders(orders, reviewableMap) {
     
     // Expandable detail
     html += '<div class="my-order-detail collapsed" id="my-order-detail-' + escHtml(oid) + '">';
+
+    // Semua item lengkap dengan varian dan add-on
+    if (items.length > 0) {
+      html += '<div class="my-order-info-group">';
+      html += '<div class="my-order-info-label">Rincian Item</div>';
+      html += '<div class="my-order-items-preview">';
+      for (var d = 0; d < items.length; d++) {
+        html += renderMyOrderItem(items[d]);
+      }
+      html += '</div></div>';
+    }
     
     // Timeline
     var timeline = order.timeline || [];
