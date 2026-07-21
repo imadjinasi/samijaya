@@ -41,7 +41,8 @@ Key wajib (nilai default dalam kurung):
 `member_id | nama | no_hp | tgl_lahir | email | jenis_kelamin | total_poin | total_belanja | created_at | status`
 
 ### 3. MemberAddresses
-`address_id | member_id | label | detail | alamat_snapshot | latitude | longitude | created_at | status`
+`address_id | member_id | label | detail | alamat_snapshot | latitude | longitude | created_at | status | is_default`
+- `is_default`: boolean 0/1; hanya 1 default per member; alamat pertama yang ditambahkan auto-default.
 
 ### 4. Products
 `product_id | nama | harga | foto_file_id | kategori_id | deskripsi | badge_promo | tersedia | urutan | status`
@@ -130,6 +131,7 @@ Tambahan 3 kolom snapshot varian:
 - `getMyOrders` — riwayat order member
 - `getMyPoints` — riwayat poin member
 - `addAddress` — tambah alamat baru member
+- `addressSetDefault` — set 1 alamat jadi default (payload: `{address_id}`, enforce 1 default per member)
 
 Plus jalur webhook Telegram (via `TELEGRAM_SECRET` di header).
 

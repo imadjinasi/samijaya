@@ -114,6 +114,9 @@ function doPost(e) {
       case 'deleteAddress':
         result = addressDelete(payload, token);
         break;
+      case 'addressSetDefault':
+        result = addressSetDefault(payload, token);
+        break;
 
       case 'getSlotAvailability':
         result = orderGetSlotAvailability(payload);

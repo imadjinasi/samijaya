@@ -48,7 +48,7 @@ var SHEET_DEFS = [
 
   // --- 3. MemberAddresses ---
   ['MemberAddresses',
-    ['address_id', 'member_id', 'label', 'detail', 'latitude', 'longitude', 'created_at', 'status'],
+    ['address_id', 'member_id', 'label', 'detail', 'latitude', 'longitude', 'created_at', 'status', 'is_default'],
     null
   ],
 

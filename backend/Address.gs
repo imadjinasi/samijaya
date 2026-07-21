@@ -41,7 +41,18 @@ function addressAdd(payload, token) {
   var addressId = '';
   var lockResult = withLock(function() {
     addressId = genId('ADR');
-    // Kolom: address_id | member_id | label | detail | latitude | longitude | created_at | status
+    
+    // Cek apakah member ini sudah punya alamat aktif (jika belum, jadikan ini default)
+    var allAddresses = readAll('MemberAddresses');
+    var activeCount = 0;
+    for (var i = 0; i < allAddresses.length; i++) {
+      if (String(allAddresses[i].member_id) === String(member.member_id) && String(allAddresses[i].status) === 'aktif') {
+        activeCount++;
+      }
+    }
+    var isDefault = (activeCount === 0) ? 1 : 0;
+
+    // Kolom: address_id | member_id | label | detail | latitude | longitude | created_at | status | is_default
     var row = {
       address_id: addressId,
       member_id: member.member_id,
@@ -51,7 +62,8 @@ function addressAdd(payload, token) {
       latitude: lat,
       longitude: lng,
       created_at: nowJkt(),
-      status: 'aktif'
+      status: 'aktif',
+      is_default: isDefault
     };
     appendRowObj('MemberAddresses', row);
     return { ok: true };
@@ -191,4 +203,69 @@ function addressDelete(payload, token) {
   }
 
   return { ok: true };
+}
+
+// ============================================================
+// 4. addressSetDefault(payload, token)
+// ============================================================
+/**
+ * Set 1 alamat jadi default. Enforce: hanya 1 default per member.
+ * payload: { address_id }
+ */
+function addressSetDefault(payload, token) {
+  var session = requireSession(token);
+  if (!session) return { ok: false, code: 'UNAUTHORIZED', error: 'Sesi tidak valid' };
+  var memberId = session.member_id;
+  
+  var addressId = payload.address_id;
+  if (!addressId) return { ok: false, code: 'INVALID', error: 'address_id wajib' };
+  
+  var lock = LockService.getScriptLock();
+  var lockResult = { ok: true };
+  try {
+    lock.waitLock(10000);
+    
+    var sheet = getSheet('MemberAddresses');
+    var data = sheet.getDataRange().getValues();
+    var headers = data[0];
+    var idCol = headers.indexOf('address_id');
+    var memberCol = headers.indexOf('member_id');
+    var statusCol = headers.indexOf('status');
+    var defaultCol = headers.indexOf('is_default');
+    
+    if (defaultCol === -1) {
+      lockResult = { ok: false, code: 'NO_COLUMN', error: 'Kolom is_default belum ada. Jalankan migration.' };
+      return lockResult;
+    }
+    
+    // Verifikasi alamat milik member ini & aktif
+    var targetFound = false;
+    for (var r = 1; r < data.length; r++) {
+      if (String(data[r][memberCol]) === String(memberId) && String(data[r][statusCol]) === 'aktif') {
+        if (String(data[r][idCol]) === String(addressId)) {
+          targetFound = true;
+        }
+      }
+    }
+    if (!targetFound) {
+      lockResult = { ok: false, code: 'NOT_FOUND', error: 'Alamat tidak ditemukan atau bukan milik Anda' };
+      return lockResult;
+    }
+    
+    // Loop: set semua alamat member ini is_default=0, kecuali target=1
+    for (var r2 = 1; r2 < data.length; r2++) {
+      if (String(data[r2][memberCol]) === String(memberId) && String(data[r2][statusCol]) === 'aktif') {
+        var newVal = (String(data[r2][idCol]) === String(addressId)) ? 1 : 0;
+        sheet.getRange(r2 + 1, defaultCol + 1).setValue(newVal);
+      }
+    }
+    
+    lockResult = { ok: true, data: { address_id: addressId } };
+  } catch (e) {
+    lockResult = { ok: false, code: 'ERROR', error: String(e) };
+  } finally {
+    lock.releaseLock();
+  }
+  
+  return lockResult;
 }
