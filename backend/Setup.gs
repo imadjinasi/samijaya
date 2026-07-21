@@ -131,13 +131,20 @@ var SHEET_DEFS = [
   ['MessageTemplates',
     ['kode', 'isi', 'keterangan'],
     [
-      ['OTP',             'Halo {NAMA}, kode OTP Samijaya Anda: {OTP}. Berlaku 30 menit.',                       'Template OTP'],
-      ['ORDER_DITERIMA',  'Halo {NAMA}, pesanan {ORDER_ID} berhasil dibuat. Total: Rp{TOTAL}. Terima kasih!',    'Order diterima'],
-      ['ORDER_DIPROSES',  'Halo {NAMA}, pesanan {ORDER_ID} sedang diproses. Mohon ditunggu ya!',                 'Order diproses'],
-      ['ORDER_SIAP',      'Halo {NAMA}, pesanan {ORDER_ID} sudah siap! Silakan ambil di {CABANG}.',              'Order siap pickup'],
-      ['ORDER_DIANTAR',   'Halo {NAMA}, pesanan {ORDER_ID} sedang diantar ke lokasi Anda.',                      'Order diantar'],
-      ['ORDER_SELESAI',   'Halo {NAMA}, pesanan {ORDER_ID} selesai. Anda mendapat {POINT} poin. Terima kasih!',  'Order selesai'],
-      ['ORDER_BATAL',     'Halo {NAMA}, pesanan {ORDER_ID} dibatalkan. Hubungi kami jika ada pertanyaan.',        'Order dibatalkan']
+      ['OTP',                         'Halo {NAMA}, kode OTP Samijaya Anda: {OTP}. Berlaku 30 menit.', 'Template OTP'],
+      ['ORDER_DITERIMA',              'Halo {NAMA}, pesanan {ORDER_ID} berhasil dibuat. Total: Rp{TOTAL}. Terima kasih!', 'Order diterima'],
+      ['ORDER_DIPROSES',              'Halo Kak {NAMA}, pesanan {ORDER_ID} sedang kami siapkan ya. Mohon ditunggu sebentar 🙏', 'Order diproses'],
+      ['ORDER_SIAP',                  'Halo Kak {NAMA}, pesanan {ORDER_ID} sudah siap ya!', 'Order siap (fallback)'],
+      ['ORDER_SIAP_AMBIL',            'Halo Kak {NAMA}, pesanan {ORDER_ID} sudah siap! Silakan diambil di {CABANG} ya ☕', 'Order siap diambil'],
+      ['ORDER_SIAP_DIANTAR',          'Halo Kak {NAMA}, pesanan {ORDER_ID} sudah siap dan segera kami antar ke lokasi Anda ya 🛵', 'Order siap diantar kurir'],
+      ['ORDER_SIAP_OJOL',             'Halo Kak {NAMA}, pesanan {ORDER_ID} sudah siap! Kami sedang menyiapkan ojol untuk pengantaran ya 📱', 'Order siap diantar ojol'],
+      ['ORDER_SELESAI',               'Halo Kak {NAMA}, pesanan {ORDER_ID} sudah selesai. Anda mendapat {POINT} poin. Terima kasih sudah ngopi di Samijaya 🙏', 'Order selesai'],
+      ['ORDER_BATAL',                 'Halo Kak {NAMA}, mohon maaf pesanan {ORDER_ID} dibatalkan. Kalau ada pertanyaan, silakan balas pesan ini ya 🙏', 'Order dibatalkan'],
+      ['ORDER_DIPROSES_PENERIMA',     'Halo Kak {NAMA}, ada pesanan atas nama {NAMA_PEMESAN} ({ORDER_ID}) yang sedang kami siapkan untuk diantar ke Anda ya 🙏', 'Order diproses (penerima)'],
+      ['ORDER_SIAP_DIANTAR_PENERIMA', 'Halo Kak {NAMA}, ada pesanan atas nama {NAMA_PEMESAN} ({ORDER_ID}) yang sudah siap dan segera kami antar ke Anda ya 🛵', 'Order siap diantar kurir (penerima)'],
+      ['ORDER_SIAP_OJOL_PENERIMA',    'Halo Kak {NAMA}, ada pesanan atas nama {NAMA_PEMESAN} ({ORDER_ID}) yang sudah siap! Sedang kami siapkan ojol untuk diantar ke Anda ya 📱', 'Order siap diantar ojol (penerima)'],
+      ['ORDER_SELESAI_PENERIMA',      'Halo Kak {NAMA}, pesanan atas nama {NAMA_PEMESAN} ({ORDER_ID}) sudah selesai. Terima kasih ya 🙏', 'Order selesai (penerima)'],
+      ['ORDER_BATAL_PENERIMA',        'Halo Kak {NAMA}, mohon maaf pesanan atas nama {NAMA_PEMESAN} ({ORDER_ID}) dibatalkan 🙏', 'Order dibatalkan (penerima)']
     ]
   ],
 
