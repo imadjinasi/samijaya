@@ -374,8 +374,22 @@ function handleTelegramWebhook(update) {
       function buildPesanWaPenerima(ord, kodeStatus, tmplData) {
         var penerimaData = JSON.parse(JSON.stringify(tmplData));
         penerimaData.NAMA = ord.nama_penerima;
-        penerimaData.ORDER_ID = 'atas nama ' + ord.nama + ' dengan No. Pesanan #' + ord.order_id;
-        return fillTemplate(resolveTemplateCode(kodeStatus, ord.metode_kirim), penerimaData);
+        penerimaData.NAMA_PEMESAN = ord.nama;
+        
+        var resolvedBase = resolveTemplateCode(kodeStatus, ord.metode_kirim);
+        var targetKode = resolvedBase + '_PENERIMA';
+        
+        var rows = readAll('MessageTemplates');
+        var found = false;
+        for (var k = 0; k < rows.length; k++) {
+          if (String(rows[k].kode) === targetKode) {
+             found = true;
+             break;
+          }
+        }
+        
+        var finalKode = found ? targetKode : resolvedBase;
+        return fillTemplate(finalKode, penerimaData);
       }
 
       function getWaButtons(ord, kodeStatus, tmplData) {
