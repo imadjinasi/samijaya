@@ -123,23 +123,23 @@ function _notifyAdminNewOrder(orderObj, orderItems) {
 
   var infoPenerima = '';
   if (String(orderObj.nama_penerima) !== String(orderObj.nama) || String(orderObj.no_hp_penerima) !== String(orderObj.no_hp)) {
-    infoPenerima = '🤝 Penerima: ' + orderObj.nama_penerima + ' (' + orderObj.no_hp_penerima + ')\n';
+    infoPenerima = '🤝 Penerima: ' + tgEscapeHtml(orderObj.nama_penerima) + ' (' + tgEscapeHtml(orderObj.no_hp_penerima) + ')\n';
   }
 
   var pesan = '🛒 <b>Order Baru!</b>\n\n'
     + '📋 ID: <code>' + orderObj.order_id + '</code>\n'
-    + '👤 Nama: ' + orderObj.nama + '\n'
-    + '📞 No HP: ' + orderObj.no_hp + '\n'
+    + '👤 Nama: ' + tgEscapeHtml(orderObj.nama) + '\n'
+    + '📞 No HP: ' + tgEscapeHtml(orderObj.no_hp) + '\n'
     + infoPenerima
-    + '📦 Metode: ' + metodeInfo + '\n'
-    + '📅 Tgl Antar: ' + tglAntar + '\n'
-    + '💳 Bayar: ' + orderObj.metode_bayar + '\n\n'
+    + '📦 Metode: ' + tgEscapeHtml(metodeInfo) + '\n'
+    + '📅 Tgl Antar: ' + tgEscapeHtml(tglAntar) + '\n'
+    + '💳 Bayar: ' + tgEscapeHtml(orderObj.metode_bayar) + '\n\n'
     + '<b>Items:</b>\n' + (itemsText || '  (kosong)') + '\n'
     + '\n💰 Subtotal: Rp' + Number(orderObj.subtotal).toLocaleString('id')
     + '\n🚚 Ongkir: Rp' + Number(orderObj.ongkir || 0).toLocaleString('id')
     + '\n🎁 Poin: -Rp' + Number(orderObj.poin_dipakai || 0).toLocaleString('id')
     + '\n<b>Total: Rp' + Number(orderObj.total).toLocaleString('id') + '</b>\n\n'
-    + '📝 Catatan: ' + catatan;
+    + '📝 Catatan: ' + tgEscapeHtml(catatan);
 
   var opts = {
     reply_markup: {

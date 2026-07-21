@@ -77,6 +77,107 @@ function tgSend(chatId, text, opts) {
   return tgApi('sendMessage', payload);
 }
 
+/** Escape data dinamis yang akan disisipkan ke parse_mode HTML. */
+function tgEscapeHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Parse slash command secara exact, case-insensitive, termasuk suffix @bot. */
+function tgParseCommand(text) {
+  var raw = String(text == null ? '' : text).trim();
+  var match = raw.match(/^(\/[a-z0-9_]+)(?:@([a-z0-9_]+))?(?:\s+([\s\S]*))?$/i);
+  if (!match) return null;
+  var argText = String(match[3] || '').trim();
+  return {
+    command: match[1].toLowerCase(),
+    bot_username: String(match[2] || ''),
+    arg_text: argText,
+    args: argText ? argText.split(/\s+/) : []
+  };
+}
+
+/** Pecah pesan panjang pada batas baris; tidak memotong tag/entity HTML. */
+function tgChunkHtml(text, maxLength) {
+  var max = Number(maxLength) || 3850;
+  var source = String(text == null ? '' : text);
+  if (!source) return [];
+  if (source.length <= max) return [source];
+
+  var lines = source.split('\n');
+  var chunks = [];
+  var current = '';
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    var candidate = current ? current + '\n' + line : line;
+    if (candidate.length <= max) {
+      current = candidate;
+      continue;
+    }
+    if (current) chunks.push(current);
+    current = '';
+
+    // Data dinamis pada jalur command sudah dibatasi per baris. Fallback ini
+    // hanya memotong pada spasi yang berada di luar tag/entity HTML.
+    while (line.length > max) {
+      var cut = max;
+      var lt = line.lastIndexOf('<', cut);
+      var gt = line.lastIndexOf('>', cut);
+      if (lt > gt) cut = lt;
+      var amp = line.lastIndexOf('&', cut);
+      var semi = line.lastIndexOf(';', cut);
+      if (amp > semi) cut = Math.min(cut, amp);
+      var space = line.lastIndexOf(' ', cut);
+      if (space > Math.floor(max * 0.6)) cut = space;
+      if (cut <= 0) cut = max;
+      chunks.push(line.substring(0, cut));
+      line = line.substring(cut).replace(/^\s+/, '');
+    }
+    current = line;
+  }
+  if (current) chunks.push(current);
+  return chunks.filter(function(chunk) { return !!chunk; });
+}
+
+/** Kirim pesan berurutan; reply markup hanya ditempel pada chunk terakhir. */
+function tgSendLong(chatId, text, opts) {
+  var chunks = tgChunkHtml(text, 3850);
+  var results = [];
+  for (var i = 0; i < chunks.length; i++) {
+    var chunkOpts = i === chunks.length - 1 ? opts : null;
+    try {
+      var result = tgSend(chatId, chunks[i], chunkOpts);
+      results.push(result);
+      if (result && result.ok === false) {
+        log('ERROR', 'tgSendLong', 'Gagal mengirim chunk Telegram', { chunk: i + 1, total: chunks.length });
+      }
+    } catch (err) {
+      log('ERROR', 'tgSendLong', 'Gagal mengirim chunk Telegram', { chunk: i + 1, total: chunks.length });
+      results.push({ ok: false, error: 'Telegram send failed' });
+    }
+  }
+  return results;
+}
+
+function tgIsActiveValue(value) {
+  var normalized = String(value == null ? '' : value).trim().toLowerCase();
+  return value === true || normalized === 'aktif' || normalized === 'true' ||
+    normalized === '1' || normalized === 'ya';
+}
+
+function tgDisplaySheetDate(value, includeTime) {
+  if (value == null || String(value).trim() === '') return '-';
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, 'Asia/Jakarta', includeTime ? 'yyyy-MM-dd HH:mm:ss' : 'yyyy-MM-dd');
+  }
+  var text = String(value).trim();
+  return includeTime ? text : text.substring(0, 10);
+}
+
 /**
  * Format daftar item order untuk pesan Telegram.
  * Harga/subtotal hanya dibaca dari snapshot OrderItems; tidak ada hitung ulang.
@@ -274,6 +375,94 @@ function fillTemplate(kode, dataObj) {
   return template;
 }
 
+function tgOrderPickupName(order) {
+  if (String(order.metode_kirim) === 'DIANTAR') return String(order.alamat_snapshot || '-');
+  var locations = readAll('PickupLocations');
+  for (var i = 0; i < locations.length; i++) {
+    if (String(locations[i].lokasi_id) === String(order.lokasi_pickup_id)) return String(locations[i].nama || '-');
+  }
+  return '-';
+}
+
+function tgResolveTemplateCode(baseCode, metodeKirim) {
+  var specificCode = baseCode + '_' + metodeKirim;
+  var rows = readAll('MessageTemplates');
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i].kode) === specificCode) return specificCode;
+  }
+  return baseCode;
+}
+
+function tgOrderWaButtons(order, statusTemplate, templateData) {
+  var baseCode = tgResolveTemplateCode(statusTemplate, order.metode_kirim);
+  var customerText = fillTemplate(baseCode, templateData);
+  var buttons = [{ text: '💬 WA Customer', url: waLink(String(order.no_hp || ''), customerText) }];
+  if (String(order.nama_penerima) !== String(order.nama) || String(order.no_hp_penerima) !== String(order.no_hp)) {
+    var recipientData = JSON.parse(JSON.stringify(templateData));
+    recipientData.NAMA = order.nama_penerima;
+    recipientData.NAMA_PEMESAN = order.nama;
+    var recipientCode = baseCode + '_PENERIMA';
+    var templates = readAll('MessageTemplates');
+    var found = false;
+    for (var i = 0; i < templates.length; i++) {
+      if (String(templates[i].kode) === recipientCode) { found = true; break; }
+    }
+    buttons.push({
+      text: '💬 WA Penerima',
+      url: waLink(String(order.no_hp_penerima || ''), fillTemplate(found ? recipientCode : baseCode, recipientData))
+    });
+  }
+  return buttons;
+}
+
+/** Keyboard operasional tunggal untuk notifikasi dan fallback /order. */
+function tgBuildOrderKeyboard(order) {
+  var status = String(order.status || '').toUpperCase();
+  var data = {
+    NAMA: order.nama,
+    ORDER_ID: order.order_id,
+    TOTAL: Number(order.total || 0).toLocaleString('id'),
+    CABANG: tgOrderPickupName(order),
+    POINT: 0
+  };
+  var keyboard = [];
+  var templateCode = '';
+  if (status === 'MENUNGGU') {
+    keyboard.push([
+      { text: '✅ Proses', callback_data: 'st:PROSES:' + order.order_id },
+      { text: '❌ Batal', callback_data: 'st:BATAL_ASK:' + order.order_id }
+    ]);
+  } else if (status === 'DIPROSES') {
+    keyboard.push([
+      { text: '🟢 Siap', callback_data: 'st:SIAP:' + order.order_id },
+      { text: '❌ Batal', callback_data: 'st:BATAL_ASK:' + order.order_id }
+    ]);
+    templateCode = 'ORDER_DIPROSES';
+  } else if (status === 'SIAP') {
+    keyboard.push([
+      { text: '✅ Selesai', callback_data: 'st:SELESAI_ASK:' + order.order_id },
+      { text: '❌ Batal', callback_data: 'st:BATAL_ASK:' + order.order_id }
+    ]);
+    templateCode = 'ORDER_SIAP';
+  } else if (status === 'SELESAI') {
+    templateCode = 'ORDER_SELESAI';
+  } else if (status === 'BATAL') {
+    templateCode = 'ORDER_BATAL';
+  }
+
+  if (templateCode) {
+    var actionRow = tgOrderWaButtons(order, templateCode, data);
+    if (String(order.metode_kirim) === 'DIANTAR' && order.lat && order.lng) {
+      actionRow.push({
+        text: '🗺️ Buka Maps ke Lokasi Antar',
+        url: 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(String(order.lat)) + ',' + encodeURIComponent(String(order.lng))
+      });
+    }
+    keyboard.push(actionRow);
+  }
+  return keyboard;
+}
+
 // ============================================================
 // 7. setWebhook()
 // ============================================================
@@ -337,15 +526,16 @@ function handleTelegramWebhook(update) {
       var message = update.message;
       var chatId  = String(message.chat.id);
       var text    = String(message.text || '').trim();
+      var parsedCommand = tgParseCommand(text);
 
       // /myid — siapa pun boleh
-      if (text === '/myid') {
+      if (parsedCommand && parsedCommand.command === '/myid' && parsedCommand.args.length === 0) {
         tgSend(chatId, 'Chat ID Anda: <code>' + chatId + '</code>');
         return { ok: true };
       }
 
       // /start
-      if (text === '/start') {
+      if (parsedCommand && parsedCommand.command === '/start' && parsedCommand.args.length === 0) {
         var greeting = '👋 Halo! Selamat datang di Bot Admin Samijaya.';
         if (isAdmin(chatId)) {
           greeting += '\n✅ Anda terdaftar sebagai admin.';
@@ -357,18 +547,11 @@ function handleTelegramWebhook(update) {
       }
 
       // /login <password>
-      if (text.indexOf('/login') === 0) {
-        var parts    = text.split(/\s+/);
-        var password = parts.length > 1 ? parts.slice(1).join(' ') : '';
+      if (parsedCommand && parsedCommand.command === '/login') {
+        var password = parsedCommand.arg_text;
 
         if (!password) {
           tgSend(chatId, '⚠️ Gunakan: /login &lt;password&gt;');
-          return { ok: true };
-        }
-
-        // Cek apakah sudah admin
-        if (isAdmin(chatId)) {
-          tgSend(chatId, 'ℹ️ Anda sudah terdaftar sebagai admin.');
           return { ok: true };
         }
 
@@ -381,26 +564,41 @@ function handleTelegramWebhook(update) {
           return { ok: true };
         }
 
-        // Password cocok → tambahkan chatId ke ADMIN_CHAT_IDS
-        var currentIds = getSetting('ADMIN_CHAT_IDS') || '';
-        var newIds;
-        if (currentIds.trim()) {
-          newIds = currentIds + ',' + chatId;
-        } else {
-          newIds = chatId;
+        var loginResult = withLock(function() {
+          var settings = readAll('Settings');
+          var rawIds = '';
+          var settingFound = false;
+          for (var s = 0; s < settings.length; s++) {
+            if (String(settings[s].key) === 'ADMIN_CHAT_IDS') {
+              rawIds = String(settings[s].value || '');
+              settingFound = true;
+              break;
+            }
+          }
+          if (!settingFound) return { ok: false, code: 'SETTING_NOT_FOUND', error: 'Konfigurasi admin tidak ditemukan' };
+          var ids = rawIds.split(',').map(function(id) { return id.trim(); }).filter(function(id) { return !!id; });
+          if (ids.indexOf(chatId) !== -1) return { ok: true, data: { already_admin: true } };
+          ids.push(chatId);
+          var updated = updateRowById('Settings', 'key', 'ADMIN_CHAT_IDS', { value: ids.join(',') });
+          if (!updated) return { ok: false, code: 'WRITE_FAILED', error: 'Konfigurasi admin gagal diperbarui' };
+          return { ok: true, data: { already_admin: false } };
+        });
+        if (!loginResult || !loginResult.ok) {
+          tgSend(chatId, '❌ Login gagal: ' + tgEscapeHtml(loginResult && loginResult.error ? loginResult.error : 'operasi tidak dapat diproses'));
+          return { ok: true };
         }
-
-        // Tulis balik ke sheet Settings
-        updateRowById('Settings', 'key', 'ADMIN_CHAT_IDS', { value: newIds });
+        if (loginResult.data && loginResult.data.already_admin) {
+          tgSend(chatId, 'ℹ️ Anda sudah terdaftar sebagai admin.');
+          return { ok: true };
+        }
         clearSettingsCache();
-
         tgSend(chatId, '✅ Login berhasil, Anda kini terdaftar sebagai admin.');
         log('ACTIVITY', chatId, 'Admin login via Telegram', { chat_id: chatId });
         return { ok: true };
       }
 
       // Command lain
-      if (text.indexOf('/') === 0) {
+      if (parsedCommand) {
         if (isAdmin(chatId)) {
           handleAdminCommand(chatId, text);
         } else {
@@ -434,9 +632,20 @@ function handleTelegramWebhook(update) {
       }
       
       var parts = data.split(':');
-      var prefix = parts[0];
+      if (parts.length !== 3 || !parts[1] || !parts[2]) {
+        tgApi('answerCallbackQuery', { callback_query_id: cbId, text: 'Format aksi tidak valid', show_alert: true });
+        return { ok: true };
+      }
       var aksi = parts[1];
       var orderId = parts[2];
+      var knownActions = {
+        PROSES: true, SIAP: true, BATAL_ASK: true, BATAL_NO: true,
+        BATAL_YES: true, SELESAI_ASK: true, SELESAI_NO: true, SELESAI_YES: true
+      };
+      if (!knownActions[aksi]) {
+        tgApi('answerCallbackQuery', { callback_query_id: cbId, text: 'Aksi tidak dikenal', show_alert: true });
+        return { ok: true };
+      }
       
       var allOrders = readAll('Orders');
       var order = null;
@@ -514,20 +723,8 @@ function handleTelegramWebhook(update) {
       }
       
       function buildMarkup(st, ord) {
-        var kb = [];
-        var td = {
-          NAMA: ord.nama, ORDER_ID: ord.order_id, TOTAL: Number(ord.total).toLocaleString('id'), CABANG: getCabang(ord), POINT: 0
-        };
-        if (st === 'MENUNGGU') {
-          kb.push([{text: '✅ Proses', callback_data: 'st:PROSES:'+ord.order_id}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+ord.order_id}]);
-        } else if (st === 'DIPROSES') {
-          kb.push([{text: '🟢 Siap', callback_data: 'st:SIAP:'+ord.order_id}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+ord.order_id}]);
-          kb.push(buildActionRow(ord, 'ORDER_DIPROSES', td));
-        } else if (st === 'SIAP') {
-          kb.push([{text: '✅ Selesai', callback_data: 'st:SELESAI_ASK:'+ord.order_id}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+ord.order_id}]);
-          kb.push(buildActionRow(ord, 'ORDER_SIAP', td));
-        }
-        return kb;
+        ord.status = st;
+        return tgBuildOrderKeyboard(ord);
       }
 
       function resolveTemplateCode(baseCode, metodeKirim) {
@@ -634,7 +831,15 @@ function handleTelegramWebhook(update) {
       }
 
       if (res && !res.ok) {
-        tgApi('answerCallbackQuery', { callback_query_id: cbId, text: 'Gagal: ' + res.error, show_alert: true });
+        var callbackError = res.code === 'TRANSISI_TIDAK_VALID' || res.code === 'STATUS_FINAL'
+          ? 'Status order sudah berubah atau aksi tidak dapat diproses'
+          : 'Gagal: ' + res.error;
+        tgApi('answerCallbackQuery', { callback_query_id: cbId, text: callbackError, show_alert: true });
+        return { ok: true };
+      }
+
+      if (!res && aksi !== 'BATAL_NO' && aksi !== 'SELESAI_NO') {
+        tgApi('answerCallbackQuery', { callback_query_id: cbId, text: 'Aksi tidak dapat diproses', show_alert: true });
         return { ok: true };
       }
 
@@ -661,12 +866,16 @@ function handleTelegramWebhook(update) {
  * @param {string} text 
  */
 function handleAdminCommand(chatId, text) {
-  var parts = text.split(/\s+/);
-  var cmd = parts[0].toLowerCase();
-  var args = parts.slice(1);
+  var parsed = tgParseCommand(text);
+  if (!parsed) {
+    tgSend(chatId, '❓ Format perintah tidak valid. Ketik /help.');
+    return;
+  }
+  var cmd = parsed.command;
+  var args = parsed.args;
 
   function esc(str) {
-    return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return tgEscapeHtml(str);
   }
 
   function getJktDateStr(date) {
@@ -674,26 +883,73 @@ function handleAdminCommand(chatId, text) {
   }
 
   if (cmd === '/help') {
-    var msg = '🛠 <b>Daftar Perintah Admin</b>\n\n'
-      + '/pending — daftar order berjalan\n'
-      + '/order &lt;ID&gt; — detail lengkap sebuah order\n'
-      + '/omzet — omzet hari ini\n'
-      + '/laporan harian — omzet 7 hari terakhir\n'
-      + '/laporan bulanan — omzet 4 minggu terakhir\n'
-      + '/tutuptoko — set toko tutup sementara\n'
-      + '/bukatoko — buka kembali toko\n'
-      + '/tutupslot &lt;id&gt; — nonaktifkan slot antar\n'
-      + '/bukaslot &lt;id&gt; — aktifkan slot antar\n'
-      + '/produk &lt;id&gt; on|off — ubah ketersediaan produk\n'
-      + '/ulasan — list 20 ulasan terbaru\n'
-      + '/ulasan hide &lt;id&gt; — sembunyikan ulasan\n'
-      + '/ulasan show &lt;id&gt; — tampilkan ulasan\n'
-      + '/clearcache — hapus cache settings & katalog';
-    tgSend(chatId, msg);
+    if (args.length !== 0) { tgSend(chatId, '⚠️ Format: /help'); return; }
+    var msg = '🛠 <b>DAFTAR PERINTAH ADMIN</b>\n\n'
+      + '<b>LIHAT DATA</b>\n'
+      + '/status\n/health\n/pending\n/order &lt;ID&gt;\n/produk\n/ulasan\n'
+      + '/promo list\n/promo stats &lt;KODE&gt;\n/omzet\n/laporan harian\n/laporan bulanan\n\n'
+      + '<b>UBAH OPERASIONAL</b>\n'
+      + '/bukatoko\n/tutuptoko\n/bukaslot &lt;ID&gt;\n/tutupslot &lt;ID&gt;\n'
+      + '/produk &lt;ID&gt; on|off\n/ulasan hide|show &lt;ID&gt;\n'
+      + '/promo on|off &lt;KODE&gt;\n/clearcache';
+    tgSendLong(chatId, msg);
+    return;
+  }
+
+  if (cmd === '/status') {
+    if (args.length !== 0) { tgSend(chatId, '⚠️ Format: /status'); return; }
+    var statusLines = ['📋 <b>STATUS OPERASIONAL</b>', ''];
+    var storeSettingFound = false;
+    try {
+      var settings = readAll('Settings');
+      for (var stIdx = 0; stIdx < settings.length; stIdx++) {
+        if (String(settings[stIdx].key) === 'TOKO_BUKA') {
+          storeSettingFound = true;
+          statusLines.push('Toko: <b>' + (tgIsActiveValue(settings[stIdx].value) ? 'BUKA' : 'TUTUP') + '</b>');
+          break;
+        }
+      }
+      if (!storeSettingFound) statusLines.push('Toko: <b>ERROR — setting TOKO_BUKA tidak ditemukan</b>');
+    } catch (statusSettingsErr) {
+      statusLines.push('Toko: <b>ERROR — Settings tidak dapat dibaca</b>');
+    }
+    statusLines.push('', '<b>Slot:</b>');
+    try {
+      var statusSlots = readAll('DeliverySlots');
+      statusSlots.sort(function(a, b) {
+        return String(a.jam_mulai || '').localeCompare(String(b.jam_mulai || ''));
+      });
+      if (statusSlots.length === 0) statusLines.push('Belum ada slot.');
+      for (var sl = 0; sl < statusSlots.length; sl++) {
+        statusLines.push('<code>' + esc(statusSlots[sl].slot_id) + '</code> · ' +
+          esc(statusSlots[sl].jam_mulai || '-') + '–' + esc(statusSlots[sl].jam_selesai || '-') + ' · ' +
+          (tgIsActiveValue(statusSlots[sl].status) ? 'AKTIF' : 'NONAKTIF'));
+      }
+    } catch (statusSlotsErr) {
+      statusLines.push('ERROR — DeliverySlots tidak dapat dibaca');
+    }
+    tgSendLong(chatId, statusLines.join('\n'));
+    return;
+  }
+
+  if (cmd === '/health') {
+    if (args.length !== 0) { tgSend(chatId, '⚠️ Format: /health'); return; }
+    var checks = ['Settings', 'Orders', 'Products', 'DeliverySlots', 'PromoCodes', 'PromoUsage'];
+    var healthLines = ['🩺 <b>HEALTH</b>'];
+    for (var hc = 0; hc < checks.length; hc++) {
+      try {
+        readAll(checks[hc]);
+        healthLines.push(checks[hc] + ': OK');
+      } catch (healthErr) {
+        healthLines.push(checks[hc] + ': ERROR');
+      }
+    }
+    tgSendLong(chatId, healthLines.join('\n'));
     return;
   }
 
   if (cmd === '/pending') {
+    if (args.length !== 0) { tgSend(chatId, '⚠️ Format: /pending'); return; }
     var orders = readAll('Orders');
     var pendingList = [];
     // Urutkan dari yang terbaru
@@ -717,17 +973,17 @@ function handleAdminCommand(chatId, text) {
     var max = Math.min(pendingList.length, 20);
     for (var j = 0; j < max; j++) {
       var o = pendingList[j];
-      lines.push('<code>' + o.order_id + '</code> • ' + esc(o.nama) + ' • ' + o.metode_kirim + ' • Rp' + Number(o.total).toLocaleString('id') + ' • ' + o.status);
+        lines.push('<code>' + esc(o.order_id) + '</code> • ' + esc(o.nama) + ' • ' + esc(o.metode_kirim) + ' • Rp' + Number(o.total).toLocaleString('id') + ' • ' + esc(o.status));
     }
     if (pendingList.length > 20) {
       lines.push('\n<i>(Menampilkan 20 order terbaru dari ' + pendingList.length + ')</i>');
     }
-    tgSend(chatId, lines.join('\n'));
+    tgSendLong(chatId, lines.join('\n'));
     return;
   }
 
   if (cmd === '/order') {
-    if (args.length < 1) {
+    if (args.length !== 1) {
       tgSend(chatId, '⚠️ Format: /order &lt;ORDER_ID&gt;');
       return;
     }
@@ -755,7 +1011,7 @@ function handleAdminCommand(chatId, text) {
       var tArr = JSON.parse(order.timeline_json);
       for (var t = 0; t < tArr.length; t++) {
         var jkt = Utilities.formatDate(new Date(tArr[t].at), 'Asia/Jakarta', 'dd-MM-yy HH:mm');
-        tl += jkt + ' : ' + tArr[t].status + '\n';
+        tl += esc(jkt) + ' : ' + esc(tArr[t].status) + '\n';
       }
     } catch (e) { tl = '-'; }
 
@@ -779,14 +1035,16 @@ function handleAdminCommand(chatId, text) {
       + '💳 <b>Total: Rp' + Number(order.total).toLocaleString('id') + '</b> (' + esc(order.metode_bayar) + ')\n\n'
       + '📝 Catatan: ' + esc(order.catatan_customer || '-') + '\n'
       + '⚙️ Catatan Admin: ' + esc(order.catatan_admin || '-') + '\n\n'
-      + '<b>Status Saat Ini:</b> ' + order.status + '\n'
-      + '<b>Timeline:</b>\n<pre>' + tl + '</pre>';
+      + '<b>Status Saat Ini:</b> ' + esc(order.status) + '\n'
+      + '<b>Timeline:</b>\n' + tl;
       
-    tgSend(chatId, msg);
+    var orderKeyboard = tgBuildOrderKeyboard(order);
+    tgSendLong(chatId, msg, orderKeyboard.length ? { reply_markup: { inline_keyboard: orderKeyboard } } : null);
     return;
   }
 
   if (cmd === '/omzet') {
+    if (args.length !== 0) { tgSend(chatId, '⚠️ Format: /omzet'); return; }
     var today = getJktDateStr(new Date());
     var orders = readAll('Orders');
     var count = 0;
@@ -821,7 +1079,7 @@ function handleAdminCommand(chatId, text) {
 
   if (cmd === '/laporan') {
     var jenis = args[0] ? args[0].toLowerCase() : '';
-    if (jenis !== 'harian' && jenis !== 'bulanan') {
+    if (args.length !== 1 || (jenis !== 'harian' && jenis !== 'bulanan')) {
       tgSend(chatId, '⚠️ Format: /laporan harian | /laporan bulanan');
       return;
     }
@@ -831,7 +1089,7 @@ function handleAdminCommand(chatId, text) {
     // Normalisasi offset ke Asia/Jakarta 
     var jktOffset = 7 * 60 * 60 * 1000;
     var utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-    var nowJkt = new Date(utc + jktOffset);
+    var reportNowJkt = new Date(utc + jktOffset);
 
     if (jenis === 'harian') {
       var daysData = {};
@@ -840,7 +1098,7 @@ function handleAdminCommand(chatId, text) {
       
       // Init 7 hari ke belakang (termasuk hari ini)
       for (var d = 0; d < 7; d++) {
-        var dt = new Date(nowJkt.getTime() - (d * 24 * 60 * 60 * 1000));
+        var dt = new Date(reportNowJkt.getTime() - (d * 24 * 60 * 60 * 1000));
         var dStr = getJktDateStr(dt);
         daysData[dStr] = { count: 0, omzet: 0 };
       }
@@ -878,9 +1136,9 @@ function handleAdminCommand(chatId, text) {
     if (jenis === 'bulanan') {
       var weeksData = [];
       // Cari Senin dari minggu ini
-      var currentDay = nowJkt.getDay(); // 0=Minggu, 1=Senin
+      var currentDay = reportNowJkt.getDay(); // 0=Minggu, 1=Senin
       var diffToMonday = currentDay === 0 ? 6 : currentDay - 1;
-      var currentMonday = new Date(nowJkt.getTime() - (diffToMonday * 24 * 60 * 60 * 1000));
+      var currentMonday = new Date(reportNowJkt.getTime() - (diffToMonday * 24 * 60 * 60 * 1000));
       currentMonday.setHours(0,0,0,0);
       
       // Init 4 minggu ke belakang
@@ -934,56 +1192,186 @@ function handleAdminCommand(chatId, text) {
     }
   }
 
+  if (cmd === '/promo') {
+    var promoSub = args.length ? String(args[0]).toLowerCase() : '';
+    if (promoSub === 'list') {
+      if (args.length !== 1) { tgSend(chatId, '⚠️ Format: /promo list'); return; }
+      var promoRows = readAll('PromoCodes');
+      if (promoRows.length === 0) { tgSend(chatId, 'ℹ️ Belum ada kode promo.'); return; }
+      promoRows.sort(function(a, b) {
+        return _promoNormalizeCode(a.kode).localeCompare(_promoNormalizeCode(b.kode));
+      });
+      var promoLines = ['🎟️ <b>DAFTAR PROMO</b>', ''];
+      for (var pr = 0; pr < promoRows.length; pr++) {
+        var normalizedCode = _promoNormalizeCode(promoRows[pr].kode) || '(KODE KOSONG)';
+        var promoName = String(promoRows[pr].nama || '-');
+        if (promoName.length > 60) promoName = promoName.substring(0, 57) + '...';
+        var promoStart = tgDisplaySheetDate(promoRows[pr].mulai_at, false);
+        var promoEnd = tgDisplaySheetDate(promoRows[pr].berakhir_at, false);
+        var totalLimit = Number(promoRows[pr].limit_total) || 0;
+        promoLines.push('<code>' + esc(normalizedCode) + '</code> · ' + esc(promoName) + ' · ' +
+          (tgIsActiveValue(promoRows[pr].aktif) ? 'AKTIF' : 'NONAKTIF'));
+        promoLines.push('Periode: ' + esc(promoStart) + ' s/d ' + esc(promoEnd) +
+          ' · Limit total: ' + (totalLimit > 0 ? totalLimit : 'Tanpa batas'));
+      }
+      tgSendLong(chatId, promoLines.join('\n'));
+      return;
+    }
+
+    if (promoSub === 'on' || promoSub === 'off') {
+      if (args.length !== 2) { tgSend(chatId, '⚠️ Format: /promo ' + promoSub + ' &lt;KODE&gt;'); return; }
+      var requestedCode = _promoNormalizeCode(args[1]);
+      if (!requestedCode) { tgSend(chatId, '⚠️ Kode promo wajib diisi.'); return; }
+      var desiredActive = promoSub === 'on';
+      var promoWriteResult = withLock(function() {
+        var rowsInsideLock = readAll('PromoCodes');
+        var matches = [];
+        for (var pwi = 0; pwi < rowsInsideLock.length; pwi++) {
+          if (_promoNormalizeCode(rowsInsideLock[pwi].kode) === requestedCode) matches.push(rowsInsideLock[pwi]);
+        }
+        if (matches.length === 0) return { ok: false, code: 'PROMO_NOT_FOUND', error: 'Kode promo tidak ditemukan' };
+        if (matches.length > 1) return { ok: false, code: 'PROMO_DUPLICATE', error: 'Kode promo duplikat; konfigurasi tidak valid' };
+        var alreadyDesired = tgIsActiveValue(matches[0].aktif) === desiredActive;
+        if (alreadyDesired) return { ok: true, data: { unchanged: true, promo: matches[0] } };
+        var updated = updateRowById('PromoCodes', 'promo_id', matches[0].promo_id, {
+          aktif: desiredActive ? 'aktif' : 'nonaktif',
+          updated_at: nowJkt()
+        });
+        if (!updated) return { ok: false, code: 'WRITE_FAILED', error: 'Status promo gagal diperbarui' };
+        return { ok: true, data: { unchanged: false, promo: matches[0] } };
+      });
+      if (!promoWriteResult || !promoWriteResult.ok) {
+        tgSend(chatId, '❌ ' + esc(promoWriteResult && promoWriteResult.error ? promoWriteResult.error : 'Operasi promo gagal'));
+        return;
+      }
+      var promoStateText = desiredActive ? 'aktif' : 'nonaktif';
+      tgSend(chatId, promoWriteResult.data.unchanged
+        ? 'ℹ️ Promo <code>' + esc(requestedCode) + '</code> sudah ' + promoStateText + '.'
+        : '✅ Promo <code>' + esc(requestedCode) + '</code> sekarang ' + promoStateText + '.');
+      return;
+    }
+
+    if (promoSub === 'stats') {
+      if (args.length !== 2) { tgSend(chatId, '⚠️ Format: /promo stats &lt;KODE&gt;'); return; }
+      var statsCode = _promoNormalizeCode(args[1]);
+      var statsPromos = readAll('PromoCodes');
+      var statsUsage = readAll('PromoUsage');
+      var statsMatches = [];
+      for (var sp = 0; sp < statsPromos.length; sp++) {
+        if (_promoNormalizeCode(statsPromos[sp].kode) === statsCode) statsMatches.push(statsPromos[sp]);
+      }
+      if (statsMatches.length === 0) { tgSend(chatId, '❌ Kode promo tidak ditemukan.'); return; }
+      if (statsMatches.length > 1) { tgSend(chatId, '❌ Kode promo duplikat; konfigurasi tidak valid.'); return; }
+      var selectedPromo = statsMatches[0];
+      var todayWib = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd');
+      var usedCount = 0, todayCount = 0, cancelledCount = 0, actualDiscount = 0;
+      var uniqueMembers = {}, lastUsedText = '', lastUsedMs = -1;
+      for (var su = 0; su < statsUsage.length; su++) {
+        if (String(statsUsage[su].promo_id) !== String(selectedPromo.promo_id)) continue;
+        var usageStatus = String(statsUsage[su].status || '').trim().toUpperCase();
+        if (usageStatus === 'DIBATALKAN') { cancelledCount++; continue; }
+        if (usageStatus !== 'DIGUNAKAN') continue;
+        usedCount++;
+        if (_promoUsedDate(statsUsage[su].used_date) === todayWib) todayCount++;
+        if (String(statsUsage[su].member_id || '')) uniqueMembers[String(statsUsage[su].member_id)] = true;
+        actualDiscount += Number(statsUsage[su].promo_diskon_total) || 0;
+        var usedText = String(statsUsage[su].used_at || '');
+        var usedMs = new Date(usedText).getTime();
+        if (!isNaN(usedMs) && usedMs > lastUsedMs) { lastUsedMs = usedMs; lastUsedText = usedText; }
+        else if (lastUsedMs < 0 && usedText > lastUsedText) lastUsedText = usedText;
+      }
+      function displayLimit(value) { var num = Number(value) || 0; return num > 0 ? String(num) : 'Tanpa batas'; }
+      function displayPeriod(value) { return tgDisplaySheetDate(value, false); }
+      var statsLines = [
+        '🎟️ <b>PROMO ' + esc(statsCode) + ' — ' + (tgIsActiveValue(selectedPromo.aktif) ? 'AKTIF' : 'NONAKTIF') + '</b>',
+        'Dipakai: ' + usedCount,
+        'Hari ini: ' + todayCount,
+        'Dibatalkan: ' + cancelledCount,
+        'Member unik: ' + Object.keys(uniqueMembers).length,
+        'Diskon aktual: Rp' + actualDiscount.toLocaleString('id'),
+        'Terakhir dipakai: ' + esc(lastUsedText ? tgDisplaySheetDate(lastUsedText, true) : '-'),
+        'Limit: total ' + displayLimit(selectedPromo.limit_total) + ' · harian ' + displayLimit(selectedPromo.limit_harian) +
+          ' · per member ' + displayLimit(selectedPromo.limit_per_member),
+        'Periode: ' + esc(displayPeriod(selectedPromo.mulai_at)) + ' s/d ' + esc(displayPeriod(selectedPromo.berakhir_at))
+      ];
+      tgSendLong(chatId, statsLines.join('\n'));
+      return;
+    }
+
+    tgSend(chatId, '⚠️ Format: /promo list | /promo on &lt;KODE&gt; | /promo off &lt;KODE&gt; | /promo stats &lt;KODE&gt;');
+    return;
+  }
+
   if (cmd === '/tutuptoko') {
-    withLock(function() {
-      updateRowById('Settings', 'key', 'TOKO_BUKA', { value: '0' });
+    if (args.length !== 0) { tgSend(chatId, '⚠️ Format: /tutuptoko'); return; }
+    var closeStoreResult = withLock(function() {
+      var rows = readAll('Settings');
+      var current = null;
+      for (var i = 0; i < rows.length; i++) if (String(rows[i].key) === 'TOKO_BUKA') { current = rows[i]; break; }
+      if (!current) return { ok: false, code: 'SETTING_NOT_FOUND', error: 'Setting TOKO_BUKA tidak ditemukan' };
+      if (!tgIsActiveValue(current.value)) return { ok: true, data: { unchanged: true } };
+      if (!updateRowById('Settings', 'key', 'TOKO_BUKA', { value: '0' })) {
+        return { ok: false, code: 'WRITE_FAILED', error: 'Status toko gagal diperbarui' };
+      }
+      return { ok: true, data: { unchanged: false } };
     });
-    clearSettingsCache();
-    CacheService.getScriptCache().remove('catalog_cache');
-    tgSend(chatId, '🛑 Toko sudah TUTUP. Order baru akan ditolak.');
+    if (!closeStoreResult || !closeStoreResult.ok) { tgSend(chatId, '❌ ' + esc(closeStoreResult && closeStoreResult.error || 'Gagal menutup toko')); return; }
+    if (!closeStoreResult.data.unchanged) {
+      clearSettingsCache();
+      CacheService.getScriptCache().remove('catalog_cache');
+    }
+    tgSend(chatId, closeStoreResult.data.unchanged ? 'ℹ️ Toko sudah dalam keadaan TUTUP.' : '🛑 Toko sudah TUTUP. Order baru akan ditolak.');
     return;
   }
 
   if (cmd === '/bukatoko') {
-    withLock(function() {
-      updateRowById('Settings', 'key', 'TOKO_BUKA', { value: '1' });
+    if (args.length !== 0) { tgSend(chatId, '⚠️ Format: /bukatoko'); return; }
+    var openStoreResult = withLock(function() {
+      var rows = readAll('Settings');
+      var current = null;
+      for (var i = 0; i < rows.length; i++) if (String(rows[i].key) === 'TOKO_BUKA') { current = rows[i]; break; }
+      if (!current) return { ok: false, code: 'SETTING_NOT_FOUND', error: 'Setting TOKO_BUKA tidak ditemukan' };
+      if (tgIsActiveValue(current.value)) return { ok: true, data: { unchanged: true } };
+      if (!updateRowById('Settings', 'key', 'TOKO_BUKA', { value: '1' })) {
+        return { ok: false, code: 'WRITE_FAILED', error: 'Status toko gagal diperbarui' };
+      }
+      return { ok: true, data: { unchanged: false } };
     });
-    clearSettingsCache();
-    CacheService.getScriptCache().remove('catalog_cache');
-    tgSend(chatId, '✅ Toko sudah BUKA.');
+    if (!openStoreResult || !openStoreResult.ok) { tgSend(chatId, '❌ ' + esc(openStoreResult && openStoreResult.error || 'Gagal membuka toko')); return; }
+    if (!openStoreResult.data.unchanged) {
+      clearSettingsCache();
+      CacheService.getScriptCache().remove('catalog_cache');
+    }
+    tgSend(chatId, openStoreResult.data.unchanged ? 'ℹ️ Toko sudah dalam keadaan BUKA.' : '✅ Toko sudah BUKA.');
     return;
   }
 
   if (cmd === '/tutupslot' || cmd === '/bukaslot') {
-    if (args.length < 1) {
+    if (args.length !== 1) {
       tgSend(chatId, '⚠️ Format: ' + cmd + ' &lt;slot_id&gt;');
       return;
     }
     var slotId = args[0];
-    var slots = readAll('DeliverySlots');
-    var found = false;
-    for (var i = 0; i < slots.length; i++) {
-      if (String(slots[i].slot_id) === slotId) {
-        found = true;
-        break;
-      }
-    }
-    if (!found) {
-      tgSend(chatId, '❌ Slot tidak ditemukan.');
-      return;
-    }
-    
     var newStatus = cmd === '/tutupslot' ? 'nonaktif' : 'aktif';
-    withLock(function() {
-      updateRowById('DeliverySlots', 'slot_id', slotId, { status: newStatus });
+    var slotWriteResult = withLock(function() {
+      var slots = readAll('DeliverySlots');
+      var selected = null;
+      for (var i = 0; i < slots.length; i++) if (String(slots[i].slot_id) === slotId) { selected = slots[i]; break; }
+      if (!selected) return { ok: false, code: 'SLOT_NOT_FOUND', error: 'Slot tidak ditemukan' };
+      var desiredActive = newStatus === 'aktif';
+      if (tgIsActiveValue(selected.status) === desiredActive) return { ok: true, data: { unchanged: true } };
+      if (!updateRowById('DeliverySlots', 'slot_id', slotId, { status: newStatus })) {
+        return { ok: false, code: 'WRITE_FAILED', error: 'Status slot gagal diperbarui' };
+      }
+      return { ok: true, data: { unchanged: false } };
     });
-    clearSettingsCache();
-    CacheService.getScriptCache().remove('catalog_cache');
+    if (!slotWriteResult || !slotWriteResult.ok) { tgSend(chatId, '❌ ' + esc(slotWriteResult && slotWriteResult.error || 'Operasi slot gagal')); return; }
+    if (!slotWriteResult.data.unchanged) CacheService.getScriptCache().remove('catalog_cache');
     
     if (newStatus === 'nonaktif') {
-      tgSend(chatId, '🛑 Slot <code>' + esc(slotId) + '</code> sudah ditutup.');
+      tgSend(chatId, (slotWriteResult.data.unchanged ? 'ℹ️' : '🛑') + ' Slot <code>' + esc(slotId) + '</code> sudah ditutup.');
     } else {
-      tgSend(chatId, '✅ Slot <code>' + esc(slotId) + '</code> sudah dibuka.');
+      tgSend(chatId, (slotWriteResult.data.unchanged ? 'ℹ️' : '✅') + ' Slot <code>' + esc(slotId) + '</code> sudah dibuka.');
     }
     return;
   }
@@ -996,14 +1384,14 @@ function handleAdminCommand(chatId, text) {
       for (var i = 0; i < max; i++) {
         var p = prods[i];
         var stateStr = Number(p.tersedia) === 1 ? 'on' : 'off';
-        lines.push('<code>' + p.product_id + '</code> • ' + esc(p.nama) + ' • Rp' + Number(p.harga).toLocaleString('id') + ' • ' + stateStr);
+        lines.push('<code>' + esc(p.product_id) + '</code> • ' + esc(p.nama) + ' • Rp' + Number(p.harga).toLocaleString('id') + ' • ' + stateStr);
       }
       if (prods.length > 50) lines.push('\n<i>(Menampilkan 50 baris pertama)</i>');
-      tgSend(chatId, lines.join('\n'));
+      tgSendLong(chatId, lines.join('\n'));
       return;
     }
 
-    if (args.length < 2) {
+    if (args.length !== 2) {
       tgSend(chatId, '⚠️ Format: /produk &lt;id&gt; on|off\nAtau ketik /produk untuk melihat daftar.');
       return;
     }
@@ -1014,29 +1402,26 @@ function handleAdminCommand(chatId, text) {
       return;
     }
 
-    var prods = readAll('Products');
-    var prod = null;
-    for (var i = 0; i < prods.length; i++) {
-      if (String(prods[i].product_id) === pid) {
-        prod = prods[i];
-        break;
-      }
-    }
-    if (!prod) {
-      tgSend(chatId, '❌ Produk tidak ditemukan.');
-      return;
-    }
-
     var tersedia = state === 'on' ? '1' : '0';
     var statusText = state === 'on' ? 'tersedia' : 'tidak tersedia';
-    
-    withLock(function() {
-      updateRowById('Products', 'product_id', pid, { tersedia: tersedia });
+    var productWriteResult = withLock(function() {
+      var prods = readAll('Products');
+      var prod = null;
+      for (var i = 0; i < prods.length; i++) if (String(prods[i].product_id) === pid) { prod = prods[i]; break; }
+      if (!prod) return { ok: false, code: 'PRODUCT_NOT_FOUND', error: 'Produk tidak ditemukan' };
+      var currentlyAvailable = tgIsActiveValue(prod.tersedia);
+      if (currentlyAvailable === (state === 'on')) return { ok: true, data: { unchanged: true, product: prod } };
+      var patch = { tersedia: tersedia };
+      if (prod.hasOwnProperty('updated_at')) patch.updated_at = nowJkt();
+      if (!updateRowById('Products', 'product_id', pid, patch)) {
+        return { ok: false, code: 'WRITE_FAILED', error: 'Ketersediaan produk gagal diperbarui' };
+      }
+      return { ok: true, data: { unchanged: false, product: prod } };
     });
-    clearSettingsCache();
-    CacheService.getScriptCache().remove('catalog_cache');
-    
-    tgSend(chatId, '📦 Produk <b>' + esc(prod.nama) + '</b> → ' + statusText);
+    if (!productWriteResult || !productWriteResult.ok) { tgSend(chatId, '❌ ' + esc(productWriteResult && productWriteResult.error || 'Operasi produk gagal')); return; }
+    if (!productWriteResult.data.unchanged) CacheService.getScriptCache().remove('catalog_cache');
+    tgSend(chatId, (productWriteResult.data.unchanged ? 'ℹ️' : '📦') + ' Produk <b>' +
+      esc(productWriteResult.data.product.nama) + '</b> ' + (productWriteResult.data.unchanged ? 'sudah ' : '→ ') + statusText);
     return;
   }
 
@@ -1082,47 +1467,47 @@ function handleAdminCommand(chatId, text) {
         var uPreview = r.ulasan || '';
         if (uPreview.length > 60) uPreview = uPreview.substring(0, 60) + '...';
         var ns2 = memberMap[String(r.member_id)] || 'Pelanggan Setia';
-        lines.push('<code>' + r.review_id + '</code> ★' + r.rating + ' • ' + esc(ns2) + ' • ' + esc(r.order_id) + '\n' + esc(uPreview) + '\nStatus: ' + r.status + '\n');
+        lines.push('<code>' + esc(r.review_id) + '</code> ★' + esc(r.rating) + ' • ' + esc(ns2) + ' • ' + esc(r.order_id) + '\n' + esc(uPreview) + '\nStatus: ' + esc(r.status) + '\n');
       }
-      tgSend(chatId, lines.join('\n'));
+      tgSendLong(chatId, lines.join('\n'));
       return;
     }
     
     var subCmd = args[0].toLowerCase();
     if (subCmd === 'hide' || subCmd === 'show') {
-      if (args.length < 2) {
+      if (args.length !== 2) {
         tgSend(chatId, '⚠️ Format: /ulasan ' + subCmd + ' &lt;review_id&gt;');
         return;
       }
       var rid = args[1];
-      var allReviews2 = readAll('Reviews');
-      var rev = null;
-      for (var i2 = 0; i2 < allReviews2.length; i2++) {
-        if (String(allReviews2[i2].review_id) === rid) {
-          rev = allReviews2[i2];
-          break;
-        }
-      }
-      if (!rev) {
-        tgSend(chatId, '❌ Ulasan tidak ditemukan.');
-        return;
-      }
-      
       var newStatus = subCmd === 'hide' ? 'hidden' : 'aktif';
-      withLock(function() {
-        updateRowById('Reviews', 'review_id', rid, { status: newStatus });
+      var reviewWriteResult = withLock(function() {
+        var reviews = readAll('Reviews');
+        var rev = null;
+        for (var ri = 0; ri < reviews.length; ri++) if (String(reviews[ri].review_id) === rid) { rev = reviews[ri]; break; }
+        if (!rev) return { ok: false, code: 'REVIEW_NOT_FOUND', error: 'Ulasan tidak ditemukan' };
+        if (String(rev.status) === newStatus) return { ok: true, data: { unchanged: true } };
+        var patch = { status: newStatus };
+        if (rev.hasOwnProperty('updated_at')) patch.updated_at = nowJkt();
+        if (!updateRowById('Reviews', 'review_id', rid, patch)) {
+          return { ok: false, code: 'WRITE_FAILED', error: 'Status ulasan gagal diperbarui' };
+        }
+        return { ok: true, data: { unchanged: false } };
       });
-      
+      if (!reviewWriteResult || !reviewWriteResult.ok) { tgSend(chatId, '❌ ' + esc(reviewWriteResult && reviewWriteResult.error || 'Operasi ulasan gagal')); return; }
       if (subCmd === 'hide') {
-        tgSend(chatId, '🚫 Ulasan disembunyikan dari homepage.');
+        tgSend(chatId, reviewWriteResult.data.unchanged ? 'ℹ️ Ulasan sudah disembunyikan.' : '🚫 Ulasan disembunyikan dari homepage.');
       } else {
-        tgSend(chatId, '✅ Ulasan ditampilkan lagi.');
+        tgSend(chatId, reviewWriteResult.data.unchanged ? 'ℹ️ Ulasan sudah ditampilkan.' : '✅ Ulasan ditampilkan lagi.');
       }
       return;
     }
+    tgSend(chatId, '⚠️ Format: /ulasan | /ulasan hide &lt;ID&gt; | /ulasan show &lt;ID&gt;');
+    return;
   }
 
   if (cmd === '/clearcache') {
+    if (args.length !== 0) { tgSend(chatId, '⚠️ Format: /clearcache'); return; }
     clearSettingsCache();
     CacheService.getScriptCache().remove('catalog_cache');
     tgSend(chatId, '🧹 Cache dibersihkan. Settings & katalog akan dibaca ulang.');
