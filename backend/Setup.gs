@@ -106,7 +106,11 @@ var SHEET_DEFS = [
      'jarak_km', 'ongkir', 'slot_id', 'subtotal', 'poin_dipakai', 'total',
      'metode_bayar', 'status', 'catatan_customer', 'catatan_admin',
      'created_at', 'updated_at', 'timeline_json', 'nama_penerima', 'no_hp_penerima',
-     'status_updated_at'],
+     'status_updated_at', 'promo_id', 'promo_code', 'promo_nama',
+     'ongkir_sebelum_promo', 'promo_diskon_subtotal', 'promo_diskon_produk',
+     'promo_diskon_ongkir', 'promo_diskon_total', 'promo_bonus_poin',
+     'promo_multiplier_poin', 'poin_earn_dasar', 'poin_earn_final',
+     'promo_snapshot_json'],
     null
   ],
 
@@ -178,6 +182,30 @@ var SHEET_DEFS = [
   // --- 17. OrderItemAddons ---
   ['OrderItemAddons',
     ['id', 'order_id', 'order_item_ref', 'addon_id', 'nama_addon_snapshot', 'harga_snapshot', 'created_at'],
+    null
+  ],
+
+  // --- 18. PromoCodes ---
+  ['PromoCodes',
+    ['promo_id', 'kode', 'nama', 'deskripsi', 'catatan_customer', 'aktif',
+     'mulai_at', 'berakhir_at', 'hari_berlaku', 'jam_mulai', 'jam_berakhir',
+     'min_subtotal', 'max_subtotal', 'metode_kirim', 'required_product_ids',
+     'required_kategori_ids', 'required_match_mode', 'member_baru_only',
+     'whitelist_member_ids', 'bisa_dengan_poin', 'limit_total',
+     'limit_per_member', 'limit_harian', 'diskon_subtotal_tipe',
+     'diskon_subtotal_nilai', 'diskon_subtotal_max', 'diskon_produk_ids',
+     'diskon_produk_tipe', 'diskon_produk_nilai', 'diskon_produk_max',
+     'diskon_ongkir_tipe', 'diskon_ongkir_nilai', 'diskon_ongkir_max',
+     'bonus_poin', 'multiplier_poin', 'created_at', 'updated_at'],
+    null
+  ],
+
+  // --- 19. PromoUsage ---
+  ['PromoUsage',
+    ['usage_id', 'promo_id', 'promo_code', 'order_id', 'member_id', 'status',
+     'used_at', 'used_date', 'cancelled_at', 'promo_diskon_subtotal',
+     'promo_diskon_produk', 'promo_diskon_ongkir', 'promo_diskon_total',
+     'promo_bonus_poin', 'promo_multiplier_poin'],
     null
   ]
 ];

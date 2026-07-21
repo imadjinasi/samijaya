@@ -124,6 +124,9 @@ function doPost(e) {
       case 'createOrder':
         result = orderCreateOrder(payload, token);
         break;
+      case 'validatePromo':
+        result = promoValidateCode(payload, token);
+        break;
       case 'getMyOrders':
         result = orderGetMyOrders(payload, token);
         break;

@@ -73,7 +73,7 @@ function readAll(sheetName) {
   // Hanya header, tidak ada baris data
   if (data.length === 1) return [];
 
-  var stringFields = ['no_hp', 'otp', 'value', 'nama_snapshot', 'catatan_customer', 'catatan_admin', 'alamat_snapshot', 'chat_id', 'lat', 'lng', 'nama_penerima', 'no_hp_penerima', 'variant_id', 'variant_nama_snapshot', 'nama_axis_snapshot', 'nama_varian', 'nama_axis', 'nama_addon', 'nama_addon_snapshot', 'order_item_ref', 'addon_id'];
+  var stringFields = ['no_hp', 'otp', 'value', 'nama_snapshot', 'catatan_customer', 'catatan_admin', 'alamat_snapshot', 'chat_id', 'lat', 'lng', 'nama_penerima', 'no_hp_penerima', 'variant_id', 'variant_nama_snapshot', 'nama_axis_snapshot', 'nama_varian', 'nama_axis', 'nama_addon', 'nama_addon_snapshot', 'order_item_ref', 'addon_id', 'promo_id', 'promo_code', 'kode', 'usage_id', 'hari_berlaku', 'jam_mulai', 'jam_berakhir', 'metode_kirim', 'required_product_ids', 'required_kategori_ids', 'required_match_mode', 'whitelist_member_ids', 'diskon_subtotal_tipe', 'diskon_produk_ids', 'diskon_produk_tipe', 'diskon_ongkir_tipe', 'used_date', 'promo_snapshot_json'];
 
   var result = [];
   for (var i = 1; i < data.length; i++) {

@@ -60,12 +60,18 @@ Key wajib (nilai default dalam kurung):
 `tanggal | keterangan`
 
 ### 9. Orders
-`order_id | member_id | nama | no_hp | tgl_antar | metode_kirim | lokasi_pickup_id | address_id | alamat_snapshot | lat | lng | jarak_km | ongkir | slot_id | subtotal | poin_dipakai | total | metode_bayar | status | catatan_customer | catatan_admin | created_at | updated_at | timeline_json | nama_penerima | no_hp_penerima | status_updated_at`
+`order_id | member_id | nama | no_hp | tgl_antar | metode_kirim | lokasi_pickup_id | address_id | alamat_snapshot | lat | lng | jarak_km | ongkir | slot_id | subtotal | poin_dipakai | total | metode_bayar | status | catatan_customer | catatan_admin | created_at | updated_at | timeline_json | nama_penerima | no_hp_penerima | status_updated_at | promo_id | promo_code | promo_nama | ongkir_sebelum_promo | promo_diskon_subtotal | promo_diskon_produk | promo_diskon_ongkir | promo_diskon_total | promo_bonus_poin | promo_multiplier_poin | poin_earn_dasar | poin_earn_final | promo_snapshot_json`
 
 - `metode_kirim`: `AMBIL | DIANTAR | OJOL`
 - `metode_bayar`: `COD | TRANSFER`
 - `nama_penerima`: string; nama orang yang akan menerima pesanan. Kalau customer tidak specify, server isi dengan snapshot nama pemesan.
 - `no_hp_penerima`: string; nomor HP penerima. Aturan validasi: hanya digit setelah trim, panjang 10-14, awalan 08/628/62 dgn digit ke-3 = 8. Kalau customer tidak specify, server isi dengan snapshot no_hp pemesan.
+- `subtotal`: subtotal item sebelum promo dan tanpa ongkir.
+- `ongkir_sebelum_promo`: ongkir setelah aturan gratis <=5 km, sebelum promo.
+- `ongkir`: ongkir final setelah promo.
+- `promo_diskon_*`: nominal diskon aktual yang tersnapshot saat checkout.
+- `poin_earn_dasar` dan `poin_earn_final`: hak poin yang baru diberikan saat review valid disubmit.
+- `promo_snapshot_json`: snapshot konfigurasi dan hasil kalkulasi promo agar order lama tidak berubah ketika PromoCodes diedit.
 
 ### 10. OrderItems
 `order_id | product_id | nama_snapshot | harga_snapshot | qty | subtotal`
@@ -159,6 +165,26 @@ Harga 1 item = Products.harga (dasar) + ProductVariants.harga (selisih varian, 0
 - `rating`: 1-5 (integer)
 - `ulasan`: teks bebas, opsional
 
+### 17. PromoCodes
+`promo_id | kode | nama | deskripsi | catatan_customer | aktif | mulai_at | berakhir_at | hari_berlaku | jam_mulai | jam_berakhir | min_subtotal | max_subtotal | metode_kirim | required_product_ids | required_kategori_ids | required_match_mode | member_baru_only | whitelist_member_ids | bisa_dengan_poin | limit_total | limit_per_member | limit_harian | diskon_subtotal_tipe | diskon_subtotal_nilai | diskon_subtotal_max | diskon_produk_ids | diskon_produk_tipe | diskon_produk_nilai | diskon_produk_max | diskon_ongkir_tipe | diskon_ongkir_nilai | diskon_ongkir_max | bonus_poin | multiplier_poin | created_at | updated_at`
+
+- `kode`: unik case-insensitive; backend menormalisasi trim + uppercase.
+- `aktif`: menerima `aktif`, `true`, `1`, atau `ya` (case-insensitive).
+- Daftar hari, metode, product ID, kategori ID, dan member ID memakai comma-separated string; setiap elemen di-trim.
+- `required_match_mode`: `ANY` atau `ALL`.
+- Limit kosong/0 berarti tanpa limit.
+- Diskon subtotal dan diskon produk tidak boleh aktif bersamaan. Konfigurasi konflik ditolak.
+- Tipe diskon harga: `PERSEN | NOMINAL`; tipe diskon ongkir: `GRATIS | PERSEN | NOMINAL`.
+- Cap persen kosong/0 berarti tanpa cap.
+- Satu kode boleh menggabungkan satu diskon harga, diskon ongkir, bonus poin, dan multiplier poin.
+
+### 18. PromoUsage
+`usage_id | promo_id | promo_code | order_id | member_id | status | used_at | used_date | cancelled_at | promo_diskon_subtotal | promo_diskon_produk | promo_diskon_ongkir | promo_diskon_total | promo_bonus_poin | promo_multiplier_poin`
+
+- `status`: `DIGUNAKAN | DIBATALKAN`.
+- Hanya row `DIGUNAKAN` yang dihitung untuk limit total, per member, dan harian.
+- Ketika order batal, row di-soft-delete menjadi `DIBATALKAN`; row tidak dihapus.
+
 ## 3. Daftar Action API (lengkap — dilarang menambah tanpa izin)
 
 - `ping` — health check
@@ -168,6 +194,7 @@ Harga 1 item = Products.harga (dasar) + ProductVariants.harga (selisih varian, 0
 - `getCatalog` — banner, kategori, produk, lokasi, slot, holidays, settings publik, dan `campaigns` aktif terurut. Penambahan `campaigns` bersifat backward compatible.
 - `getSlotAvailability` — kuota slot per tanggal
 - `createOrder` — buat order (kritis, dalam lock)
+- `validatePromo` — validasi kode dan return breakdown preview server-side; tidak mereservasi limit
 - `getMyOrders` — riwayat order member
 - `orderMarkSeen` — tandai update status order member sebagai sudah dilihat
 - `getMyPoints` — riwayat poin member
@@ -175,6 +202,17 @@ Harga 1 item = Products.harga (dasar) + ProductVariants.harga (selisih varian, 0
 - `addressSetDefault` — set 1 alamat jadi default (payload: `{address_id}`, enforce 1 default per member)
 
 Plus jalur webhook Telegram (via `TELEGRAM_SECRET` di header).
+
+## 3A. Aturan PromoCodes (Fase 7.11-A)
+- Maksimal satu kode per order; tidak ada stacking kode.
+- Frontend hanya mengirim `promo_code` dan `pakai_poin`; nilai harga/diskon/total dihitung ulang backend.
+- Urutan: subtotal item -> diskon produk ATAU subtotal -> ongkir normal -> diskon ongkir -> redeem poin -> total.
+- Diskon ongkir maksimal sebesar ongkir normal dan tidak dapat membuat ongkir negatif.
+- `member_baru_only` berarti member belum pernah memiliki order berstatus `SELESAI`.
+- Kondisi hari/jam dan limit harian memakai timezone `Asia/Jakarta`.
+- Jika `bisa_dengan_poin` false dan order meminta redeem poin, promo ditolak.
+- Cek limit dan append PromoUsage pada createOrder dilakukan dalam `withLock()` yang sama.
+- Poin earn: `floor(poin_earn_dasar * multiplier_poin) + bonus_poin`; bonus tidak ikut dikalikan.
 
 ## 4. Aturan Poin & Ulasan (F.1)
 - Poin diberikan SAAT ULASAN DISUBMIT, bukan saat status SELESAI.

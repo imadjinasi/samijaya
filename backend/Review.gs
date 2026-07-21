@@ -4,6 +4,16 @@
  * Fase 7.5A: Sistem ulasan pesanan
  */
 
+function _reviewPointsForOrder(order) {
+  if (order.poin_earn_final !== undefined && order.poin_earn_final !== null &&
+      String(order.poin_earn_final).trim() !== '') {
+    return Math.max(0, Math.floor(Number(order.poin_earn_final) || 0));
+  }
+  var total = Number(order.total) || 0;
+  var rate = Number(getSetting('POINT_RATE_RP')) || 1000;
+  return Math.floor(total / rate);
+}
+
 function reviewSubmit(payload, token) {
   return withLock(function () {
     var member = requireSession(token);
@@ -58,9 +68,9 @@ function reviewSubmit(payload, token) {
       created_at: nowStr
     });
 
-    var total = Number(order.total) || 0;
-    var rate = Number(getSetting('POINT_RATE_RP')) || 1000;
-    var poin = Math.floor(total / rate);
+    // Order baru memakai snapshot earn (termasuk bonus/multiplier promo).
+    // Order lama tanpa snapshot tetap memakai rumus legacy.
+    var poin = _reviewPointsForOrder(order);
 
     var poin_ditambah = 0;
     var note = '';
@@ -215,10 +225,7 @@ function reviewDeleteMine(payload, token) {
     var nowStr = nowJkt();
     updateRowById('Reviews', 'review_id', reviewIdToUpdate, { status: 'dihapus' });
 
-    var total = Number(order.total) || 0;
-
-    var rate = Number(getSetting('POINT_RATE_RP')) || 1000;
-    var poin = Math.floor(total / rate);
+    var poin = _reviewPointsForOrder(order);
 
     if (poin > 0) {
       var allMembers = readAll('Members');

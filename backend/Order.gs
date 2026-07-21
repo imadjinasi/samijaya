@@ -245,6 +245,7 @@ function orderGetSlotAvailability(payload) {
  *   tgl_antar,         // wajib untuk DIANTAR "YYYY-MM-DD"
  *   metode_bayar,      // "COD" | "TRANSFER"
  *   pakai_poin,        // boolean
+ *   promo_code,        // opsional; backend validasi & hitung ulang
  *   items: [{ product_id, qty }],
  *   catatan_customer
  * }
@@ -299,9 +300,25 @@ function orderCreateOrder(payload, token) {
       productMap[String(allProducts[i].product_id)] = allProducts[i];
     }
 
-    // Ambil data varian grouped sekali untuk semua produk aktif
-    var variantsGrouped = variantsGroupByProduct();
-    var addonsGrouped = addonsGroupByProduct();
+    // Baca varian & add-on masing-masing sekali, lalu bangun map di memori.
+    var allVariants = readAll('ProductVariants');
+    var allAddons = readAll('ProductAddons');
+    var variantsGrouped = {};
+    var variantMap = {};
+    var addonMap = {};
+    for (var vi = 0; vi < allVariants.length; vi++) {
+      var variantRow = allVariants[vi];
+      var variantIdKey = String(variantRow.variant_id);
+      var variantProductKey = String(variantRow.product_id);
+      variantMap[variantIdKey] = variantRow;
+      if (_promoIsTruthy(variantRow.aktif)) {
+        if (!variantsGrouped[variantProductKey]) variantsGrouped[variantProductKey] = [];
+        variantsGrouped[variantProductKey].push(variantRow);
+      }
+    }
+    for (var adi = 0; adi < allAddons.length; adi++) {
+      addonMap[String(allAddons[adi].addon_id)] = allAddons[adi];
+    }
 
     var lineItems = [];
     var subtotal  = 0; // subtotal = harga produk saja, TIDAK termasuk ongkir
@@ -324,11 +341,11 @@ function orderCreateOrder(payload, token) {
       var isProductBervarian = variantsForThisProduct.length > 0;
       
       if (items[i].variant_id) {
-        var varian = variantFindById(items[i].variant_id);
+        var varian = variantMap[String(items[i].variant_id)];
         if (!varian) {
           return { ok: false, code: 'VARIANT_NOT_FOUND', error: 'Varian tidak ditemukan' };
         }
-        if (String(varian.aktif) !== 'TRUE' && String(varian.aktif) !== 'true' && varian.aktif !== true) {
+        if (!_promoIsTruthy(varian.aktif)) {
           return { ok: false, code: 'VARIANT_INACTIVE', error: 'Varian "' + varian.nama_varian + '" sedang tidak tersedia' };
         }
         if (String(varian.product_id) !== pid) {
@@ -347,16 +364,20 @@ function orderCreateOrder(payload, token) {
       }
 
       var selectedAddonIds = items[i].addon_ids || [];
+      if (!Array.isArray(selectedAddonIds)) {
+        return { ok: false, code: 'BAD_REQUEST', error: 'Format addon_ids tidak valid' };
+      }
       var addonSnapshots = [];
       var addonTotal = 0;
 
       for (var ai = 0; ai < selectedAddonIds.length; ai++) {
-        var addon = addonFindById(selectedAddonIds[ai]);
+        var addon = addonMap[String(selectedAddonIds[ai])];
         if (!addon) return { ok: false, code: 'ADDON_NOT_FOUND', error: 'Add-on tidak ditemukan' };
-        if (!addon.aktif) return { ok: false, code: 'ADDON_INACTIVE', error: 'Add-on "' + addon.nama_addon + '" tidak tersedia' };
+        if (!_promoIsTruthy(addon.aktif)) return { ok: false, code: 'ADDON_INACTIVE', error: 'Add-on "' + addon.nama_addon + '" tidak tersedia' };
         if (String(addon.product_id) !== pid) return { ok: false, code: 'ADDON_MISMATCH', error: 'Add-on tidak sesuai produk' };
-        addonTotal += addon.harga;
-        addonSnapshots.push({ addon_id: addon.addon_id, nama_addon: addon.nama_addon, harga: addon.harga });
+        var addonPrice = Number(addon.harga) || 0;
+        addonTotal += addonPrice;
+        addonSnapshots.push({ addon_id: addon.addon_id, nama_addon: addon.nama_addon, harga: addonPrice });
       }
 
       hargaItem = hargaItem + addonTotal; // harga final = dasar + varian + Σaddon
@@ -366,6 +387,7 @@ function orderCreateOrder(payload, token) {
 
       lineItems.push({
         product_id:     pid,
+        kategori_id:    String(prod.kategori_id || ''),
         nama_snapshot:  String(prod.nama),
         harga_snapshot: hargaItem,
         qty:            qty,
@@ -612,24 +634,38 @@ function orderCreateOrder(payload, token) {
     }
 
     // ----------------------------------------------------------
-    // 7. Hitung poin
-    //    subtotal = harga produk saja (TIDAK termasuk ongkir)
-    //    total    = subtotal + ongkir − poin_dipakai
+    // 7. Validasi & hitung promo, lalu redeem poin.
+    //    Cek limit dan tulis usage tetap di dalam lock transaksi ini.
     // ----------------------------------------------------------
-    var totalSebelumPoin = subtotal + ongkir;
-    var poinDipakai      = 0;
-    var saldoPoinLama    = Number(member.total_poin) || 0;
-
-    if (payload.pakai_poin === true || String(payload.pakai_poin) === 'true') {
-      var minRedeem = Number(getSetting('POINT_MIN_REDEEM')) || 0;
-      if (saldoPoinLama > 0 && saldoPoinLama >= minRedeem) {
-        // 1 poin = Rp1, total tidak boleh < 0
-        poinDipakai = Math.min(saldoPoinLama, totalSebelumPoin);
-      }
-      // Kalau saldo < minRedeem → abaikan, poinDipakai tetap 0, JANGAN error
+    var saldoPoinLama = Number(member.total_poin) || 0;
+    var pakaiPoin = payload.pakai_poin === true || String(payload.pakai_poin).toLowerCase() === 'true';
+    var promoCode = _promoNormalizeCode(payload.promo_code);
+    var ongkirSebelumPromo = ongkir;
+    var promoContext = {
+      now: now,
+      member_id: String(member.member_id),
+      subtotal: subtotal,
+      ongkir: ongkirSebelumPromo,
+      metode_kirim: metodeKirim,
+      line_items: lineItems,
+      pakai_poin: pakaiPoin,
+      saldo_poin: saldoPoinLama,
+      orders: allOrders
+    };
+    var promoResult;
+    var promoEvaluation = null;
+    if (promoCode) {
+      var promoRows = readAll('PromoCodes');
+      var promoUsageRows = readAll('PromoUsage');
+      promoEvaluation = _promoEvaluate(promoCode, promoContext, promoRows, promoUsageRows);
+      if (!promoEvaluation.ok) return promoEvaluation;
+      promoResult = promoEvaluation.data;
+    } else {
+      promoResult = _promoCalculateWithoutCode(promoContext);
     }
-
-    var total = totalSebelumPoin - poinDipakai;
+    ongkir = promoResult.ongkir_setelah_promo;
+    var poinDipakai = promoResult.poin_dipakai;
+    var total = promoResult.total;
 
     // ----------------------------------------------------------
     // 8. Generate order_id
@@ -676,10 +712,26 @@ function orderCreateOrder(payload, token) {
       lng:              lngFinal,
       jarak_km:         jarakKmFinal,
       ongkir:           ongkir,
+      ongkir_sebelum_promo: ongkirSebelumPromo,
       slot_id:          slotId,
       subtotal:         subtotal,         // harga produk saja, TIDAK termasuk ongkir
       poin_dipakai:     poinDipakai,
-      total:            total,            // subtotal + ongkir − poin_dipakai
+      total:            total,
+      promo_id:         promoResult.promo_id,
+      promo_code:       promoResult.promo_code,
+      promo_nama:       promoResult.promo_nama,
+      promo_diskon_subtotal: promoResult.diskon_subtotal,
+      promo_diskon_produk: promoResult.diskon_produk,
+      promo_diskon_ongkir: promoResult.diskon_ongkir,
+      promo_diskon_total: promoResult.diskon_total,
+      promo_bonus_poin: promoResult.bonus_poin,
+      promo_multiplier_poin: promoResult.multiplier_poin,
+      poin_earn_dasar: promoResult.poin_earn_dasar,
+      poin_earn_final: promoResult.poin_earn_final,
+      promo_snapshot_json: promoEvaluation ? JSON.stringify({
+        promo: promoEvaluation.promo,
+        calculation: promoResult
+      }) : '',
       metode_bayar:     String(payload.metode_bayar || ''),
       status:           'MENUNGGU',
       catatan_customer: catatanFinal,
@@ -724,7 +776,12 @@ function orderCreateOrder(payload, token) {
       }
     }
 
-    // c. Poin — tulis PointHistory & update Members.total_poin (hanya jika poin dipakai)
+    // c. PromoUsage — append atomik bersama cek limit dan pembuatan order.
+    if (promoResult.promo_id) {
+      _promoAppendUsage(orderObj, promoResult);
+    }
+
+    // d. Poin — tulis PointHistory & update Members.total_poin (hanya jika poin dipakai)
     //    Poin PENAMBAHAN dari order ini TIDAK sekarang — hanya saat status SELESAI (Fase 5)
     if (poinDipakai > 0) {
       var saldoAkhir = saldoPoinLama - poinDipakai;
@@ -781,7 +838,19 @@ function orderCreateOrder(payload, token) {
         order_id:     orderId,
         subtotal:     subtotal,
         ongkir:       ongkir,
+        ongkir_sebelum_promo: ongkirSebelumPromo,
+        promo_code: promoResult.promo_code,
+        promo_nama: promoResult.promo_nama,
+        promo_diskon_subtotal: promoResult.diskon_subtotal,
+        promo_diskon_produk: promoResult.diskon_produk,
+        promo_diskon_ongkir: promoResult.diskon_ongkir,
+        promo_diskon_total: promoResult.diskon_total,
+        promo_catatan_customer: promoResult.catatan_customer,
         poin_dipakai: poinDipakai,
+        poin_earn_dasar: promoResult.poin_earn_dasar,
+        promo_bonus_poin: promoResult.bonus_poin,
+        promo_multiplier_poin: promoResult.multiplier_poin,
+        poin_earn_final: promoResult.poin_earn_final,
         total:        total,
         metode_bayar: metodeBayar,
         status:       'MENUNGGU',
@@ -888,6 +957,11 @@ function orderUpdateStatus(orderId, newStatus, actorChatId) {
             });
           }
         }
+      }
+
+      // Soft-refund pemakaian promo. Poin batal existing sengaja tidak diubah.
+      if (String(order.promo_id || '').trim()) {
+        _promoRefundUsageByOrder(orderId, nowStr);
       }
     }
     
@@ -1033,6 +1107,18 @@ function orderGetMyOrders(payload, token) {
       status: row.status,
       subtotal: row.subtotal,
       ongkir: row.ongkir,
+      ongkir_sebelum_promo: row.ongkir_sebelum_promo,
+      promo_id: String(row.promo_id || ''),
+      promo_code: String(row.promo_code || ''),
+      promo_nama: String(row.promo_nama || ''),
+      promo_diskon_subtotal: Number(row.promo_diskon_subtotal) || 0,
+      promo_diskon_produk: Number(row.promo_diskon_produk) || 0,
+      promo_diskon_ongkir: Number(row.promo_diskon_ongkir) || 0,
+      promo_diskon_total: Number(row.promo_diskon_total) || 0,
+      promo_bonus_poin: Number(row.promo_bonus_poin) || 0,
+      promo_multiplier_poin: Number(row.promo_multiplier_poin) || 1,
+      poin_earn_dasar: Number(row.poin_earn_dasar) || 0,
+      poin_earn_final: Number(row.poin_earn_final) || 0,
       poin_dipakai: row.poin_dipakai,
       total: row.total,
       created_at: row.created_at ? String(row.created_at) : null,
