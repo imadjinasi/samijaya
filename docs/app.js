@@ -536,8 +536,10 @@ function openProductModal(productId) {
   var sheet = modal.querySelector('.modal-sheet');
 
   var html = '';
+  
+  html += '<div style="flex: 1 1 auto; overflow-y: auto; padding-bottom: 16px;">';
   if (imgUrl) {
-    html += '<div style="position:relative; width:100%; aspect-ratio:1/1; background:var(--latte);"><img src="' + imgUrl + '" style="width:100%; height:100%; object-fit:cover; cursor:pointer;" onclick="window.open(\'' + imgUrl + '\', \'_blank\')">';
+    html += '<div style="position:relative; width:100%; aspect-ratio:1/1; max-height:40vh; background:var(--latte);"><img src="' + imgUrl + '" style="width:100%; height:100%; max-height:40vh; object-fit:cover; cursor:pointer;" onclick="window.open(\'' + imgUrl + '\', \'_blank\')">';
     if (isHabis) {
       html += '<div style="position:absolute; inset:0; background:rgba(255,255,255,0.4);"></div>';
       html += '<div class="product-badge" style="background:#8B2E2E;color:#fff;top:16px;">HABIS</div>';
@@ -547,13 +549,13 @@ function openProductModal(productId) {
     html += '<button class="modal-close" onclick="closeProductModal()" style="position:absolute; top:8px; right:8px; margin:0; width:44px; height:44px; background:transparent; box-shadow:none; color:#ffffff; text-shadow:0 1px 4px rgba(0,0,0,0.8), 0 0 2px rgba(0,0,0,0.8); font-size:2rem; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; z-index:10;">&times;</button>';
     html += '</div>';
   } else {
-    html += '<div style="position:relative; width:100%; aspect-ratio:1/1; background:var(--latte); display:flex; align-items:center; justify-content:center; color:var(--brown);">' + ICON.bottle;
+    html += '<div style="position:relative; width:100%; aspect-ratio:1/1; max-height:40vh; background:var(--latte); display:flex; align-items:center; justify-content:center; color:var(--brown);">' + ICON.bottle;
     if (isHabis) html += '<div class="product-badge" style="background:#8B2E2E;color:#fff;top:16px;">HABIS</div>';
     html += '<button class="modal-close" onclick="closeProductModal()" style="position:absolute; top:8px; right:8px; margin:0; width:44px; height:44px; background:transparent; box-shadow:none; color:#ffffff; text-shadow:0 1px 4px rgba(0,0,0,0.8), 0 0 2px rgba(0,0,0,0.8); font-size:2rem; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; z-index:10;">&times;</button>';
     html += '</div>';
   }
 
-  html += '<div style="padding: 24px;">';
+  html += '<div style="padding: 24px; padding-bottom: 0;">';
   html += '<div style="font-family:\'DM Serif Display\', serif; font-size:1.4rem; color:var(--espresso); margin-bottom:4px; line-height:1.2;">' + escHtml(p.nama) + '</div>';
   
   var priceToDisplay = p.has_variants && _selectedVariant ? _selectedVariant.harga : p.harga;
@@ -576,7 +578,10 @@ function openProductModal(productId) {
     html += '</div>';
     html += '</div>';
   }
+  html += '</div>';
+  html += '</div>';
 
+  html += '<div style="flex: 0 0 auto; padding: 16px 24px; background: var(--cream); border-top: 1px solid rgba(0,0,0,0.05); padding-bottom: max(16px, env(safe-area-inset-bottom));">';
   if (isHabis) {
     html += '<button style="width:100%; padding:14px; background:#e0e0e0; color:#999; border-radius:var(--r-pill); font-weight:bold; cursor:not-allowed; border:none;">Habis</button>';
   } else {

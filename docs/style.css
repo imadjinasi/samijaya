@@ -797,6 +797,11 @@ h1, h2, h3, .font-serif {
   animation: sheetSlideUp 0.3s ease;
 }
 
+#product-modal .modal-sheet {
+  display: flex;
+  flex-direction: column;
+}
+
 @keyframes sheetSlideUp {
   from { transform: translateY(100%); }
   to   { transform: translateY(0); }
