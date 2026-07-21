@@ -156,6 +156,8 @@ function loadCart() {
         if (it.variant_id === undefined) it.variant_id = '';
         if (it.nama_varian === undefined) it.nama_varian = '';
         if (it.nama_axis === undefined) it.nama_axis = '';
+        if (it.addon_ids === undefined) it.addon_ids = [];
+        if (it.addons_snapshot === undefined) it.addons_snapshot = [];
       });
     }
   } catch (e) {
@@ -177,11 +179,19 @@ function loadSession() {
 }
 
 // === CART LOGIC ===
+function cartItemSignature(productId, variantId, addonIds) {
+  var sortedAddons = (addonIds || []).slice().sort().join(',');
+  return String(productId) + '|' + String(variantId || '') + '|' + sortedAddons;
+}
+
 function addToCart(product, variant, addons) {
   addons = addons || [];
   var variantId = variant ? variant.variant_id : '';
   var namaVarian = variant ? variant.nama_varian : '';
   var namaAxis = variant ? variant.nama_axis : '';
+  
+  var addonIds = addons.map(function(a){ return a.addon_id; });
+  var sig = cartItemSignature(product.product_id, variantId, addonIds);
   
   var harga = Number(product.harga) || 0;
   if (variant) harga += (Number(variant.harga) || 0);
@@ -191,7 +201,7 @@ function addToCart(product, variant, addons) {
 
   var found = null;
   for (var i = 0; i < cart.length; i++) {
-    if (String(cart[i].product_id) === String(product.product_id) && String(cart[i].variant_id) === String(variantId)) {
+    if (cartItemSignature(cart[i].product_id, cart[i].variant_id, cart[i].addon_ids) === sig) {
       found = cart[i];
       break;
     }
@@ -202,6 +212,8 @@ function addToCart(product, variant, addons) {
     cart.push({
       product_id: product.product_id,
       variant_id: variantId,
+      addon_ids: addonIds,
+      addons_snapshot: addons.map(function(a){ return {addon_id:a.addon_id, nama_addon:a.nama_addon, harga:Number(a.harga)||0}; }),
       nama: product.nama,
       nama_varian: namaVarian,
       nama_axis: namaAxis,
@@ -215,15 +227,11 @@ function addToCart(product, variant, addons) {
   showToast(product.nama + ' ditambahkan');
 }
 
-function updateQty(productId, variantId, delta) {
-  for (var i = 0; i < cart.length; i++) {
-    if (String(cart[i].product_id) === String(productId) && String(cart[i].variant_id) === String(variantId)) {
-      cart[i].qty += delta;
-      if (cart[i].qty <= 0) {
-        cart.splice(i, 1);
-      }
-      break;
-    }
+function updateQtyByIndex(index, delta) {
+  if (!cart[index]) return;
+  cart[index].qty += delta;
+  if (cart[index].qty <= 0) {
+    cart.splice(index, 1);
   }
   saveCart();
   renderCartBottomBar();
@@ -231,13 +239,9 @@ function updateQty(productId, variantId, delta) {
   renderCartModal();
 }
 
-function removeFromCart(productId, variantId) {
-  for (var i = 0; i < cart.length; i++) {
-    if (String(cart[i].product_id) === String(productId) && String(cart[i].variant_id) === String(variantId)) {
-      cart.splice(i, 1);
-      break;
-    }
-  }
+function removeCartItem(index) {
+  if (!cart[index]) return;
+  cart.splice(index, 1);
   saveCart();
   renderCartBottomBar();
   renderHeader();
@@ -810,9 +814,15 @@ function renderCartModal() {
 
     var variantInfoHtml = item.nama_varian ? '<div style="font-size:0.8rem;color:#777;margin-top:2px;">' + (item.nama_axis ? escHtml(item.nama_axis) + ': ' : '') + escHtml(item.nama_varian) + '</div>' : '';
 
+    var addonsInfoHtml = '';
+    if (item.addons_snapshot && item.addons_snapshot.length > 0) {
+      var addonNames = item.addons_snapshot.map(function(a){ return a.nama_addon; }).join(', ');
+      addonsInfoHtml = '<div style="font-size:0.75rem;color:#777;margin-top:2px;">+ ' + escHtml(addonNames) + '</div>';
+    }
+
     var itemNameHtml = isHabis 
-      ? '<div class="cart-item-name"><span style="color:#C0392B;font-weight:bold;">[HABIS]</span> ' + escHtml(item.nama) + variantInfoHtml + '</div>' 
-      : '<div class="cart-item-name">' + escHtml(item.nama) + variantInfoHtml + '</div>';
+      ? '<div class="cart-item-name"><span style="color:#C0392B;font-weight:bold;">[HABIS]</span> ' + escHtml(item.nama) + variantInfoHtml + addonsInfoHtml + '</div>' 
+      : '<div class="cart-item-name">' + escHtml(item.nama) + variantInfoHtml + addonsInfoHtml + '</div>';
 
     html +=
       '<div class="cart-item" data-pid="' + escHtml(item.product_id) + '" data-vid="' + escHtml(item.variant_id) + '">' +
@@ -823,11 +833,11 @@ function renderCartModal() {
         '</div>' +
         '<div class="cart-item-qty">' +
           (isHabis
-            ? '<button class="btn-habis-remove" onclick="removeFromCart(\'' + escHtml(item.product_id) + '\', \'' + escHtml(item.variant_id) + '\')" style="color:#C0392B;font-size:0.75rem;padding:4px 10px;border:1px solid #C0392B;border-radius:var(--r-pill);white-space:nowrap;background:transparent;">Hapus</button>'
-            : '<button onclick="updateQty(\'' + escHtml(item.product_id) + '\', \'' + escHtml(item.variant_id) + '\', -1)">' + ICON.minus + '</button><span>' + item.qty + '</span><button onclick="updateQty(\'' + escHtml(item.product_id) + '\', \'' + escHtml(item.variant_id) + '\', 1)">' + ICON.plus + '</button>'
+            ? '<button class="btn-habis-remove" onclick="removeCartItem(' + i + ')" style="color:#C0392B;font-size:0.75rem;padding:4px 10px;border:1px solid #C0392B;border-radius:var(--r-pill);white-space:nowrap;background:transparent;">Hapus</button>'
+            : '<button onclick="updateQtyByIndex(' + i + ', -1)">' + ICON.minus + '</button><span>' + item.qty + '</span><button onclick="updateQtyByIndex(' + i + ', 1)">' + ICON.plus + '</button>'
           ) +
         '</div>' +
-        (isHabis ? '' : '<button class="cart-item-remove" onclick="removeFromCart(\'' + escHtml(item.product_id) + '\', \'' + escHtml(item.variant_id) + '\')" title="Hapus">' + ICON.trash + '</button>') +
+        (isHabis ? '' : '<button class="cart-item-remove" onclick="removeCartItem(' + i + ')" title="Hapus">' + ICON.trash + '</button>') +
       '</div>';
   }
   html += '</div>';
@@ -2090,7 +2100,12 @@ function buildCreateOrderPayload() {
   var catatanVal = catatan ? catatan.value.trim() : '';
 
   var items = cart.map(function(i) {
-    return { product_id: i.product_id, variant_id: i.variant_id || '', qty: i.qty };
+    return { 
+      product_id: i.product_id, 
+      variant_id: i.variant_id || '', 
+      addon_ids: i.addon_ids || [], 
+      qty: i.qty 
+    };
   });
 
   var payload = {
