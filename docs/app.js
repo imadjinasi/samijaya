@@ -146,7 +146,14 @@ function saveCart() {
 function loadCart() {
   try {
     var raw = localStorage.getItem('sj_cart');
-    if (raw) cart = JSON.parse(raw);
+    if (raw) {
+      cart = JSON.parse(raw);
+      cart.forEach(function(it) {
+        if (it.variant_id === undefined) it.variant_id = '';
+        if (it.nama_varian === undefined) it.nama_varian = '';
+        if (it.nama_axis === undefined) it.nama_axis = '';
+      });
+    }
   } catch (e) {
     cart = [];
   }
@@ -166,10 +173,15 @@ function loadSession() {
 }
 
 // === CART LOGIC ===
-function addToCart(product) {
+function addToCart(product, variant) {
+  var variantId = variant ? variant.variant_id : '';
+  var namaVarian = variant ? variant.nama_varian : '';
+  var namaAxis = variant ? variant.nama_axis : '';
+  var harga = variant ? Number(variant.harga) : Number(product.harga);
+
   var found = null;
   for (var i = 0; i < cart.length; i++) {
-    if (cart[i].product_id === product.product_id) {
+    if (String(cart[i].product_id) === String(product.product_id) && String(cart[i].variant_id) === String(variantId)) {
       found = cart[i];
       break;
     }
@@ -179,8 +191,11 @@ function addToCart(product) {
   } else {
     cart.push({
       product_id: product.product_id,
+      variant_id: variantId,
       nama: product.nama,
-      harga: Number(product.harga),
+      nama_varian: namaVarian,
+      nama_axis: namaAxis,
+      harga: harga,
       qty: 1
     });
   }
@@ -190,9 +205,9 @@ function addToCart(product) {
   showToast(product.nama + ' ditambahkan');
 }
 
-function updateQty(product_id, delta) {
+function updateQty(productId, variantId, delta) {
   for (var i = 0; i < cart.length; i++) {
-    if (cart[i].product_id === product_id) {
+    if (String(cart[i].product_id) === String(productId) && String(cart[i].variant_id) === String(variantId)) {
       cart[i].qty += delta;
       if (cart[i].qty <= 0) {
         cart.splice(i, 1);
@@ -206,9 +221,9 @@ function updateQty(product_id, delta) {
   renderCartModal();
 }
 
-function removeFromCart(product_id) {
+function removeFromCart(productId, variantId) {
   for (var i = 0; i < cart.length; i++) {
-    if (cart[i].product_id === product_id) {
+    if (String(cart[i].product_id) === String(productId) && String(cart[i].variant_id) === String(variantId)) {
       cart.splice(i, 1);
       break;
     }
@@ -467,7 +482,11 @@ function onAddToCart(productId) {
         showToast('Produk ini sedang habis.');
         return;
       }
-      addToCart(catalog.products[i]);
+      if (catalog.products[i].has_variants) {
+        openProductModal(productId); // sementara
+        return;
+      }
+      addToCart(catalog.products[i], null);
       return;
     }
   }
@@ -632,12 +651,14 @@ function renderCartModal() {
       imgHtml = '<div class="cart-item-thumb placeholder" style="position:relative;display:flex;align-items:center;justify-content:center;color:var(--brown)">' + ICON.bottle + (isHabis ? '<div style="position:absolute;bottom:0;left:0;right:0;background:#8B2E2E;color:#fff;font-size:0.55rem;text-align:center;padding:2px 0;font-weight:bold;">HABIS</div>' : '') + '</div>';
     }
 
+    var variantInfoHtml = item.nama_varian ? '<div style="font-size:0.8rem;color:#777;margin-top:2px;">' + (item.nama_axis ? escHtml(item.nama_axis) + ': ' : '') + escHtml(item.nama_varian) + '</div>' : '';
+
     var itemNameHtml = isHabis 
-      ? '<div class="cart-item-name"><span style="color:#C0392B;font-weight:bold;">[HABIS]</span> ' + escHtml(item.nama) + '</div>' 
-      : '<div class="cart-item-name">' + escHtml(item.nama) + '</div>';
+      ? '<div class="cart-item-name"><span style="color:#C0392B;font-weight:bold;">[HABIS]</span> ' + escHtml(item.nama) + variantInfoHtml + '</div>' 
+      : '<div class="cart-item-name">' + escHtml(item.nama) + variantInfoHtml + '</div>';
 
     html +=
-      '<div class="cart-item" data-pid="' + escHtml(item.product_id) + '">' +
+      '<div class="cart-item" data-pid="' + escHtml(item.product_id) + '" data-vid="' + escHtml(item.variant_id) + '">' +
         imgHtml +
         '<div class="cart-item-info">' +
           itemNameHtml +
@@ -645,11 +666,11 @@ function renderCartModal() {
         '</div>' +
         '<div class="cart-item-qty">' +
           (isHabis
-            ? '<button class="btn-habis-remove" onclick="removeFromCart(\'' + escHtml(item.product_id) + '\')" style="color:#C0392B;font-size:0.75rem;padding:4px 10px;border:1px solid #C0392B;border-radius:var(--r-pill);white-space:nowrap;background:transparent;">Hapus</button>'
-            : '<button onclick="updateQty(\'' + escHtml(item.product_id) + '\', -1)">' + ICON.minus + '</button><span>' + item.qty + '</span><button onclick="updateQty(\'' + escHtml(item.product_id) + '\', 1)">' + ICON.plus + '</button>'
+            ? '<button class="btn-habis-remove" onclick="removeFromCart(\'' + escHtml(item.product_id) + '\', \'' + escHtml(item.variant_id) + '\')" style="color:#C0392B;font-size:0.75rem;padding:4px 10px;border:1px solid #C0392B;border-radius:var(--r-pill);white-space:nowrap;background:transparent;">Hapus</button>'
+            : '<button onclick="updateQty(\'' + escHtml(item.product_id) + '\', \'' + escHtml(item.variant_id) + '\', -1)">' + ICON.minus + '</button><span>' + item.qty + '</span><button onclick="updateQty(\'' + escHtml(item.product_id) + '\', \'' + escHtml(item.variant_id) + '\', 1)">' + ICON.plus + '</button>'
           ) +
         '</div>' +
-        (isHabis ? '' : '<button class="cart-item-remove" onclick="removeFromCart(\'' + escHtml(item.product_id) + '\')" title="Hapus">' + ICON.trash + '</button>') +
+        (isHabis ? '' : '<button class="cart-item-remove" onclick="removeFromCart(\'' + escHtml(item.product_id) + '\', \'' + escHtml(item.variant_id) + '\')" title="Hapus">' + ICON.trash + '</button>') +
       '</div>';
   }
   html += '</div>';
@@ -1912,7 +1933,7 @@ function buildCreateOrderPayload() {
   var catatanVal = catatan ? catatan.value.trim() : '';
 
   var items = cart.map(function(i) {
-    return { product_id: i.product_id, qty: i.qty };
+    return { product_id: i.product_id, variant_id: i.variant_id || '', qty: i.qty };
   });
 
   var payload = {
