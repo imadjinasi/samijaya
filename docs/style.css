@@ -1972,6 +1972,27 @@ h1, h2, h3, .font-serif {
   opacity: 0.8;
 }
 
+/* Promo code */
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+.co-promo-form { display:flex; align-items:stretch; gap:8px; }
+.co-promo-input { min-width:0; flex:1; padding:12px 14px; border:1.5px solid var(--latte); border-radius:var(--r-input); background:var(--white); color:var(--espresso); font:inherit; font-size:0.88rem; text-transform:uppercase; outline:none; }
+.co-promo-input:focus { border-color:var(--espresso); }
+.co-promo-apply { flex:none; min-width:92px; padding:11px 14px; border:0; border-radius:var(--r-pill); background:var(--espresso); color:var(--cream); font:inherit; font-size:0.82rem; font-weight:700; }
+.co-promo-apply:disabled { background:var(--latte); color:var(--brown); cursor:wait; }
+.co-promo-feedback { margin-top:10px; }
+.co-promo-message, .co-promo-note { font-size:0.78rem; line-height:1.45; }
+.co-promo-message.error { color:var(--danger); }
+.co-promo-message.pending { color:var(--brown); opacity:0.75; }
+.co-promo-note { color:var(--brown); margin-top:7px; }
+.co-promo-success { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 12px; border:1px solid rgba(42,122,80,0.28); border-radius:var(--r-input); background:rgba(42,122,80,0.08); color:var(--espresso); }
+.co-promo-success div { min-width:0; }
+.co-promo-success strong { display:block; font-size:0.86rem; letter-spacing:0.04em; overflow-wrap:anywhere; }
+.co-promo-success span { display:block; margin-top:2px; color:var(--brown); font-size:0.74rem; }
+.co-promo-success button, .co-promo-points-action { border:1px solid var(--espresso); border-radius:var(--r-pill); padding:7px 11px; background:transparent; color:var(--espresso); font:inherit; font-size:0.72rem; font-weight:700; }
+.co-promo-points-action { margin-top:9px; }
+.co-cost-points { margin-top:5px; padding-top:8px; border-top:1px dashed var(--line); }
+.co-cost-points span:first-child { max-width:55%; }
+
 /* Cost summary — sticky bottom */
 .co-cost-summary {
   background: var(--white);
@@ -2008,7 +2029,7 @@ h1, h2, h3, .font-serif {
 }
 
 .co-cost-details {
-  max-height: 200px;
+  max-height: 420px;
   overflow: hidden;
   transition: max-height 0.3s ease, opacity 0.3s ease;
   opacity: 1;
@@ -2449,6 +2470,11 @@ select {
 .success-cost-row.poin-row {
   color: var(--success);
 }
+
+.success-cost-row.promo-row { color: var(--success); }
+.success-promo-label, .success-point-estimate { display:flex; justify-content:space-between; gap:12px; padding:9px 0; border-bottom:1px solid var(--line); color:var(--brown); font-size:0.78rem; }
+.success-promo-label strong, .success-point-estimate strong { color:var(--espresso); text-align:right; overflow-wrap:anywhere; }
+.success-point-estimate { margin-top:8px; border-top:1px dashed var(--line); border-bottom:0; }
 
 .success-cost-row.total-row {
   font-family: 'DM Serif Display', serif;

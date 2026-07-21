@@ -14,6 +14,32 @@ var _pendingCheckout = false;
 var _submitting = false;
 var _pendingOtp = '';
 var publicReviewsData = null;
+var promoState = createPromoState();
+var _promoRevalidateTimer = null;
+var _promoRequestSequence = 0;
+var _pendingPromoFromUrl = '';
+var _pendingPromoConsumed = false;
+
+function createPromoState() {
+  return {
+    input_code: '', applied_code: '', status: 'idle', preview: null,
+    error_code: '', error_message: '', validated_signature: '', request_id: 0,
+    pending_code: ''
+  };
+}
+
+function normalizePromoCode(value) {
+  return String(value == null ? '' : value).trim().toUpperCase();
+}
+
+function resetPromoState(keepPending) {
+  var pending = keepPending ? promoState.pending_code : '';
+  promoState = createPromoState();
+  promoState.request_id = ++_promoRequestSequence;
+  promoState.pending_code = pending;
+  if (_promoRevalidateTimer) clearTimeout(_promoRevalidateTimer);
+  _promoRevalidateTimer = null;
+}
 var checkoutState = {
   tgl_antar: '',
   metode_kirim: '',
@@ -115,6 +141,79 @@ function escHtml(str) {
   var div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+function promoContextSignature() {
+  var member = session.member || {};
+  var items = cart.map(function(item) {
+    return {
+      product_id: String(item.product_id || ''),
+      variant_id: String(item.variant_id || ''),
+      addon_ids: (item.addon_ids || []).map(String).sort(),
+      qty: Number(item.qty) || 0
+    };
+  });
+  return JSON.stringify({
+    member_id: String(member.member_id || ''),
+    token: session.token ? String(session.token).slice(-12) : '',
+    items: items,
+    metode_kirim: String(checkoutState.metode_kirim || ''),
+    lat: checkoutState.metode_kirim === 'DIANTAR' ? Number(checkoutState.lat) : null,
+    lng: checkoutState.metode_kirim === 'DIANTAR' ? Number(checkoutState.lng) : null,
+    pakai_poin: checkoutState.pakai_poin === true
+  });
+}
+
+function buildValidatePromoPayload(code) {
+  return {
+    promo_code: normalizePromoCode(code),
+    items: cart.map(function(item) {
+      return {
+        product_id: item.product_id,
+        variant_id: item.variant_id || '',
+        addon_ids: (item.addon_ids || []).slice(),
+        qty: item.qty
+      };
+    }),
+    metode_kirim: checkoutState.metode_kirim,
+    lat: checkoutState.lat,
+    lng: checkoutState.lng,
+    pakai_poin: checkoutState.pakai_poin
+  };
+}
+
+function promoContextReady() {
+  if (!cart.length) return { ok: false, message: 'Keranjang masih kosong.' };
+  if (!session.token || !session.member) return { ok: false, message: 'Silakan login untuk menggunakan promo.' };
+  if (!checkoutState.metode_kirim) return { ok: false, message: 'Pilih metode pengiriman terlebih dahulu.' };
+  if (checkoutState.metode_kirim === 'DIANTAR' &&
+      (checkoutState.lat === '' || checkoutState.lat === null || checkoutState.lng === '' || checkoutState.lng === null ||
+       isNaN(Number(checkoutState.lat)) || isNaN(Number(checkoutState.lng)))) {
+    return { ok: false, message: 'Pilih titik lokasi pengantaran terlebih dahulu.' };
+  }
+  return { ok: true };
+}
+
+function promoSafeError(res) {
+  var code = String((res && res.code) || '');
+  var safe = {
+    PROMO_NOT_FOUND: 'Kode promo tidak ditemukan.', PROMO_INACTIVE: 'Kode promo sedang tidak aktif.',
+    PROMO_NOT_STARTED: 'Kode promo belum berlaku.', PROMO_EXPIRED: 'Kode promo sudah berakhir.',
+    PROMO_TIME_INVALID: 'Kode promo tidak berlaku pada jam ini.', PROMO_DAY_INVALID: 'Kode promo tidak berlaku pada hari ini.',
+    PROMO_SUBTOTAL_NOT_ELIGIBLE: 'Subtotal belum memenuhi syarat promo.',
+    PROMO_DELIVERY_NOT_ELIGIBLE: 'Metode pengiriman tidak memenuhi syarat promo.',
+    PROMO_PRODUCT_REQUIRED: 'Produk yang disyaratkan belum ada di pesanan.',
+    PROMO_CATEGORY_REQUIRED: 'Produk atau kategori yang disyaratkan belum ada di pesanan.',
+    PROMO_NEW_MEMBER_ONLY: 'Kode promo hanya berlaku untuk member baru.',
+    PROMO_MEMBER_NOT_ALLOWED: 'Akun ini tidak memenuhi syarat kode promo.',
+    PROMO_CANNOT_COMBINE_POINTS: 'Kode ini tidak bisa digabung dengan poin.',
+    PROMO_LIMIT_TOTAL: 'Kuota kode promo sudah habis.',
+    PROMO_LIMIT_MEMBER: 'Batas penggunaan kode promo untuk akun ini sudah tercapai.',
+    PROMO_LIMIT_DAILY: 'Kuota kode promo hari ini sudah habis.',
+    PROMO_CONFIG_INVALID: 'Kode promo sedang tidak dapat digunakan.',
+    UNAUTHORIZED: 'Sesi habis. Silakan login ulang.'
+  };
+  return safe[code] || String((res && res.error) || 'Kode promo tidak dapat digunakan.');
 }
 
 function parseOrderSeenTimestamp(value) {
@@ -385,6 +484,7 @@ function addToCart(product, variant, addons) {
     });
   }
   saveCart();
+  promoContextChanged(false);
   renderCartBottomBar();
   renderHeader();
   showToast(product.nama + ' ditambahkan');
@@ -397,6 +497,7 @@ function updateQtyByIndex(index, delta) {
     cart.splice(index, 1);
   }
   saveCart();
+  promoContextChanged(false);
   renderCartBottomBar();
   renderHeader();
   renderCartModal();
@@ -406,6 +507,7 @@ function removeCartItem(index) {
   if (!cart[index]) return;
   cart.splice(index, 1);
   saveCart();
+  promoContextChanged(false);
   renderCartBottomBar();
   renderHeader();
   renderCartModal();
@@ -1389,6 +1491,7 @@ function showOtpModalWithName(no_hp, nama, cooldownSeconds) {
 // === LOGOUT ===
 function logout() {
   session = { token: null, member: null };
+  resetPromoState(false);
   localStorage.removeItem('sj_session');
   try { sessionStorage.removeItem(CAMPAIGN_GUEST_SESSION_KEY); } catch (e) {}
   renderHeader();
@@ -1397,6 +1500,7 @@ function logout() {
 
 // === CHECKOUT SCREEN ===
 function resetCheckoutState() {
+  resetPromoState(true);
   checkoutState = {
     tgl_antar: '',
     metode_kirim: '',
@@ -1420,6 +1524,12 @@ function resetCheckoutState() {
 function openCheckoutScreen() {
   setPageTitle('checkout');
   resetCheckoutState();
+  if (!_pendingPromoConsumed && _pendingPromoFromUrl) {
+    promoState.pending_code = _pendingPromoFromUrl;
+    promoState.input_code = _pendingPromoFromUrl;
+    promoState.status = 'ready';
+    _pendingPromoConsumed = true;
+  }
   renderCheckoutScreen();
   document.getElementById('checkout-screen').classList.remove('hidden');
   document.getElementById('checkout-screen').scrollTop = 0;
@@ -1574,7 +1684,18 @@ function renderCheckoutScreen() {
   html += '</div>';
   html += '</div>';
 
-  // === 6. CATATAN ===
+  // === 6. KODE PROMO ===
+  html += '<div class="co-section" id="checkout-promo">';
+  html += '<div class="co-section-title"><span class="co-step">6</span>Kode Promo</div>';
+  html += '<form class="co-promo-form" onsubmit="event.preventDefault(); applyPromoFromInput();">';
+  html += '<label class="sr-only" for="co-promo-input">Masukkan kode promo</label>';
+  html += '<input id="co-promo-input" class="co-promo-input" type="text" autocomplete="off" autocapitalize="characters" placeholder="Contoh: TEST10" value="' + escHtml(promoState.input_code) + '" oninput="onPromoInput(this.value)">';
+  html += '<button id="co-promo-apply" class="co-promo-apply" type="submit">Terapkan</button>';
+  html += '</form>';
+  html += '<div id="co-promo-feedback" class="co-promo-feedback" aria-live="polite"></div>';
+  html += '</div>';
+
+  // === 7. CATATAN ===
   html += '<div class="co-section" id="checkout-note">';
   html += '<div class="co-catatan-wrap" style="margin-top:0;">';
   html += '<label class="co-label" for="co-catatan">Catatan untuk Samijaya (opsional)</label>';
@@ -1582,7 +1703,7 @@ function renderCheckoutScreen() {
   html += '</div>';
   html += '</div>';
 
-  // === 7. RINGKASAN BIAYA ===
+  // === 8. RINGKASAN BIAYA ===
   html += '<div class="co-cost-summary" id="checkout-cost-summary">';
   
   html += '<div class="co-cost-header" onclick="toggleCostDetails()">';
@@ -1590,11 +1711,7 @@ function renderCheckoutScreen() {
   html += '<svg class="co-cost-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
   html += '</div>';
   
-  html += '<div class="co-cost-details collapsed" id="co-cost-details">';
-  html += '<div class="co-cost-row"><span>Subtotal produk</span><span class="co-cost-val" id="co-cost-subtotal">' + formatRupiah(subtotal) + '</span></div>';
-  html += '<div class="co-cost-row"><span>Ongkir</span><span class="co-cost-val" id="co-cost-ongkir">—</span></div>';
-  html += '<div class="co-cost-row" id="co-cost-poin-row" style="display:none"><span>Potongan poin</span><span class="co-cost-val discount" id="co-cost-poin">-Rp0</span></div>';
-  html += '</div>';
+  html += '<div class="co-cost-details collapsed" id="co-cost-details"></div>';
 
   html += '<div class="co-cost-row total"><span>TOTAL</span><span class="co-cost-val" id="co-cost-total">' + formatRupiah(subtotal) + '</span></div>';
   
@@ -1606,6 +1723,7 @@ function renderCheckoutScreen() {
   html += '</div>'; // checkout-inner
 
   el.innerHTML = html;
+  updatePromoUI();
   updateCheckoutSummary();
 }
 
@@ -1679,6 +1797,7 @@ function selectShippingMethod(method) {
   checkoutState.lng = '';
   checkoutState.ongkir = null;
   checkoutState.jarak_km = 0;
+  promoContextChanged(false);
 
 
 
@@ -1887,6 +2006,7 @@ function onAddressModeChange(val) {
     checkoutState.address_id = '';
     checkoutState.lat = null; checkoutState.lng = null;
     checkoutState.alamat_teks = ''; checkoutState.label_alamat = ''; checkoutState.detail_alamat = '';
+    promoContextChanged(true);
     
     var elAlamat = document.getElementById('co-alamat-teks');
     if (elAlamat) elAlamat.value = '';
@@ -1912,6 +2032,7 @@ function onAddressModeChange(val) {
     checkoutState.alamat_teks = addr.alamat_snapshot || '';
     checkoutState.label_alamat = addr.label || '';
     checkoutState.detail_alamat = addr.detail || '';
+    promoContextChanged(true);
     
     if (manual) manual.classList.add('co-hidden');
     if (summary) summary.classList.remove('co-hidden');
@@ -1931,6 +2052,7 @@ function onAddressModeChange(val) {
     checkoutState.address_id = '';
     checkoutState.lat = null; checkoutState.lng = null;
     checkoutState.alamat_teks = ''; checkoutState.label_alamat = ''; checkoutState.detail_alamat = '';
+    promoContextChanged(true);
     calculateOngkir();
   }
 }
@@ -2028,6 +2150,7 @@ async function updateDeliveryLocation(lat, lng) {
   checkoutState.lat = lat;
   checkoutState.lng = lng;
   checkoutState.address_id = '';
+  promoContextChanged(true);
   
   var key = lat + ',' + lng;
   if (_lastGeocodedFor !== key) {
@@ -2146,9 +2269,196 @@ function renderPaymentDetail(method) {
   container.innerHTML = html;
 }
 
+// === PROMO ===
+function onPromoInput(value) {
+  promoState.input_code = value;
+  if (!normalizePromoCode(value) && !promoState.applied_code) promoState.status = 'idle';
+  else if (promoState.status !== 'applied' && promoState.status !== 'validating' && promoState.status !== 'stale') promoState.status = 'ready';
+  updatePromoUI();
+}
+
+function updatePromoUI() {
+  var input = document.getElementById('co-promo-input');
+  var button = document.getElementById('co-promo-apply');
+  var feedback = document.getElementById('co-promo-feedback');
+  if (input && input.value !== promoState.input_code) input.value = promoState.input_code;
+  if (button) {
+    button.disabled = promoState.status === 'validating';
+    button.textContent = promoState.status === 'validating' ? 'Memeriksa…' : 'Terapkan';
+  }
+  if (!feedback) return;
+  var html = '';
+  if (promoState.status === 'validating') {
+    html = '<div class="co-promo-message pending">Memeriksa kode promo dengan server…</div>';
+  } else if (promoState.status === 'stale') {
+    html = '<div class="co-promo-message pending">Kondisi checkout berubah. Promo sedang diperbarui…</div>';
+  } else if (promoState.status === 'applied' && promoState.preview) {
+    var p = promoState.preview;
+    html = '<div class="co-promo-success"><div><strong>' + escHtml(promoState.applied_code) + '</strong>' +
+      (p.promo_nama ? '<span>' + escHtml(p.promo_nama) + '</span>' : '') + '</div>' +
+      '<button type="button" onclick="removePromo()">Hapus</button></div>';
+    if (p.catatan_customer) html += '<div class="co-promo-note">' + escHtml(p.catatan_customer) + '</div>';
+    if (promoState.error_message) html += '<div class="co-promo-message error">' + escHtml(promoState.error_message) + '</div>';
+    if (promoState.error_code === 'PROMO_CANNOT_COMBINE_POINTS' && checkoutState.pakai_poin) {
+      html += '<button class="co-promo-points-action" type="button" onclick="disablePointsAndRetryPromo()">Matikan poin &amp; coba lagi</button>';
+    }
+    if (Number(p.ongkir_awal) === 0 && Number(p.diskon_ongkir) === 0) {
+      html += '<div class="co-promo-note">Ongkir Anda sudah gratis, jadi tidak ada potongan ongkir tambahan.</div>';
+    }
+  } else if (promoState.status === 'invalid' && promoState.error_message) {
+    html = '<div class="co-promo-message error">' + escHtml(promoState.error_message) + '</div>';
+    if (promoState.error_code === 'PROMO_CANNOT_COMBINE_POINTS' && checkoutState.pakai_poin) {
+      html += '<button class="co-promo-points-action" type="button" onclick="disablePointsAndRetryPromo()">Matikan poin &amp; coba lagi</button>';
+    }
+  }
+  feedback.innerHTML = html;
+}
+
+async function validatePromoCode(code, options) {
+  options = options || {};
+  code = normalizePromoCode(code);
+  if (!code) {
+    promoState.status = promoState.applied_code ? 'applied' : 'ready';
+    promoState.error_code = '';
+    promoState.error_message = 'Masukkan kode promo terlebih dahulu.';
+    if (!promoState.applied_code) promoState.status = 'invalid';
+    updatePromoUI();
+    return false;
+  }
+  var ready = promoContextReady();
+  if (!ready.ok) {
+    promoState.status = promoState.applied_code ? 'stale' : 'invalid';
+    promoState.preview = null;
+    promoState.error_code = 'CONTEXT_NOT_READY';
+    promoState.error_message = ready.message;
+    updatePromoUI();
+    updateCheckoutSummary();
+    return false;
+  }
+  var signature = promoContextSignature();
+  var previousApplied = promoState.status === 'applied' && promoState.preview ? {
+    code: promoState.applied_code,
+    preview: promoState.preview,
+    signature: promoState.validated_signature
+  } : null;
+  var requestId = ++_promoRequestSequence;
+  promoState.request_id = requestId;
+  promoState.status = 'validating';
+  promoState.preview = null;
+  promoState.error_code = '';
+  promoState.error_message = '';
+  updatePromoUI();
+  updateCheckoutSummary();
+  try {
+    var res = await api('validatePromo', buildValidatePromoPayload(code));
+    if (requestId !== promoState.request_id || signature !== promoContextSignature()) return false;
+    if (res.ok) {
+      promoState.input_code = code;
+      promoState.applied_code = normalizePromoCode(res.data.promo_code || code);
+      promoState.status = 'applied';
+      promoState.preview = res.data;
+      promoState.validated_signature = signature;
+      promoState.error_code = '';
+      promoState.error_message = '';
+      updatePromoUI();
+      updateCheckoutSummary();
+      return true;
+    }
+    if (previousApplied && previousApplied.code !== code && previousApplied.signature === promoContextSignature()) {
+      promoState.status = 'applied';
+      promoState.applied_code = previousApplied.code;
+      promoState.preview = previousApplied.preview;
+      promoState.validated_signature = previousApplied.signature;
+    } else {
+      promoState.status = 'invalid';
+      promoState.preview = null;
+      promoState.validated_signature = '';
+    }
+    promoState.error_code = res.code || '';
+    promoState.error_message = promoSafeError(res);
+    if (res.code === 'UNAUTHORIZED') {
+      session = { token: null, member: null };
+      localStorage.removeItem('sj_session');
+      promoState.status = 'invalid';
+      promoState.applied_code = '';
+      promoState.preview = null;
+      promoState.validated_signature = '';
+      renderHeader();
+    }
+  } catch (e) {
+    if (requestId !== promoState.request_id) return false;
+    if (previousApplied && previousApplied.code !== code && previousApplied.signature === promoContextSignature()) {
+      promoState.status = 'applied';
+      promoState.applied_code = previousApplied.code;
+      promoState.preview = previousApplied.preview;
+      promoState.validated_signature = previousApplied.signature;
+    } else {
+      promoState.status = 'invalid';
+      promoState.preview = null;
+      promoState.validated_signature = '';
+    }
+    promoState.error_code = 'NETWORK_ERROR';
+    promoState.error_message = 'Gagal terhubung ke server. Coba lagi.';
+  }
+  updatePromoUI();
+  updateCheckoutSummary();
+  return false;
+}
+
+function applyPromoFromInput() {
+  var input = document.getElementById('co-promo-input');
+  promoState.input_code = input ? input.value : promoState.input_code;
+  return validatePromoCode(promoState.input_code);
+}
+
+function removePromo() {
+  resetPromoState(false);
+  promoState.input_code = '';
+  updatePromoUI();
+  updateCheckoutSummary();
+}
+
+function disablePointsAndRetryPromo() {
+  checkoutState.pakai_poin = false;
+  var checkbox = document.getElementById('co-use-points');
+  if (checkbox) checkbox.checked = false;
+  validatePromoCode(promoState.input_code || promoState.applied_code);
+}
+
+function promoContextChanged(debounce) {
+  if (!cart.length) {
+    resetPromoState(false);
+    updatePromoUI();
+    updateCheckoutSummary();
+    return;
+  }
+  if (!promoState.applied_code || (promoState.status !== 'applied' && promoState.status !== 'stale' && promoState.status !== 'validating')) return;
+  promoState.request_id = ++_promoRequestSequence;
+  promoState.status = 'stale';
+  promoState.preview = null;
+  promoState.validated_signature = '';
+  promoState.error_code = '';
+  promoState.error_message = '';
+  if (_promoRevalidateTimer) clearTimeout(_promoRevalidateTimer);
+  updatePromoUI();
+  updateCheckoutSummary();
+  var run = function() {
+    _promoRevalidateTimer = null;
+    if (!promoContextReady().ok) return;
+    validatePromoCode(promoState.applied_code, { revalidate: true });
+  };
+  if (debounce) _promoRevalidateTimer = setTimeout(run, 500);
+  else run();
+}
+
+function isPromoErrorCode(code) {
+  return String(code || '').indexOf('PROMO_') === 0;
+}
+
 // === POINTS ===
 function onTogglePoints(checked) {
   checkoutState.pakai_poin = checked;
+  promoContextChanged(false);
   updateCheckoutSummary();
 }
 
@@ -2196,33 +2506,52 @@ function updateCheckoutSummary() {
   var total = subtotal + ongkir - poinUsed;
   if (total < 0) total = 0;
 
+  // Promo applied memakai breakdown server sepenuhnya.
+  var promoActive = promoState.status === 'applied' && promoState.preview &&
+    promoState.validated_signature === promoContextSignature();
+  var preview = promoActive ? promoState.preview : null;
+  if (preview) {
+    subtotal = Number(preview.subtotal_awal) || 0;
+    ongkir = Number(preview.ongkir_setelah_promo) || 0;
+    poinUsed = Number(preview.poin_dipakai) || 0;
+    total = Number(preview.total) || 0;
+    ongkirDisplay = ongkir === 0 ? 'GRATIS' : formatRupiah(ongkir);
+  }
+
   // Update DOM
-  var elSubtotal = document.getElementById('co-cost-subtotal');
-  var elOngkir = document.getElementById('co-cost-ongkir');
-  var elPoinRow = document.getElementById('co-cost-poin-row');
-  var elPoin = document.getElementById('co-cost-poin');
+  var details = document.getElementById('co-cost-details');
   var elTotal = document.getElementById('co-cost-total');
   var elPointsInfo = document.getElementById('co-points-info');
-
-  if (elSubtotal) elSubtotal.textContent = formatRupiah(subtotal);
-  if (elOngkir) {
-    elOngkir.textContent = ongkirDisplay;
-    if (method === 'DIANTAR') {
-      elOngkir.classList.add('pending');
+  if (details) {
+    var wasCollapsed = details.classList.contains('collapsed');
+    var costHtml = '<div class="co-cost-row"><span>Subtotal produk</span><span class="co-cost-val">' + formatRupiah(subtotal) + '</span></div>';
+    if (preview) {
+      if (Number(preview.diskon_subtotal) > 0) costHtml += '<div class="co-cost-row"><span>Diskon subtotal</span><span class="co-cost-val discount">-' + formatRupiah(preview.diskon_subtotal) + '</span></div>';
+      if (Number(preview.diskon_produk) > 0) costHtml += '<div class="co-cost-row"><span>Diskon produk</span><span class="co-cost-val discount">-' + formatRupiah(preview.diskon_produk) + '</span></div>';
+      if (Number(preview.diskon_subtotal) > 0 || Number(preview.diskon_produk) > 0) costHtml += '<div class="co-cost-row"><span>Subtotal setelah promo</span><span class="co-cost-val">' + formatRupiah(preview.subtotal_setelah_promo) + '</span></div>';
+      var shippingBefore = Number(preview.ongkir_awal) || 0;
+      costHtml += '<div class="co-cost-row"><span>Ongkir sebelum promo</span><span class="co-cost-val">' + (shippingBefore === 0 ? 'GRATIS' : formatRupiah(shippingBefore)) + '</span></div>';
+      if (Number(preview.diskon_ongkir) > 0) costHtml += '<div class="co-cost-row"><span>Diskon ongkir</span><span class="co-cost-val discount">-' + formatRupiah(preview.diskon_ongkir) + '</span></div>';
+      costHtml += '<div class="co-cost-row"><span>Ongkir setelah promo</span><span class="co-cost-val">' + ongkirDisplay + '</span></div>';
     } else {
-      elOngkir.classList.remove('pending');
+      costHtml += '<div class="co-cost-row"><span>Ongkir</span><span class="co-cost-val' + (method === 'DIANTAR' && ongkirDisplay === '—' ? ' pending' : '') + '">' + ongkirDisplay + '</span></div>';
     }
+    if (poinUsed > 0) costHtml += '<div class="co-cost-row"><span>Potongan poin</span><span class="co-cost-val discount">-' + formatRupiah(poinUsed) + '</span></div>';
+    if (preview) {
+      var earnText = String(Number(preview.poin_earn_dasar) || 0) + ' poin';
+      if (Number(preview.multiplier_poin) > 1) earnText += ' × ' + Number(preview.multiplier_poin);
+      if (Number(preview.bonus_poin) > 0) earnText += ' + ' + Number(preview.bonus_poin) + ' bonus';
+      costHtml += '<div class="co-cost-row co-cost-points"><span>Estimasi poin setelah ulasan</span><span class="co-cost-val">' + earnText + ' = ' + (Number(preview.poin_earn_final) || 0) + '</span></div>';
+    }
+    details.innerHTML = costHtml;
+    details.classList.toggle('collapsed', wasCollapsed);
   }
 
   if (poinUsed > 0) {
-    if (elPoinRow) elPoinRow.style.display = '';
-    if (elPoin) elPoin.textContent = '-' + formatRupiah(poinUsed);
     if (elPointsInfo) {
       elPointsInfo.textContent = 'Dipakai: ' + poinUsed + ' poin. Sisa: ' + (poin - poinUsed) + ' poin.';
     }
   } else {
-    if (elPoinRow) elPoinRow.style.display = 'none';
-    if (elPoin) elPoin.textContent = '-Rp0';
     if (elPointsInfo) elPointsInfo.textContent = '';
   }
 
@@ -2285,9 +2614,9 @@ function updateCheckoutValidation() {
   var noteEl = document.getElementById('co-submit-note');
   if (btn) {
     var isValid = (missing.length === 0);
-    btn.disabled = _submitting;
+    btn.disabled = _submitting || promoState.status === 'validating';
     if (noteEl) {
-      noteEl.textContent = isValid ? '' : 'Lengkapi semua pilihan untuk melanjutkan.';
+      noteEl.textContent = promoState.status === 'validating' ? 'Tunggu pemeriksaan promo selesai.' : (isValid ? '' : 'Lengkapi semua pilihan untuk melanjutkan.');
     }
   }
 }
@@ -2313,6 +2642,10 @@ function buildCreateOrderPayload() {
     items: items,
     catatan_customer: catatanVal
   };
+  if (promoState.status === 'applied' && promoState.preview &&
+      promoState.validated_signature === promoContextSignature()) {
+    payload.promo_code = promoState.applied_code;
+  }
 
   if (checkoutState.metode_kirim === 'AMBIL' || checkoutState.metode_kirim === 'OJOL') {
     payload.lokasi_pickup_id = checkoutState.lokasi_pickup_id;
@@ -2352,6 +2685,19 @@ function buildCreateOrderPayload() {
 // === HANDLE createOrder ===
 async function handleCreateOrder() {
   if (_submitting) return;
+  if (promoState.status === 'validating') {
+    var promoWaitMsg = document.getElementById('co-validation-msg');
+    if (promoWaitMsg) promoWaitMsg.innerHTML = '<div class="co-error-inline">Tunggu pemeriksaan promo selesai.</div>';
+    return;
+  }
+  if (promoState.status === 'stale' && promoState.applied_code) {
+    var promoValidAgain = await validatePromoCode(promoState.applied_code, { revalidate: true });
+    if (!promoValidAgain) {
+      var promoFailedMsg = document.getElementById('co-validation-msg');
+      if (promoFailedMsg) promoFailedMsg.innerHTML = '<div class="co-error-inline">Promo perlu diperiksa kembali sebelum pesanan dibuat.</div>';
+      return;
+    }
+  }
 
   // Validasi ulang sebelum submit
   var missing = [];
@@ -2427,6 +2773,7 @@ async function handleCreateOrder() {
       saveCart();
       renderCartBottomBar();
       renderHeader();
+      resetPromoState(false);
       // Tutup checkout
       document.getElementById('checkout-screen').classList.add('hidden');
       document.body.style.overflow = '';
@@ -2467,7 +2814,21 @@ async function handleCreateOrder() {
         errMsg = 'Sesi habis, silakan login ulang.';
         session = { token: null, member: null };
         localStorage.removeItem('sj_session');
+        resetPromoState(false);
+        promoState.status = 'invalid';
+        promoState.error_code = 'UNAUTHORIZED';
+        promoState.error_message = errMsg;
+        updatePromoUI();
         renderHeader();
+      } else if (isPromoErrorCode(code)) {
+        errMsg = promoSafeError(res);
+        promoState.status = 'invalid';
+        promoState.preview = null;
+        promoState.validated_signature = '';
+        promoState.error_code = code;
+        promoState.error_message = errMsg;
+        updatePromoUI();
+        updateCheckoutSummary();
       } else {
         errMsg = res.error || 'Gagal membuat pesanan, coba lagi.';
       }
@@ -2490,6 +2851,7 @@ async function handleCreateOrder() {
               saveCart();
               renderCartBottomBar();
               renderHeader();
+              resetPromoState(false);
               document.getElementById('checkout-screen').classList.add('hidden');
               document.body.style.overflow = '';
               showSuccessScreen(res2.data);
@@ -2550,6 +2912,17 @@ function renderSuccessScreen(data) {
   var ongkir = data.ongkir || 0;
   var poinDipakai = data.poin_dipakai || 0;
   var total = data.total || 0;
+  var promoCode = normalizePromoCode(data.promo_code || '');
+  var promoNama = String(data.promo_nama || '');
+  var diskonSubtotal = Number(data.promo_diskon_subtotal) || 0;
+  var diskonProduk = Number(data.promo_diskon_produk) || 0;
+  var diskonOngkir = Number(data.promo_diskon_ongkir) || 0;
+  var diskonTotal = Number(data.promo_diskon_total) || 0;
+  var ongkirSebelumPromo = Number(data.ongkir_sebelum_promo) || 0;
+  var poinEarnDasar = Number(data.poin_earn_dasar) || 0;
+  var promoBonusPoin = Number(data.promo_bonus_poin) || 0;
+  var promoMultiplierPoin = Number(data.promo_multiplier_poin) || 1;
+  var poinEarnFinal = Number(data.poin_earn_final) || 0;
   var metodeBayar = data.metode_bayar || '';
   var bayar = data.bayar || null;
   var waToko = String(data.wa_toko || '').replace(/[^0-9]/g, '');
@@ -2579,12 +2952,26 @@ function renderSuccessScreen(data) {
   // Ringkasan biaya
   html += '<div class="success-cost-box">';
   html += '<div class="success-cost-row"><span>Subtotal produk</span><span>' + formatRupiah(subtotal) + '</span></div>';
+  if (promoCode) {
+    html += '<div class="success-promo-label"><span>Kode promo</span><strong>' + escHtml(promoCode) + (promoNama ? ' · ' + escHtml(promoNama) : '') + '</strong></div>';
+    if (diskonSubtotal > 0) html += '<div class="success-cost-row promo-row"><span>Diskon subtotal</span><span>-' + formatRupiah(diskonSubtotal) + '</span></div>';
+    if (diskonProduk > 0) html += '<div class="success-cost-row promo-row"><span>Diskon produk</span><span>-' + formatRupiah(diskonProduk) + '</span></div>';
+    html += '<div class="success-cost-row"><span>Ongkir sebelum promo</span><span>' + (ongkirSebelumPromo === 0 ? 'GRATIS' : formatRupiah(ongkirSebelumPromo)) + '</span></div>';
+    if (diskonOngkir > 0) html += '<div class="success-cost-row promo-row"><span>Diskon ongkir</span><span>-' + formatRupiah(diskonOngkir) + '</span></div>';
+    if (diskonTotal > 0) html += '<div class="success-cost-row promo-row"><span>Total diskon promo</span><span>-' + formatRupiah(diskonTotal) + '</span></div>';
+  }
   var ongkirStr = (ongkir === 0) ? 'GRATIS' : formatRupiah(ongkir);
-  html += '<div class="success-cost-row"><span>Ongkos kirim</span><span>' + ongkirStr + '</span></div>';
+  html += '<div class="success-cost-row"><span>' + (promoCode ? 'Ongkir final' : 'Ongkos kirim') + '</span><span>' + ongkirStr + '</span></div>';
   if (poinDipakai > 0) {
     html += '<div class="success-cost-row poin-row"><span>Potongan poin</span><span>-' + formatRupiah(poinDipakai) + '</span></div>';
   }
   html += '<div class="success-cost-row total-row"><span>TOTAL</span><span>' + formatRupiah(total) + '</span></div>';
+  if (promoCode && (poinEarnFinal > 0 || promoBonusPoin > 0 || promoMultiplierPoin > 1)) {
+    var pointSummary = poinEarnDasar + ' poin';
+    if (promoMultiplierPoin > 1) pointSummary += ' × ' + promoMultiplierPoin;
+    if (promoBonusPoin > 0) pointSummary += ' + ' + promoBonusPoin + ' bonus';
+    html += '<div class="success-point-estimate"><span>Estimasi poin setelah ulasan</span><strong>' + escHtml(pointSummary) + ' = ' + poinEarnFinal + '</strong></div>';
+  }
   html += '</div>';
 
   // Status
@@ -2666,6 +3053,13 @@ function copyRekening(nomor) {
 // === INIT ===
 document.addEventListener('DOMContentLoaded', async function () {
   showLoading();
+
+  try {
+    _pendingPromoFromUrl = normalizePromoCode(new URLSearchParams(window.location.search).get('promo') || '');
+    promoState.pending_code = _pendingPromoFromUrl;
+  } catch (e) {
+    _pendingPromoFromUrl = '';
+  }
 
   // Muat session & view mode
   loadSession();
