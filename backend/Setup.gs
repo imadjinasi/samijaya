@@ -158,6 +158,18 @@ var SHEET_DEFS = [
   ['Logs',
     ['timestamp', 'tipe', 'ref_id', 'pesan', 'detail_json'],
     null
+  ],
+
+  // --- 16. ProductAddons ---
+  ['ProductAddons',
+    ['addon_id', 'product_id', 'nama_addon', 'harga', 'urutan', 'aktif', 'created_at', 'updated_at'],
+    null
+  ],
+
+  // --- 17. OrderItemAddons ---
+  ['OrderItemAddons',
+    ['id', 'order_id', 'order_item_ref', 'addon_id', 'nama_addon_snapshot', 'harga_snapshot', 'created_at'],
+    null
   ]
 ];
 

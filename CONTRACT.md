@@ -96,6 +96,30 @@ Tambahan 3 kolom snapshot varian:
 - Harga final item = Products.harga (dasar) + ProductVariants.harga (selisih).
 - Sistem detect produk bervarian dengan query ProductVariants.
 
+### Sheet ProductAddons (BARU — Fase 7.8-D)
+Add-on opsional per produk (multiple-select, toggle). Customer bisa pilih 0+ add-on.
+- addon_id (string, unique) — format addon-{timestamp}-{rand}.
+- product_id (string) — FK ke Products. Add-on nempel ke 1 produk (per-produk, bukan global).
+- nama_addon (string) — misal "Extra Shot".
+- harga (number) — tambahan flat, ditambahkan ke harga item. Misal 8000.
+- urutan (number) — urutan tampil di modal.
+- aktif (boolean/string) — aktif = tampil. Konvensi nilai aktif: 'true'/'1'/'ya' (konsisten dgn ProductVariants).
+- created_at, updated_at — WIB.
+Maks 8 add-on aktif per produk (soft limit UI).
+
+### Sheet OrderItemAddons (BARU — Fase 7.8-D)
+Snapshot add-on yang dipilih customer per item order.
+- id (string) — unique.
+- order_id (string) — FK ke Orders.
+- order_item_ref (string) — referensi ke item mana dalam order (kombinasi order_id + product_id + variant_id + index, ditentukan backend).
+- addon_id (string) — FK ke ProductAddons (referensi, bisa non-aktif nanti).
+- nama_addon_snapshot (string) — snapshot nama saat order.
+- harga_snapshot (number) — snapshot harga saat order.
+- created_at — WIB.
+
+### Harga item final (update Fase 7.8-D)
+Harga 1 item = Products.harga (dasar) + ProductVariants.harga (selisih varian, 0 kalau tanpa varian) + Σ ProductAddons.harga (semua add-on terpilih).
+
 ### 11. PointHistory
 `id | member_id | order_id | tipe | jumlah | saldo_akhir | keterangan | created_at`
 - `tipe`: `TAMBAH | PAKAI | KOREKSI`
