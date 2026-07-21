@@ -872,6 +872,28 @@ h1, h2, h3, .font-serif {
   color: var(--danger);
 }
 
+/* CAMPAIGN POPUP — centered, one item at a time */
+.campaign-overlay { position: fixed; inset: 0; z-index: 500; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(52, 33, 28, 0.68); overscroll-behavior: contain; }
+.campaign-overlay.hidden { display: none; }
+.campaign-popup { position: relative; width: min(100%, 520px); max-height: calc(100dvh - 40px); overflow-y: auto; border-radius: 22px; background: var(--cream); color: var(--espresso); box-shadow: 0 24px 70px rgba(35, 20, 15, 0.38); animation: campaignPop 0.22s ease-out; }
+@keyframes campaignPop { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.campaign-close { position: absolute; top: 10px; right: 10px; z-index: 2; width: 38px; height: 38px; border: 0; border-radius: 50%; background: rgba(52, 33, 28, 0.78); color: #fff; font-size: 1.7rem; line-height: 1; cursor: pointer; }
+.campaign-image-link { display: block; }
+.campaign-image { display: block; width: 100%; height: auto; max-height: 62dvh; object-fit: contain; }
+.campaign-copy { padding: 18px 20px 4px; text-align: center; }
+.campaign-copy h2 { margin: 0 0 6px; font-family: 'DM Serif Display', serif; font-size: 1.25rem; }
+.campaign-copy p { margin: 0; color: var(--brown); font-size: 0.88rem; line-height: 1.5; }
+.campaign-promo { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 16px 20px 20px; padding: 12px 14px; border: 1px dashed var(--brown); border-radius: 14px; background: rgba(255,255,255,0.42); }
+.campaign-promo span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.campaign-promo small { color: var(--brown); font-size: 0.7rem; }
+.campaign-promo strong { overflow-wrap: anywhere; letter-spacing: 0.06em; }
+.campaign-promo button { flex: none; border: 0; border-radius: 999px; padding: 9px 15px; background: var(--espresso); color: var(--cream); font-weight: 700; cursor: pointer; }
+@media (max-width: 560px) {
+  .campaign-overlay { padding: 14px; }
+  .campaign-popup { max-height: calc(100dvh - 28px); border-radius: 18px; }
+  .campaign-image { max-height: 58dvh; }
+}
+
 /* ============================================================
    LOGIN MODAL
    ============================================================ */

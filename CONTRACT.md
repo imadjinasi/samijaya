@@ -10,7 +10,7 @@
 - Foto: simpan `FILE_ID` Google Drive; URL tampil = `https://drive.google.com/thumbnail?id=<FILE_ID>&sz=w400`.
 - ID lain (member_id, address_id, product_id, dst): prefix + timestamp base36.
 
-## 2. Sheet (16) — header persis, dilarang menambah/mengubah kolom
+## 2. Sheet — header persis, dilarang menambah/mengubah kolom
 
 ### 1. Settings
 `key | value | keterangan`
@@ -139,6 +139,20 @@ Harga 1 item = Products.harga (dasar) + ProductVariants.harga (selisih varian, 0
 `timestamp | tipe | ref_id | pesan | detail_json`
 - `tipe`: `NOTIF | ACTIVITY | ERROR`
 
+### Campaigns
+`campaign_id | judul | deskripsi | gambar_file_id | gambar_url | link_url | kode_promo | tanggal_mulai | tanggal_selesai | urutan | status`
+
+- `campaign_id`: ID unik campaign; wajib agar state "sudah dilihat" stabil.
+- `judul`, `deskripsi`: teks konteks opsional.
+- `gambar_file_id`: Google Drive file ID; diprioritaskan dan dirender sebagai URL `lh3` lebar 800.
+- `gambar_url`: fallback URL gambar jika `gambar_file_id` kosong.
+- `link_url`: link opsional dari gambar, dibuka di tab baru.
+- `kode_promo`: kode opsional yang dapat disalin.
+- `tanggal_mulai`, `tanggal_selesai`: batas tanggal inklusif dalam WIB. Kosong atau gagal diparse berarti sisi tersebut tidak membatasi.
+- `urutan`: angka urutan antrean popup, ascending.
+- `status`: hanya `aktif` (case-insensitive setelah trim) yang dibawa ke katalog.
+- Campaign aktif bila status aktif dan hari ini tidak sebelum tanggal mulai valid serta tidak setelah tanggal selesai valid.
+
 ### 16. Reviews
 `review_id | order_id | member_id | rating | ulasan | status | created_at`
 - `status`: `aktif` / `hidden` / `dihapus`
@@ -151,7 +165,7 @@ Harga 1 item = Products.harga (dasar) + ProductVariants.harga (selisih varian, 0
 - `requestOtp` — kirim OTP via Telegram admin
 - `verifyOtp` — verifikasi OTP, buat sesi
 - `getMe` — data member + poin + alamat
-- `getCatalog` — banner, kategori, produk, lokasi, slot, holidays, settings publik
+- `getCatalog` — banner, kategori, produk, lokasi, slot, holidays, settings publik, dan `campaigns` aktif terurut. Penambahan `campaigns` bersifat backward compatible.
 - `getSlotAvailability` — kuota slot per tanggal
 - `createOrder` — buat order (kritis, dalam lock)
 - `getMyOrders` — riwayat order member

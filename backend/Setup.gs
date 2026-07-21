@@ -156,6 +156,13 @@ var SHEET_DEFS = [
     null
   ],
 
+  // --- Campaigns ---
+  ['Campaigns',
+    ['campaign_id', 'judul', 'deskripsi', 'gambar_file_id', 'gambar_url', 'link_url',
+     'kode_promo', 'tanggal_mulai', 'tanggal_selesai', 'urutan', 'status'],
+    null
+  ],
+
   // --- 15. Logs ---
   ['Logs',
     ['timestamp', 'tipe', 'ref_id', 'pesan', 'detail_json'],
@@ -242,7 +249,7 @@ function setupDatabase() {
 
   Logger.log('========================================');
   Logger.log('Selesai! Sheet dibuat: ' + created + ', sudah ada: ' + existed +
-             ', total: ' + (created + existed) + '/15.');
+             ', total: ' + (created + existed) + '/' + SHEET_DEFS.length + '.');
 }
 
 // ============================================================

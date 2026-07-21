@@ -38,7 +38,7 @@ var _selectedVariant = null;
 var _selectedAddons = [];
 
 // === CATALOG CACHE HELPER ===
-var CATALOG_CACHE_KEY = 'sj_catalog_v1';
+var CATALOG_CACHE_KEY = 'sj_catalog_v2';
 var CATALOG_CACHE_TTL_MS = 5 * 60 * 1000; // 5 menit
 
 function isHardRefresh() {
@@ -198,6 +198,147 @@ function loadSession() {
   } catch (e) {
     session = { token: null, member: null };
   }
+}
+
+// === CAMPAIGN POPUP QUEUE ===
+var CAMPAIGN_SEEN_KEY = 'sj_campaign_seen';
+var CAMPAIGN_GUEST_SESSION_KEY = 'sj_campaign_guest_session';
+var _campaignQueue = [];
+var _campaignQueueIndex = 0;
+
+function campaignTodayKey() {
+  var parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(new Date());
+  var values = {};
+  parts.forEach(function(part) { values[part.type] = part.value; });
+  return values.year + '-' + values.month + '-' + values.day;
+}
+
+function campaignTokenFingerprint(token) {
+  var hash = 2166136261;
+  for (var i = 0; i < token.length; i++) {
+    hash ^= token.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return 'login-' + (hash >>> 0).toString(36);
+}
+
+function getCampaignSessionId() {
+  if (session.token) return campaignTokenFingerprint(String(session.token));
+  try {
+    var id = sessionStorage.getItem(CAMPAIGN_GUEST_SESSION_KEY);
+    if (!id) {
+      id = 'guest-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+      sessionStorage.setItem(CAMPAIGN_GUEST_SESSION_KEY, id);
+    }
+    return id;
+  } catch (e) { return 'guest-memory'; }
+}
+
+function readCampaignSeen() {
+  try {
+    var value = JSON.parse(localStorage.getItem(CAMPAIGN_SEEN_KEY) || '{}');
+    return value && !Array.isArray(value) && typeof value === 'object' ? value : {};
+  } catch (e) { return {}; }
+}
+
+function markCampaignSeen(campaignId, marker) {
+  var seen = readCampaignSeen();
+  seen[String(campaignId)] = marker;
+  try { localStorage.setItem(CAMPAIGN_SEEN_KEY, JSON.stringify(seen)); } catch (e) {}
+}
+
+function startCampaignQueue() {
+  var modal = document.getElementById('campaign-modal');
+  if (!modal || !catalog || !Array.isArray(catalog.campaigns)) return;
+  modal.classList.add('hidden');
+  var marker = campaignTodayKey() + '|' + getCampaignSessionId();
+  var seen = readCampaignSeen();
+  _campaignQueue = catalog.campaigns.filter(function(item) {
+    return item && item.campaign_id && seen[String(item.campaign_id)] !== marker;
+  });
+  _campaignQueueIndex = 0;
+  showNextCampaign(marker);
+}
+
+function campaignImageUrl(item) {
+  var fileId = String(item.gambar_file_id || '').trim();
+  return fileId ? 'https://lh3.googleusercontent.com/d/' + encodeURIComponent(fileId) + '=w800' : String(item.gambar_url || '').trim();
+}
+
+function campaignSafeLink(value) {
+  var link = String(value || '').trim();
+  return /^https?:\/\//i.test(link) ? link : '';
+}
+
+function showNextCampaign(marker) {
+  var modal = document.getElementById('campaign-modal');
+  if (!modal || _campaignQueueIndex >= _campaignQueue.length) {
+    if (modal) modal.classList.add('hidden');
+    return;
+  }
+  var item = _campaignQueue[_campaignQueueIndex];
+  var imageUrl = campaignImageUrl(item);
+  var title = String(item.judul || '').trim();
+  var description = String(item.deskripsi || '').trim();
+  var link = campaignSafeLink(item.link_url);
+  var promo = String(item.kode_promo || '').trim();
+  var alt = title || description || 'Promo Samijaya';
+  var html = '<button class="campaign-close" type="button" onclick="closeCampaignPopup()" aria-label="Tutup promo">&times;</button>';
+  if (imageUrl) {
+    var image = '<img class="campaign-image" src="' + escHtml(imageUrl) + '" alt="' + escHtml(alt) + '">';
+    html += link ? '<a class="campaign-image-link" href="' + escHtml(link) + '" target="_blank" rel="noopener noreferrer">' + image + '</a>' : image;
+  }
+  if (title || description) {
+    html += '<div class="campaign-copy">';
+    if (title) html += '<h2>' + escHtml(title) + '</h2>';
+    if (description) html += '<p>' + escHtml(description) + '</p>';
+    html += '</div>';
+  }
+  if (promo) {
+    html += '<div class="campaign-promo"><span><small>Kode promo</small><strong>' + escHtml(promo) + '</strong></span>' +
+      '<button type="button" data-code="' + escHtml(promo) + '" onclick="copyCampaignCode(this)">Copy</button></div>';
+  }
+  modal.querySelector('.campaign-popup').innerHTML = html;
+  modal.classList.remove('hidden');
+  markCampaignSeen(item.campaign_id, marker);
+}
+
+function closeCampaignPopup() {
+  var modal = document.getElementById('campaign-modal');
+  if (modal) modal.classList.add('hidden');
+  _campaignQueueIndex++;
+  showNextCampaign(campaignTodayKey() + '|' + getCampaignSessionId());
+}
+
+function onCampaignBackdrop(event) {
+  if (event.target === event.currentTarget) closeCampaignPopup();
+}
+
+function copyCampaignCode(button) {
+  var code = button.getAttribute('data-code') || '';
+  function copied() {
+    button.textContent = 'Tersalin!';
+    setTimeout(function() { if (button.isConnected) button.textContent = 'Copy'; }, 1400);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(code).then(copied).catch(function() { fallbackCopyCampaignCode(code, copied); });
+  } else fallbackCopyCampaignCode(code, copied);
+}
+
+function fallbackCopyCampaignCode(code, onSuccess) {
+  var input = document.createElement('textarea');
+  input.value = code;
+  input.setAttribute('readonly', '');
+  input.style.position = 'fixed';
+  input.style.opacity = '0';
+  document.body.appendChild(input);
+  input.select();
+  var ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) {}
+  input.remove();
+  if (ok) onSuccess(); else showToast('Salin manual: ' + code);
 }
 
 // === CART LOGIC ===
@@ -1110,6 +1251,7 @@ async function handleVerifyOtp(no_hp, nama) {
       saveSession();
       closeOtpModal();
       renderHeader();
+      setTimeout(startCampaignQueue, 0);
       showToast('Selamat datang, ' + session.member.nama + '!');
       // Continue to checkout if pending
       if (_pendingCheckout) {
@@ -1196,6 +1338,7 @@ async function handleRegister(no_hp) {
       saveSession();
       closeRegisterModal();
       renderHeader();
+      setTimeout(startCampaignQueue, 0);
       showToast('Selamat datang, ' + session.member.nama + '!');
       if (_pendingCheckout) {
         _pendingCheckout = false;
@@ -1247,6 +1390,7 @@ function showOtpModalWithName(no_hp, nama, cooldownSeconds) {
 function logout() {
   session = { token: null, member: null };
   localStorage.removeItem('sj_session');
+  try { sessionStorage.removeItem(CAMPAIGN_GUEST_SESSION_KEY); } catch (e) {}
   renderHeader();
   showToast('Berhasil keluar');
 }
@@ -2613,6 +2757,9 @@ document.addEventListener('DOMContentLoaded', async function () {
   }
 
   hideLoading();
+
+  // Homepage sudah dirender; antrean tidak menghambat initial render.
+  setTimeout(startCampaignQueue, 0);
 
   // Setup search
   var searchInput = document.querySelector('#search-box input');

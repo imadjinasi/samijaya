@@ -159,7 +159,8 @@ function catalogGetCatalog() {
     pickupLocations: pickupLocations,
     deliverySlots: deliverySlots,
     holidays: holidays,
-    settings: settings
+    settings: settings,
+    campaigns: campaignsReadActive()
   };
 
   // Simpan ke cache (stringify seluruh object)
