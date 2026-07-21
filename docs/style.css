@@ -3148,3 +3148,14 @@ select {
   justify-content: space-between;
   margin-top: auto;
 }
+
+/* --- Addresses Badge --- */
+.addr-badge-default {
+  background: var(--latte);
+  color: var(--espresso);
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  border: 1px solid var(--espresso);
+}

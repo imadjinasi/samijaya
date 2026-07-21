@@ -2982,14 +2982,31 @@ function renderMyAddressesList(addresses) {
   for (var i = 0; i < addresses.length; i++) {
     var addr = addresses[i];
     var encodedAddr = escHtml(JSON.stringify(addr)); // for passing to JS
+    var isDefault = String(addr.is_default) === '1' || addr.is_default === true;
+    
     html += '<div class="address-card" style="background:#fff; border-radius:var(--r-card); padding:16px; box-shadow:var(--shadow);">';
-    html += '<div style="font-weight:600; font-size:1.1rem; color:var(--espresso); margin-bottom:4px;">' + escHtml(addr.label) + ' <span style="font-weight:normal; font-size:1rem;">— ' + escHtml(addr.detail) + '</span></div>';
+    
+    // Header label
+    html += '<div style="font-weight:600; font-size:1.1rem; color:var(--espresso); margin-bottom:4px; display:flex; align-items:center; flex-wrap:wrap; gap:8px;">';
+    html += '<span>' + escHtml(addr.label) + '</span>';
+    if (isDefault) {
+      html += '<span class="addr-badge-default">Utama</span>';
+    }
+    html += '<span style="font-weight:normal; font-size:1rem; flex-basis:100%;">— ' + escHtml(addr.detail) + '</span>';
+    html += '</div>';
+    
+    // Address snapshot
     if (addr.alamat_snapshot) {
       html += '<div style="color:var(--brown); font-size:0.85rem; line-height:1.4; margin-bottom:8px;">' + escHtml(addr.alamat_snapshot) + '</div>';
     } else {
       html += '<div style="color:var(--brown); font-size:0.85rem; line-height:1.4; margin-bottom:8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">' + escHtml(addr.detail) + '</div>';
     }
+    
+    // Actions
     html += '<div style="display:flex; gap:8px;">';
+    if (!isDefault) {
+      html += '<button class="btn-outline" style="flex:1; padding:8px;" onclick="setDefaultAddress(\'' + addr.address_id + '\')">Jadikan Utama</button>';
+    }
     html += '<button class="btn-outline" style="flex:1; padding:8px;" onclick=\'showAddressForm(' + encodedAddr + ')\'>Edit</button>';
     html += '<button class="btn-outline" style="flex:1; padding:8px; color:var(--danger); border-color:var(--danger);" onclick="deleteAddress(\'' + addr.address_id + '\')">Hapus</button>';
     html += '</div>';
@@ -3245,6 +3262,20 @@ async function deleteAddress(addressId) {
     }
   } catch(e) {
     showToast('Gagal terhubung ke server');
+  }
+}
+
+async function setDefaultAddress(addressId) {
+  try {
+    var res = await api('addressSetDefault', { address_id: addressId });
+    if (res.ok) {
+      showToast('Alamat utama diperbarui');
+      loadMyAddresses();
+    } else {
+      showToast(res.error || 'Gagal set alamat utama');
+    }
+  } catch (e) {
+    showToast('Terjadi kesalahan');
   }
 }
 
