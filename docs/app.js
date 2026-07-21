@@ -462,7 +462,7 @@ function renderOneProduct(p) {
   var addBtn = isHabis
     ? '<div class="btn-add btn-habis" style="background:#e0e0e0;color:#999;width:auto;padding:0 12px;border-radius:var(--r-pill);font-size:0.75rem;font-weight:bold;cursor:not-allowed;">Habis</div>'
     : (p.has_variants 
-        ? '<button class="btn-add" onclick="event.stopPropagation(); openProductModal(\'' + escHtml(p.product_id) + '\')" aria-label="Pilih ' + escHtml(p.nama) + '" style="width:auto;padding:0 12px;font-size:0.8rem;border-radius:var(--r-pill);">Pilih</button>'
+        ? '<button class="btn-add" onclick="event.stopPropagation(); openProductModal(\'' + escHtml(p.product_id) + '\')" aria-label="Pilih ' + escHtml(p.nama) + '">' + ICON.plus + '</button>'
         : '<button class="btn-add" onclick="event.stopPropagation(); onAddToCart(\'' + escHtml(p.product_id) + '\')" aria-label="Tambah ' + escHtml(p.nama) + '">' + ICON.plus + '</button>');
 
   var priceDisplay = formatRupiah(p.harga);
