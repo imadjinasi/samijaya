@@ -180,7 +180,7 @@ function addToCart(product, variant) {
   var variantId = variant ? variant.variant_id : '';
   var namaVarian = variant ? variant.nama_varian : '';
   var namaAxis = variant ? variant.nama_axis : '';
-  var harga = variant ? Number(variant.harga) : Number(product.harga);
+  var harga = variant ? (Number(product.harga) + Number(variant.harga)) : Number(product.harga);
 
   var found = null;
   for (var i = 0; i < cart.length; i++) {
@@ -466,15 +466,6 @@ function renderOneProduct(p) {
         : '<button class="btn-add" onclick="event.stopPropagation(); onAddToCart(\'' + escHtml(p.product_id) + '\')" aria-label="Tambah ' + escHtml(p.nama) + '">' + ICON.plus + '</button>');
 
   var priceDisplay = formatRupiah(p.harga);
-  if (p.has_variants && p.variants && p.variants.length > 0) {
-    var minPrice = p.variants[0].harga;
-    for (var i = 1; i < p.variants.length; i++) {
-      if (Number(p.variants[i].harga) < Number(minPrice)) {
-        minPrice = p.variants[i].harga;
-      }
-    }
-    priceDisplay = '<span style="font-size:0.75rem;font-weight:normal;color:#777;margin-right:2px;">mulai</span>' + formatRupiah(minPrice);
-  }
 
   return '<div class="product-card ' + (isHabis ? 'out-of-stock' : '') + '" data-category="' + escHtml(p.kategori_id || '') + '" data-name="' + escHtml(p.nama) + '" data-pid="' + escHtml(p.product_id) + '" onclick="openProductModal(\'' + escHtml(p.product_id) + '\')">' +
     '<div class="product-img-wrap">' +
@@ -558,7 +549,7 @@ function openProductModal(productId) {
   html += '<div style="padding: 24px; padding-bottom: 0;">';
   html += '<div style="font-family:\'DM Serif Display\', serif; font-size:1.4rem; color:var(--espresso); margin-bottom:4px; line-height:1.2;">' + escHtml(p.nama) + '</div>';
   
-  var priceToDisplay = p.has_variants && _selectedVariant ? _selectedVariant.harga : p.harga;
+  var priceToDisplay = p.has_variants && _selectedVariant ? (Number(p.harga) + Number(_selectedVariant.harga)) : p.harga;
   html += '<div id="modal-price" style="font-weight:600; font-size:1.1rem; color:var(--espresso); margin-bottom:16px;">' + formatRupiah(priceToDisplay) + '</div>';
   html += '<div style="font-size:0.9rem; color:rgba(80, 50, 41, 0.8); line-height:1.5; margin-bottom:24px; white-space:pre-wrap;">' + escHtml(p.deskripsi || 'Tidak ada deskripsi.') + '</div>';
 
@@ -572,7 +563,9 @@ function openProductModal(productId) {
       var isActive = _selectedVariant && _selectedVariant.variant_id === v.variant_id;
       html += '<label class="variant-option ' + (isActive ? 'active' : '') + '" data-vid="' + escHtml(v.variant_id) + '" onclick="onSelectVariant(\'' + escHtml(v.variant_id) + '\')">';
       html += '<div style="font-weight:600; font-size:0.95rem;">' + escHtml(v.nama_varian) + '</div>';
-      html += '<div style="font-size:0.9rem; color:#777;">' + formatRupiah(v.harga) + '</div>';
+      var diffPrice = Number(v.harga);
+      var diffStr = diffPrice === 0 ? 'Termasuk' : '+' + formatRupiah(diffPrice);
+      html += '<div style="font-size:0.9rem; color:#777;">' + diffStr + '</div>';
       html += '</label>';
     }
     html += '</div>';
@@ -603,7 +596,8 @@ function onSelectVariant(variantId) {
   }
   var priceEl = document.getElementById('modal-price');
   if (priceEl && _selectedVariant) {
-    priceEl.textContent = formatRupiah(_selectedVariant.harga);
+    var finalPrice = Number(_currentModalProduct.harga) + Number(_selectedVariant.harga);
+    priceEl.textContent = formatRupiah(finalPrice);
   }
   var labels = document.querySelectorAll('.variant-option');
   labels.forEach(function(lbl) {
