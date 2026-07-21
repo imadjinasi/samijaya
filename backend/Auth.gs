@@ -255,7 +255,8 @@ function authVerifyOtp(payload) {
         total_poin: 0,
         total_belanja: 0,
         created_at: nowJkt(),
-        status: 'aktif'
+        status: 'aktif',
+        last_seen_orders_at: nowJkt()
       };
       appendRowObj('Members', member);
     }
@@ -372,13 +373,62 @@ function authGetMe(payload, token) {
     }
   }
 
+  var lastSeenOrdersAt = _orderSeenTimestampString(member.last_seen_orders_at);
+  var lastSeenMs = _orderSeenTimestampMs(lastSeenOrdersAt);
+  var hasUnseenOrderUpdates = false;
+
+  // last_seen kosong dianggap sudah melihat semua agar data lama tidak memunculkan dot massal.
+  if (lastSeenMs !== null) {
+    var allOrders = readAll('Orders');
+    for (var o = 0; o < allOrders.length; o++) {
+      if (String(allOrders[o].member_id) !== String(member.member_id)) continue;
+      var statusUpdatedMs = _orderSeenTimestampMs(allOrders[o].status_updated_at);
+      if (statusUpdatedMs !== null && statusUpdatedMs > lastSeenMs) {
+        hasUnseenOrderUpdates = true;
+        break;
+      }
+    }
+  }
+
+  member.last_seen_orders_at = lastSeenOrdersAt;
+  member.has_unseen_order_updates = hasUnseenOrderUpdates;
+
   return {
     ok: true,
     data: {
       member: member,
-      addresses: addresses
+      addresses: addresses,
+      has_unseen_order_updates: hasUnseenOrderUpdates
     }
   };
+}
+
+/**
+ * Parse timestamp sheet untuk perbandingan indikator update order.
+ * Format canonical proyek (yyyy-MM-dd HH:mm:ss) diperlakukan sebagai WIB.
+ */
+function _orderSeenTimestampMs(value) {
+  if (!value) return null;
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    var dateMs = value.getTime();
+    return isNaN(dateMs) ? null : dateMs;
+  }
+
+  var str = String(value).trim();
+  var canonical = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/.exec(str);
+  var parsed = canonical
+    ? Date.parse(canonical[1] + '-' + canonical[2] + '-' + canonical[3] + 'T' +
+        canonical[4] + ':' + canonical[5] + ':' + canonical[6] + '+07:00')
+    : Date.parse(str);
+  return isNaN(parsed) ? null : parsed;
+}
+
+function _orderSeenTimestampString(value) {
+  if (!value) return '';
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    return Utilities.formatDate(value, 'Asia/Jakarta', 'yyyy-MM-dd HH:mm:ss');
+  }
+  return String(value);
 }
 
 // ============================================================
@@ -493,4 +543,3 @@ function sendOtpToAdminTelegram(no_hp, nama, otp, isResend) {
 
   log('NOTIF', no_hp, 'OTP dikirim ke admin Telegram', { otp: otp, nama: nama });
 }
-

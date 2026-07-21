@@ -149,6 +149,7 @@ h1, h2, h3, .font-serif {
 }
 
 .header-user-btn {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -215,6 +216,34 @@ h1, h2, h3, .font-serif {
 
 .header-dropdown button:hover {
   background: var(--cream);
+}
+
+.order-update-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-radius: 50%;
+  background: #d93025;
+  box-shadow: 0 0 0 2px var(--white);
+}
+
+.header-user-update-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  pointer-events: none;
+}
+
+.header-orders-menu-btn {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.header-menu-update-dot {
+  box-shadow: none;
 }
 
 .header-cart-btn {
@@ -2657,7 +2686,14 @@ select {
 }
 
 .my-order-status-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 10px;
+}
+
+.my-order-update-dot {
+  box-shadow: 0 0 0 2px var(--card-bg);
 }
 
 .my-order-status {

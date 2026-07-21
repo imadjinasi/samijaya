@@ -686,6 +686,7 @@ function orderCreateOrder(payload, token) {
       catatan_admin:    '',
       created_at:       nowStr,
       updated_at:       nowStr,
+      status_updated_at: nowStr,
       timeline_json:    timeline,
       nama_penerima:    namaPenerimaFinal,
       no_hp_penerima:   noHpPenerimaFinal
@@ -840,6 +841,7 @@ function orderUpdateStatus(orderId, newStatus, actorChatId) {
     var updateData = {
       status: newStatus,
       updated_at: nowStr,
+      status_updated_at: nowStr,
       timeline_json: JSON.stringify(timeline)
     };
     
@@ -1035,6 +1037,7 @@ function orderGetMyOrders(payload, token) {
       total: row.total,
       created_at: row.created_at ? String(row.created_at) : null,
       updated_at: row.updated_at ? String(row.updated_at) : null,
+      status_updated_at: _orderSeenTimestampString(row.status_updated_at),
       timeline: timeline,
       alamat_snapshot: row.alamat_snapshot,
       lokasi_pickup_id: row.lokasi_pickup_id,
@@ -1049,4 +1052,30 @@ function orderGetMyOrders(payload, token) {
   }
 
   return { ok: true, data: { orders: resultOrders } };
+}
+
+// ============================================================
+// 5. orderMarkSeen(payload, token)
+// ============================================================
+/**
+ * Tandai semua update status order milik member sebagai sudah dilihat.
+ * Timestamp server dikembalikan agar state frontend lintas device konsisten.
+ */
+function orderMarkSeen(payload, token) {
+  var session = requireSession(token);
+  if (!session) return { ok: false, code: 'UNAUTHORIZED', error: 'Sesi tidak valid' };
+
+  var seenAt = nowJkt();
+  var lockResult = withLock(function () {
+    var updated = updateRowById('Members', 'member_id', session.member_id, {
+      last_seen_orders_at: seenAt
+    });
+    if (!updated) {
+      return { ok: false, code: 'MEMBER_NOT_FOUND', error: 'Member tidak ditemukan' };
+    }
+    return { ok: true };
+  });
+
+  if (!lockResult.ok) return lockResult;
+  return { ok: true, data: { last_seen_orders_at: String(seenAt) } };
 }

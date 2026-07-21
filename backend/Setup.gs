@@ -42,7 +42,7 @@ var SHEET_DEFS = [
 
   // --- 2. Members ---
   ['Members',
-    ['member_id', 'nama', 'no_hp', 'tgl_lahir', 'email', 'total_poin', 'total_belanja', 'created_at', 'status'],
+    ['member_id', 'nama', 'no_hp', 'tgl_lahir', 'email', 'total_poin', 'total_belanja', 'created_at', 'status', 'last_seen_orders_at'],
     null
   ],
 
@@ -105,7 +105,8 @@ var SHEET_DEFS = [
      'lokasi_pickup_id', 'address_id', 'alamat_snapshot', 'lat', 'lng',
      'jarak_km', 'ongkir', 'slot_id', 'subtotal', 'poin_dipakai', 'total',
      'metode_bayar', 'status', 'catatan_customer', 'catatan_admin',
-     'created_at', 'updated_at', 'timeline_json', 'nama_penerima', 'no_hp_penerima'],
+     'created_at', 'updated_at', 'timeline_json', 'nama_penerima', 'no_hp_penerima',
+     'status_updated_at'],
     null
   ],
 

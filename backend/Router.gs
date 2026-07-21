@@ -127,6 +127,9 @@ function doPost(e) {
       case 'getMyOrders':
         result = orderGetMyOrders(payload, token);
         break;
+      case 'orderMarkSeen':
+        result = orderMarkSeen(payload, token);
+        break;
       case 'getMyPoints':
         result = pointGetMyPoints(payload, token);
         break;

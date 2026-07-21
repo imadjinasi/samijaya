@@ -117,6 +117,28 @@ function escHtml(str) {
   return div.innerHTML;
 }
 
+function parseOrderSeenTimestamp(value) {
+  if (!value) return null;
+  if (value instanceof Date) {
+    var dateMs = value.getTime();
+    return isNaN(dateMs) ? null : dateMs;
+  }
+
+  var str = String(value).trim();
+  var canonical = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/.exec(str);
+  var parsed = canonical
+    ? Date.parse(canonical[1] + '-' + canonical[2] + '-' + canonical[3] + 'T' +
+        canonical[4] + ':' + canonical[5] + ':' + canonical[6] + '+07:00')
+    : Date.parse(str);
+  return isNaN(parsed) ? null : parsed;
+}
+
+function hasUnseenOrderUpdate(order, lastSeenOrdersAt) {
+  var lastSeenMs = parseOrderSeenTimestamp(lastSeenOrdersAt);
+  var statusUpdatedMs = parseOrderSeenTimestamp(order && order.status_updated_at);
+  return lastSeenMs !== null && statusUpdatedMs !== null && statusUpdatedMs > lastSeenMs;
+}
+
 // === TOAST ===
 function showToast(msg) {
   var existing = document.querySelector('.toast');
@@ -294,16 +316,24 @@ function renderHeaderAuth() {
     // Logged in: show chip with name + poin
     var nama = escHtml(session.member.nama);
     var poin = Number(session.member.total_poin || 0);
+    var hasOrderUpdates = session.member.has_unseen_order_updates === true;
+    var triggerDot = hasOrderUpdates
+      ? '<span class="order-update-dot header-user-update-dot" aria-label="Ada update pesanan"></span>'
+      : '';
+    var menuDot = hasOrderUpdates
+      ? '<span class="order-update-dot header-menu-update-dot" aria-hidden="true"></span>'
+      : '';
     authEl.innerHTML =
       '<div class="header-user-chip">' +
         '<button class="header-user-btn" onclick="toggleUserDropdown()">' +
           '<span class="header-user-name">' + nama + '</span>' +
           '<span class="header-user-poin">• ' + poin + ' poin</span>' +
+          triggerDot +
         '</button>' +
         '<div class="header-dropdown hidden" id="header-dropdown">' +
           '<button onclick="showProfile()">Profil Saya</button>' +
           '<button onclick="showMyAddresses()">Alamat Saya</button>' +
-          '<button onclick="showMyOrders()">Pesanan Saya</button>' +
+          '<button class="header-orders-menu-btn" onclick="showMyOrders()"><span>Pesanan Saya</span>' + menuDot + '</button>' +
           '<button onclick="showMyPoints()">Poin Saya</button>' +
           '<button onclick="logout()">Keluar</button>' +
         '</div>' +
@@ -1070,6 +1100,13 @@ async function handleVerifyOtp(no_hp, nama) {
       session.token = res.data.token;
       session.member = res.data.member;
       session.addresses = res.data.addresses || [];
+      try {
+        var currentMeRes = await api('getMe');
+        if (currentMeRes.ok) {
+          session.member = currentMeRes.data.member;
+          session.addresses = currentMeRes.data.addresses || session.addresses;
+        }
+      } catch (_) {}
       saveSession();
       closeOtpModal();
       renderHeader();
@@ -1149,6 +1186,13 @@ async function handleRegister(no_hp) {
       session.token = res.data.token;
       session.member = res.data.member;
       session.addresses = res.data.addresses || [];
+      try {
+        var currentMeRes = await api('getMe');
+        if (currentMeRes.ok) {
+          session.member = currentMeRes.data.member;
+          session.addresses = currentMeRes.data.addresses || session.addresses;
+        }
+      } catch (_) {}
       saveSession();
       closeRegisterModal();
       renderHeader();
@@ -2625,6 +2669,7 @@ async function loadMyOrders() {
     ]);
     
     if (resOrders.ok) {
+      var lastSeenOrdersAt = session.member ? session.member.last_seen_orders_at : '';
       var reviewableMap = {};
       if (resReviewable.ok && resReviewable.data && resReviewable.data.reviewable) {
         var revs = resReviewable.data.reviewable;
@@ -2632,13 +2677,29 @@ async function loadMyOrders() {
           reviewableMap[revs[i].order_id] = revs[i];
         }
       }
-      renderMyOrders(resOrders.data.orders || [], reviewableMap);
+      renderMyOrders(resOrders.data.orders || [], reviewableMap, lastSeenOrdersAt);
+      await markOrdersSeen();
     } else {
       document.getElementById('my-orders-content').innerHTML = '<div style="text-align:center; padding: 40px 0; color:var(--danger)">Gagal memuat pesanan.</div>';
     }
   } catch (e) {
     console.error("Error loadMyOrders:", e);
     document.getElementById('my-orders-content').innerHTML = '<div style="text-align:center; padding: 40px 0; color:var(--danger)">Gagal terhubung ke server.</div>';
+  }
+}
+
+async function markOrdersSeen() {
+  try {
+    var res = await api('orderMarkSeen');
+    if (!res.ok || !res.data || !res.data.last_seen_orders_at) return;
+
+    if (!session.member) session.member = {};
+    session.member.last_seen_orders_at = String(res.data.last_seen_orders_at);
+    session.member.has_unseen_order_updates = false;
+    saveSession();
+    renderHeaderAuth();
+  } catch (e) {
+    console.error('Error markOrdersSeen:', e);
   }
 }
 
@@ -2681,7 +2742,7 @@ function renderMyOrderItem(item) {
   return itemHtml;
 }
 
-function renderMyOrders(orders, reviewableMap) {
+function renderMyOrders(orders, reviewableMap, lastSeenOrdersAt) {
   reviewableMap = reviewableMap || {};
   var container = document.getElementById('my-orders-content');
   if (!container) return;
@@ -2703,6 +2764,7 @@ function renderMyOrders(orders, reviewableMap) {
     var oid = order.order_id || 'UNKNOWN';
     var statusClass = 'status-' + (order.status || '').toLowerCase();
     var tglAntarStr = order.tgl_antar ? formatDateIndo(order.tgl_antar) : '';
+    var hasUpdate = hasUnseenOrderUpdate(order, lastSeenOrdersAt);
     
     html += '<div class="my-order-card">';
     html += '<div class="my-order-header">';
@@ -2712,6 +2774,9 @@ function renderMyOrders(orders, reviewableMap) {
     
     html += '<div class="my-order-status-wrap">';
     html += '<span class="my-order-status ' + statusClass + '">' + escHtml(order.status) + '</span>';
+    if (hasUpdate) {
+      html += '<span class="order-update-dot my-order-update-dot" title="Status pesanan diperbarui" aria-label="Status pesanan diperbarui"></span>';
+    }
     html += '</div>';
     
     html += '<div class="my-order-meta">';
@@ -3127,7 +3192,11 @@ async function submitProfile() {
   try {
     var res = await api('updateProfile', payload);
     if (res.ok) {
+      var hadUnseenOrderUpdates = session.member && session.member.has_unseen_order_updates === true;
       session.member = res.data.member;
+      if (session.member.has_unseen_order_updates === undefined) {
+        session.member.has_unseen_order_updates = hadUnseenOrderUpdates;
+      }
       saveSession();
       renderHeaderAuth();
       showToast('Profil berhasil disimpan');

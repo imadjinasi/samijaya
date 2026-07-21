@@ -38,7 +38,7 @@ Key wajib (nilai default dalam kurung):
 - `NOMOR_WA_TOKO` (kosong)
 
 ### 2. Members
-`member_id | nama | no_hp | tgl_lahir | email | jenis_kelamin | total_poin | total_belanja | created_at | status`
+`member_id | nama | no_hp | tgl_lahir | email | jenis_kelamin | total_poin | total_belanja | created_at | status | last_seen_orders_at`
 
 ### 3. MemberAddresses
 `address_id | member_id | label | detail | alamat_snapshot | latitude | longitude | created_at | status | is_default`
@@ -60,7 +60,7 @@ Key wajib (nilai default dalam kurung):
 `tanggal | keterangan`
 
 ### 9. Orders
-`order_id | member_id | nama | no_hp | tgl_antar | metode_kirim | lokasi_pickup_id | address_id | alamat_snapshot | lat | lng | jarak_km | ongkir | slot_id | subtotal | poin_dipakai | total | metode_bayar | status | catatan_customer | catatan_admin | created_at | updated_at | timeline_json | nama_penerima | no_hp_penerima`
+`order_id | member_id | nama | no_hp | tgl_antar | metode_kirim | lokasi_pickup_id | address_id | alamat_snapshot | lat | lng | jarak_km | ongkir | slot_id | subtotal | poin_dipakai | total | metode_bayar | status | catatan_customer | catatan_admin | created_at | updated_at | timeline_json | nama_penerima | no_hp_penerima | status_updated_at`
 
 - `metode_kirim`: `AMBIL | DIANTAR | OJOL`
 - `metode_bayar`: `COD | TRANSFER`
@@ -155,6 +155,7 @@ Harga 1 item = Products.harga (dasar) + ProductVariants.harga (selisih varian, 0
 - `getSlotAvailability` — kuota slot per tanggal
 - `createOrder` — buat order (kritis, dalam lock)
 - `getMyOrders` — riwayat order member
+- `orderMarkSeen` — tandai update status order member sebagai sudah dilihat
 - `getMyPoints` — riwayat poin member
 - `addAddress` — tambah alamat baru member
 - `addressSetDefault` — set 1 alamat jadi default (payload: `{address_id}`, enforce 1 default per member)
