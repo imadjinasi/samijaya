@@ -1379,12 +1379,21 @@ function renderShippingDetail(method) {
     
     html += '<div id="checkoutMapHint" style="font-size:13-14px; color:var(--brown); padding:8px 0;">💡 Geser pin biru untuk menyesuaikan lokasi pengantaran.</div>';
     html += '<div id="delivery-map-section" class="map-container"></div>';
-    html += '</div>'; // delivery-new-address
-
+    
     html += '<div class="address-form" style="margin-top:10px;">';
     html += '<textarea id="co-alamat-teks" placeholder="Terisi otomatis dari peta — bisa diedit untuk mengoreksi RT/RW/blok" oninput="onCheckoutAlamatChange()" rows="2"></textarea>';
     html += '<input type="text" id="co-label-alamat" placeholder="Label alamat (contoh: Rumah, Kantor)" oninput="onAddressDetailChange()">';
     html += '<textarea id="co-detail-alamat" placeholder="Detail alamat (patokan, blok, dll)" oninput="onAddressDetailChange()" rows="2"></textarea>';
+    html += '</div>';
+
+    html += '</div>'; // delivery-new-address
+
+    html += '<div id="delivery-saved-summary" class="hidden">';
+    html += '<div class="saved-address-card" style="background:#fff; border:1px solid var(--border); border-radius:8px; padding:12px; margin-top:10px;">';
+    html += '<div class="saved-address-label" id="summary-label" style="font-weight:bold; font-size:0.9rem; margin-bottom:4px; color:var(--primary);"></div>';
+    html += '<div class="saved-address-text" id="summary-text" style="font-size:0.9rem; margin-bottom:4px; line-height:1.4;"></div>';
+    html += '<div class="saved-address-detail" id="summary-detail" style="font-size:0.8rem; color:#666;"></div>';
+    html += '</div>';
     html += '</div>';
 
     html += '</div>'; // delivery-address-selection
@@ -1463,8 +1472,12 @@ function validatePickupTime() {
 
 function onSavedAddressChange(val) {
   var newAddressContainer = document.getElementById('delivery-new-address');
+  var summaryContainer = document.getElementById('delivery-saved-summary');
+  
   if (!val || val === '') {
-    newAddressContainer.classList.remove('hidden');
+    if (newAddressContainer) newAddressContainer.classList.remove('hidden');
+    if (summaryContainer) summaryContainer.classList.add('hidden');
+    
     checkoutState.address_id = '';
     setTimeout(function() {
       if (typeof initDeliveryMap === 'function') {
@@ -1485,7 +1498,9 @@ function onSavedAddressChange(val) {
     if (elDetail) elDetail.value = '';
     updateCheckoutSummary();
   } else {
-    newAddressContainer.classList.add('hidden');
+    if (newAddressContainer) newAddressContainer.classList.add('hidden');
+    if (summaryContainer) summaryContainer.classList.remove('hidden');
+    
     checkoutState.address_id = val;
     var allAddresses = session.addresses || (session.member && session.member.addresses) || [];
     var addr = null;
@@ -1501,12 +1516,40 @@ function onSavedAddressChange(val) {
       checkoutState.alamat_teks = addr.alamat_snapshot || '';
       checkoutState.detail_alamat = addr.detail || '';
       checkoutState.label_alamat = addr.label || '';
+      
+      // Update form values
       var elAlamat = document.getElementById('co-alamat-teks');
       if (elAlamat) elAlamat.value = checkoutState.alamat_teks;
       var elLabel = document.getElementById('co-label-alamat');
       if (elLabel) elLabel.value = checkoutState.label_alamat;
       var elDetail = document.getElementById('co-detail-alamat');
       if (elDetail) elDetail.value = checkoutState.detail_alamat;
+      
+      // Update read-only summary
+      var sumLabel = document.getElementById('summary-label');
+      var sumText = document.getElementById('summary-text');
+      var sumDetail = document.getElementById('summary-detail');
+      
+      if (sumLabel) {
+        if (checkoutState.label_alamat) {
+          sumLabel.style.display = 'block';
+          sumLabel.textContent = checkoutState.label_alamat;
+        } else {
+          sumLabel.style.display = 'none';
+        }
+      }
+      if (sumText) {
+        sumText.textContent = checkoutState.alamat_teks;
+      }
+      if (sumDetail) {
+        if (checkoutState.detail_alamat) {
+          sumDetail.style.display = 'block';
+          sumDetail.textContent = checkoutState.detail_alamat;
+        } else {
+          sumDetail.style.display = 'none';
+        }
+      }
+      
       calculateOngkir();
     }
   }
