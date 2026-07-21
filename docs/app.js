@@ -12,6 +12,8 @@ var _viewMode = 'list';
 var _otpCooldownTimer = null;
 var _pendingCheckout = false;
 var _submitting = false;
+var _orderSubmissionBlocking = false;
+var _loadingPreviousBodyOverflow = null;
 var _pendingOtp = '';
 var publicReviewsData = null;
 var promoState = createPromoState();
@@ -265,11 +267,51 @@ function showToast(msg) {
 }
 
 // === LOADING ===
-function showLoading() {
-  document.getElementById('loading-overlay').classList.remove('hidden');
+var DEFAULT_LOADING_TEXT = 'Menyeduh…';
+
+function showLoading(message) {
+  var overlay = document.getElementById('loading-overlay');
+  if (!overlay) return;
+  var text = overlay.querySelector('.loading-text');
+  if (text) text.textContent = message || DEFAULT_LOADING_TEXT;
+  overlay.setAttribute('aria-busy', 'true');
+  overlay.classList.remove('hidden');
+  if (_loadingPreviousBodyOverflow === null) _loadingPreviousBodyOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
 }
+
 function hideLoading() {
-  document.getElementById('loading-overlay').classList.add('hidden');
+  var overlay = document.getElementById('loading-overlay');
+  if (overlay) {
+    overlay.classList.add('hidden');
+    overlay.setAttribute('aria-busy', 'false');
+    var text = overlay.querySelector('.loading-text');
+    if (text) text.textContent = DEFAULT_LOADING_TEXT;
+  }
+  if (_loadingPreviousBodyOverflow !== null) {
+    document.body.style.overflow = _loadingPreviousBodyOverflow;
+    _loadingPreviousBodyOverflow = null;
+  }
+}
+
+function _orderBeforeUnload(event) {
+  if (!_orderSubmissionBlocking) return;
+  event.preventDefault();
+  event.returnValue = '';
+}
+
+function beginOrderSubmissionBlocking(message) {
+  if (_orderSubmissionBlocking) return false;
+  _orderSubmissionBlocking = true;
+  window.addEventListener('beforeunload', _orderBeforeUnload);
+  showLoading(message);
+  return true;
+}
+
+function endOrderSubmissionBlocking() {
+  _orderSubmissionBlocking = false;
+  window.removeEventListener('beforeunload', _orderBeforeUnload);
+  hideLoading();
 }
 
 // === CART PERSISTENCE ===
@@ -2755,7 +2797,7 @@ function buildCreateOrderPayload() {
 
 // === HANDLE createOrder ===
 async function handleCreateOrder(allowSafeResend) {
-  if (_submitting) return;
+  if (_submitting || _orderSubmissionBlocking) return;
   if (promoState.status === 'validating') {
     var promoWaitMsg = document.getElementById('co-validation-msg');
     if (promoWaitMsg) promoWaitMsg.innerHTML = '<div class="co-error-inline">Tunggu pemeriksaan promo selesai.</div>';
@@ -2847,6 +2889,7 @@ async function handleCreateOrder(allowSafeResend) {
   payload.client_request_id = pending.client_request_id;
 
   // Set loading state
+  if (!beginOrderSubmissionBlocking(allowSafeResend ? 'Mengirim ulang dengan aman…' : 'Menyeduh pesanan…')) return;
   _submitting = true;
   setPendingOrderStatus(pending, 'SUBMITTING');
   var btn = document.getElementById('btn-create-order');
@@ -2934,7 +2977,7 @@ async function handleCreateOrder(allowSafeResend) {
     keepSubmitLocked = true;
     renderUnknownOrderState(pending, 'Hasil pesanan belum diketahui');
   } finally {
-    // SELALU reset _submitting & tombol — kecuali jika retry sedang berjalan (sudah return di atas)
+    endOrderSubmissionBlocking();
     _submitting = false;
     if (btn) { btn.disabled = keepSubmitLocked; btn.textContent = keepSubmitLocked ? 'Menunggu konfirmasi' : originalText; }
   }
@@ -2951,8 +2994,10 @@ function renderUnknownOrderState(pending, message, hideResend) {
 }
 
 async function checkPendingOrder() {
+  if (_orderSubmissionBlocking) return;
   var pending = loadPendingOrderAttempt();
   if (!pending) return showToast('Attempt pesanan tidak ditemukan atau kedaluwarsa.');
+  if (!beginOrderSubmissionBlocking('Memeriksa pesanan…')) return;
   try {
     var result = await api('getOrderByRequestId', { client_request_id: pending.client_request_id }, { timeoutMs: 15000 });
     if (result.ok) return clearCartAfterCommitted(result.data, pending);
@@ -2963,10 +3008,15 @@ async function checkPendingOrder() {
     if (result.code === 'ORDER_STILL_PROCESSING') return renderUnknownOrderState(pending, 'Pesanan masih diproses. Silakan periksa lagi.');
     if (result.code === 'ORDER_RECOVERY_REQUIRED') return renderUnknownOrderState(pending, 'Pesanan memerlukan pemeriksaan admin. Jangan mengirim ulang.', true);
     renderUnknownOrderState(pending, result.error || 'Belum dapat memastikan hasil pesanan.');
-  } catch (_) { renderUnknownOrderState(pending, 'Pemeriksaan gagal tersambung. Hasil pesanan masih belum diketahui.'); }
+  } catch (_) {
+    renderUnknownOrderState(pending, 'Pemeriksaan gagal tersambung. Hasil pesanan masih belum diketahui.');
+  } finally {
+    endOrderSubmissionBlocking();
+  }
 }
 
 function safeResendPendingOrder() {
+  if (_orderSubmissionBlocking) return;
   var pending = loadPendingOrderAttempt();
   if (!pending) return showToast('Attempt pesanan tidak ditemukan atau kedaluwarsa.');
   if (pending.status === 'UNKNOWN' || pending.status === 'SUBMITTING') return checkPendingOrder();

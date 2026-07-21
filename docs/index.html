@@ -21,13 +21,13 @@
   <link rel="preload" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" as="style" onload="this.onload=null;this.rel='stylesheet'" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   <noscript><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/></noscript>
 
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=8a2-order-blocking">
 
   <!-- SCRIPTS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
   <script src="config.js" defer></script>
   <script src="map.js" defer></script>
-  <script src="app.js" defer></script>
+  <script src="app.js?v=8a2-order-blocking" defer></script>
 </head>
 <body>
 
@@ -221,7 +221,7 @@
   </footer>
 
   <!-- ===== LOADING OVERLAY ===== -->
-  <div id="loading-overlay" class="hidden">
+  <div id="loading-overlay" class="hidden" role="status" aria-live="polite" aria-busy="false">
     <img src="assets/logo-dark.png" alt="" class="loading-mascot">
     <div class="loading-text">Menyeduh…</div>
   </div>

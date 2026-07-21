@@ -1246,13 +1246,16 @@ h1, h2, h3, .font-serif {
 #loading-overlay {
   position: fixed;
   inset: 0;
-  z-index: 300;
+  z-index: 10000;
   background: rgba(245, 240, 230, 0.92);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 16px;
+  pointer-events: all;
+  touch-action: none;
+  overscroll-behavior: contain;
 }
 
 #loading-overlay.hidden { display: none; }
