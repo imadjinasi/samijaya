@@ -33,6 +33,9 @@ var checkoutState = {
   address_id: ''
 };
 
+var _currentModalProduct = null;
+var _selectedVariant = null;
+
 // === CATALOG CACHE HELPER ===
 var CATALOG_CACHE_KEY = 'sj_catalog_v1';
 var CATALOG_CACHE_TTL_MS = 5 * 60 * 1000; // 5 menit
@@ -458,7 +461,20 @@ function renderOneProduct(p) {
 
   var addBtn = isHabis
     ? '<div class="btn-add btn-habis" style="background:#e0e0e0;color:#999;width:auto;padding:0 12px;border-radius:var(--r-pill);font-size:0.75rem;font-weight:bold;cursor:not-allowed;">Habis</div>'
-    : '<button class="btn-add" onclick="event.stopPropagation(); onAddToCart(\'' + escHtml(p.product_id) + '\')" aria-label="Tambah ' + escHtml(p.nama) + '">' + ICON.plus + '</button>';
+    : (p.has_variants 
+        ? '<button class="btn-add" onclick="event.stopPropagation(); openProductModal(\'' + escHtml(p.product_id) + '\')" aria-label="Pilih ' + escHtml(p.nama) + '" style="width:auto;padding:0 12px;font-size:0.8rem;border-radius:var(--r-pill);">Pilih</button>'
+        : '<button class="btn-add" onclick="event.stopPropagation(); onAddToCart(\'' + escHtml(p.product_id) + '\')" aria-label="Tambah ' + escHtml(p.nama) + '">' + ICON.plus + '</button>');
+
+  var priceDisplay = formatRupiah(p.harga);
+  if (p.has_variants && p.variants && p.variants.length > 0) {
+    var minPrice = p.variants[0].harga;
+    for (var i = 1; i < p.variants.length; i++) {
+      if (Number(p.variants[i].harga) < Number(minPrice)) {
+        minPrice = p.variants[i].harga;
+      }
+    }
+    priceDisplay = '<span style="font-size:0.75rem;font-weight:normal;color:#777;margin-right:2px;">mulai</span>' + formatRupiah(minPrice);
+  }
 
   return '<div class="product-card ' + (isHabis ? 'out-of-stock' : '') + '" data-category="' + escHtml(p.kategori_id || '') + '" data-name="' + escHtml(p.nama) + '" data-pid="' + escHtml(p.product_id) + '" onclick="openProductModal(\'' + escHtml(p.product_id) + '\')">' +
     '<div class="product-img-wrap">' +
@@ -468,7 +484,7 @@ function renderOneProduct(p) {
     '<div class="product-info">' +
       '<div class="product-name">' + escHtml(p.nama) + '</div>' +
       '<div class="product-desc">' + escHtml(p.deskripsi || '') + '</div>' +
-      '<div class="product-price">' + formatRupiah(p.harga) + '</div>' +
+      '<div class="product-price">' + priceDisplay + '</div>' +
     '</div>' +
     addBtn +
   '</div>';
@@ -504,6 +520,12 @@ function openProductModal(productId) {
   }
   if (!p) return;
 
+  _currentModalProduct = p;
+  _selectedVariant = null;
+  if (p.has_variants && p.variants && p.variants.length > 0) {
+    _selectedVariant = p.variants[0];
+  }
+
   var isHabis = (Number(p.tersedia) === 0);
   var imgUrl = '';
   if (p.foto_url) {
@@ -533,18 +555,69 @@ function openProductModal(productId) {
 
   html += '<div style="padding: 24px;">';
   html += '<div style="font-family:\'DM Serif Display\', serif; font-size:1.4rem; color:var(--espresso); margin-bottom:4px; line-height:1.2;">' + escHtml(p.nama) + '</div>';
-  html += '<div style="font-weight:600; font-size:1.1rem; color:var(--espresso); margin-bottom:16px;">' + formatRupiah(p.harga) + '</div>';
+  
+  var priceToDisplay = p.has_variants && _selectedVariant ? _selectedVariant.harga : p.harga;
+  html += '<div id="modal-price" style="font-weight:600; font-size:1.1rem; color:var(--espresso); margin-bottom:16px;">' + formatRupiah(priceToDisplay) + '</div>';
   html += '<div style="font-size:0.9rem; color:rgba(80, 50, 41, 0.8); line-height:1.5; margin-bottom:24px; white-space:pre-wrap;">' + escHtml(p.deskripsi || 'Tidak ada deskripsi.') + '</div>';
+
+  if (p.has_variants && p.variants && p.variants.length > 0) {
+    var axisName = p.variants[0].nama_axis || 'Pilihan';
+    html += '<div style="margin-bottom:24px;">';
+    html += '<div style="font-size:0.85rem; font-weight:600; color:var(--espresso); margin-bottom:8px;">' + escHtml(axisName) + '</div>';
+    html += '<div style="display:flex; flex-direction:column; gap:8px;">';
+    for (var j = 0; j < p.variants.length; j++) {
+      var v = p.variants[j];
+      var isActive = _selectedVariant && _selectedVariant.variant_id === v.variant_id;
+      html += '<label class="variant-option ' + (isActive ? 'active' : '') + '" data-vid="' + escHtml(v.variant_id) + '" onclick="onSelectVariant(\'' + escHtml(v.variant_id) + '\')">';
+      html += '<div style="font-weight:600; font-size:0.95rem;">' + escHtml(v.nama_varian) + '</div>';
+      html += '<div style="font-size:0.9rem; color:#777;">' + formatRupiah(v.harga) + '</div>';
+      html += '</label>';
+    }
+    html += '</div>';
+    html += '</div>';
+  }
 
   if (isHabis) {
     html += '<button style="width:100%; padding:14px; background:#e0e0e0; color:#999; border-radius:var(--r-pill); font-weight:bold; cursor:not-allowed; border:none;">Habis</button>';
   } else {
-    html += '<button class="btn-checkout" onclick="onAddToCart(\'' + escHtml(p.product_id) + '\'); closeProductModal();" style="width:100%; margin:0;">Tambah ke Keranjang</button>';
+    html += '<button class="btn-checkout" onclick="onModalAddToCart();" style="width:100%; margin:0;">Tambah ke Keranjang</button>';
   }
   html += '</div>';
 
   sheet.innerHTML = html;
   modal.classList.remove('hidden');
+}
+
+function onSelectVariant(variantId) {
+  if (!_currentModalProduct || !_currentModalProduct.has_variants) return;
+  for (var i = 0; i < _currentModalProduct.variants.length; i++) {
+    if (_currentModalProduct.variants[i].variant_id === variantId) {
+      _selectedVariant = _currentModalProduct.variants[i];
+      break;
+    }
+  }
+  var priceEl = document.getElementById('modal-price');
+  if (priceEl && _selectedVariant) {
+    priceEl.textContent = formatRupiah(_selectedVariant.harga);
+  }
+  var labels = document.querySelectorAll('.variant-option');
+  labels.forEach(function(lbl) {
+    if (lbl.getAttribute('data-vid') === variantId) {
+      lbl.classList.add('active');
+    } else {
+      lbl.classList.remove('active');
+    }
+  });
+}
+
+function onModalAddToCart() {
+  if (!_currentModalProduct) return;
+  if (_currentModalProduct.has_variants && !_selectedVariant) {
+    showToast('Pilih varian terlebih dahulu');
+    return;
+  }
+  addToCart(_currentModalProduct, _selectedVariant);
+  closeProductModal();
 }
 
 function closeProductModal() {
