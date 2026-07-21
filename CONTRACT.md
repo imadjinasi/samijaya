@@ -60,7 +60,7 @@ Key wajib (nilai default dalam kurung):
 `tanggal | keterangan`
 
 ### 9. Orders
-`order_id | member_id | nama | no_hp | tgl_antar | metode_kirim | lokasi_pickup_id | address_id | alamat_snapshot | lat | lng | jarak_km | ongkir | slot_id | subtotal | poin_dipakai | total | metode_bayar | status | catatan_customer | catatan_admin | created_at | updated_at | timeline_json | nama_penerima | no_hp_penerima | status_updated_at | promo_id | promo_code | promo_nama | ongkir_sebelum_promo | promo_diskon_subtotal | promo_diskon_produk | promo_diskon_ongkir | promo_diskon_total | promo_bonus_poin | promo_multiplier_poin | poin_earn_dasar | poin_earn_final | promo_snapshot_json`
+`order_id | member_id | nama | no_hp | tgl_antar | metode_kirim | lokasi_pickup_id | address_id | alamat_snapshot | lat | lng | jarak_km | ongkir | slot_id | subtotal | poin_dipakai | total | metode_bayar | status | catatan_customer | catatan_admin | created_at | updated_at | timeline_json | nama_penerima | no_hp_penerima | status_updated_at | promo_id | promo_code | promo_nama | ongkir_sebelum_promo | promo_diskon_subtotal | promo_diskon_produk | promo_diskon_ongkir | promo_diskon_total | promo_bonus_poin | promo_multiplier_poin | poin_earn_dasar | poin_earn_final | promo_snapshot_json | client_request_id | request_fingerprint | commit_status | commit_stage | commit_error_code | commit_snapshot_json | committed_at`
 
 - `metode_kirim`: `AMBIL | DIANTAR | OJOL`
 - `metode_bayar`: `COD | TRANSFER`
@@ -72,6 +72,10 @@ Key wajib (nilai default dalam kurung):
 - `promo_diskon_*`: nominal diskon aktual yang tersnapshot saat checkout.
 - `poin_earn_dasar` dan `poin_earn_final`: hak poin yang baru diberikan saat review valid disubmit.
 - `promo_snapshot_json`: snapshot konfigurasi dan hasil kalkulasi promo agar order lama tidak berubah ketika PromoCodes diedit.
+- `client_request_id`: UUID checkout, unik bersama `member_id`.
+- `request_fingerprint`: SHA-256 intent request canonical.
+- `commit_status`: state teknis `CREATING | COMMITTED | RECOVERY_REQUIRED`; kosong pada order legacy dianggap committed.
+- `commit_stage`, `commit_error_code`, `commit_snapshot_json`, `committed_at`: metadata recovery, terpisah dari status bisnis.
 
 ### 10. OrderItems
 `order_id | product_id | nama_snapshot | harga_snapshot | qty | subtotal`
@@ -198,12 +202,22 @@ Harga 1 item = Products.harga (dasar) + ProductVariants.harga (selisih varian, 0
 - `getCatalog` — banner, kategori, produk, lokasi, slot, holidays, settings publik, dan `campaigns` aktif terurut. Penambahan `campaigns` bersifat backward compatible.
 - `getSlotAvailability` — kuota slot per tanggal
 - `createOrder` — buat order (kritis, dalam lock)
+- `getOrderByRequestId` — lookup read-only hasil checkout berdasarkan `client_request_id` milik session
 - `validatePromo` — validasi kode dan return breakdown preview server-side; tidak mereservasi limit
 - `getMyOrders` — riwayat order member
 - `orderMarkSeen` — tandai update status order member sebagai sudah dilihat
 - `getMyPoints` — riwayat poin member
 - `addAddress` — tambah alamat baru member
 - `addressSetDefault` — set 1 alamat jadi default (payload: `{address_id}`, enforce 1 default per member)
+
+### 3B. Idempotency Order (Fase 8-A2)
+
+- `createOrder` wajib membawa `client_request_id` berupa UUID lowercase; uniqueness berlaku pada `member_id + client_request_id`.
+- Key sama dan fingerprint intent sama mengembalikan order committed existing; payload berbeda ditolak dengan `ORDER_IDEMPOTENCY_CONFLICT`.
+- State teknis order adalah `CREATING | COMMITTED | RECOVERY_REQUIRED`, terpisah dari status bisnis. Order legacy dengan state kosong dianggap committed.
+- Hanya order committed/legacy yang tampil sebagai order normal; unresolved order tetap menjadi reservation slot/resource.
+- `getOrderByRequestId` membutuhkan session, member-scoped, read-only, dan dapat mengembalikan `ORDER_NOT_FOUND`, `ORDER_STILL_PROCESSING`, atau `ORDER_RECOVERY_REQUIRED`.
+- Parent order disimpan lebih dahulu dengan recovery snapshot; item, add-on, promo usage, dan redeem point order baru memakai identifier deterministik.
 
 Plus jalur webhook Telegram melalui capability query `tg_key` yang dicocokkan dengan
 Script Property `TELEGRAM_WEBHOOK_KEY` atau `TELEGRAM_WEBHOOK_KEY_NEXT` selama rotasi.

@@ -49,6 +49,10 @@ const context = {
     const row = (sheets.Settings || []).find(item => item.key === key);
     return row ? row.value : '';
   },
+  isOrderCommittedRow(order) {
+    const status = String((order || {}).commit_status || '').trim().toUpperCase();
+    return status === '' || status === 'COMMITTED';
+  },
   sha256: value => value === 'secret' ? 'hash' : 'bad',
   UrlFetchApp: { fetch() { throw new Error('Network must not be called'); } },
 };

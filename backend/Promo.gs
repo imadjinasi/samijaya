@@ -293,7 +293,7 @@ function _promoValidateConditions(promo, config, context) {
 
   if (_promoIsTruthy(promo.member_baru_only)) {
     for (var o = 0; o < context.orders.length; o++) {
-      if (String(context.orders[o].member_id) === String(context.member_id) &&
+      if (isOrderCommittedRow(context.orders[o]) && String(context.orders[o].member_id) === String(context.member_id) &&
           String(context.orders[o].status).toUpperCase() === 'SELESAI') {
         return _promoError('PROMO_NEW_MEMBER_ONLY', 'Kode promo hanya berlaku untuk member baru');
       }
@@ -614,6 +614,28 @@ function _promoAppendUsage(orderObj, promoResult) {
   for (var i = 0; i < headers.length; i++) row.push(usage.hasOwnProperty(headers[i]) ? usage[headers[i]] : '');
   sheet.appendRow(row);
   return usage;
+}
+
+/** Ensure usage deterministik untuk recoverable order commit. */
+function _promoEnsureUsage(expected) {
+  if (!expected) return { ok: true };
+  var rows = readAll('PromoUsage');
+  var matches = [];
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i].usage_id) === String(expected.usage_id) || String(rows[i].order_id) === String(expected.order_id)) matches.push(rows[i]);
+  }
+  if (matches.length > 1) return { ok: false, code: 'ORDER_PROMO_DUPLICATE' };
+  if (matches.length === 1) {
+    var row = matches[0];
+    if (String(row.status).toUpperCase() === 'DIBATALKAN') return { ok: false, code: 'ORDER_PROMO_CANCELLED_CONFLICT' };
+    var keys = ['usage_id','promo_id','promo_code','order_id','member_id','status','promo_diskon_total'];
+    for (var k = 0; k < keys.length; k++) {
+      if (String(row[keys[k]] == null ? '' : row[keys[k]]) !== String(expected[keys[k]] == null ? '' : expected[keys[k]])) return { ok: false, code: 'ORDER_PROMO_CONFLICT' };
+    }
+    return { ok: true, existing: true };
+  }
+  var result = appendRowsObj('PromoUsage', [expected]);
+  return result.written === 1 ? { ok: true } : { ok: false, code: 'ORDER_PROMO_WRITE_FAILED' };
 }
 
 function _promoRefundUsageByOrder(orderId, cancelledAt) {

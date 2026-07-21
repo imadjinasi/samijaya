@@ -169,6 +169,9 @@ function doPost(e) {
       case 'createOrder':
         result = orderCreateOrder(payload, token);
         break;
+      case 'getOrderByRequestId':
+        result = orderGetByRequestId(payload, token);
+        break;
       case 'validatePromo':
         result = promoValidateCode(payload, token);
         break;

@@ -9,6 +9,7 @@
 // Module-scope cache untuk Spreadsheet instance
 // ============================================================
 var _ss = null;
+var _sheetHeadersExecutionCache = {};
 
 // ============================================================
 // 1. getSS()
@@ -104,17 +105,57 @@ function readAll(sheetName) {
  * @return {Object} obj yang di-append
  */
 function appendRowObj(sheetName, obj) {
-  var sheet = getSheet(sheetName);
-  var headers = sheet.getDataRange().getValues()[0];
-
-  var row = [];
-  for (var i = 0; i < headers.length; i++) {
-    var key = headers[i];
-    row.push(obj.hasOwnProperty(key) ? obj[key] : '');
-  }
-
-  sheet.appendRow(row);
+  appendRowsObj(sheetName, [obj]);
   return obj;
+}
+
+/** Baca dan validasi header saja; cache hanya hidup selama satu execution. */
+function getSheetHeaders(sheetName) {
+  var sheet = getSheet(sheetName);
+  var lastColumn = sheet.getLastColumn();
+  var cached = _sheetHeadersExecutionCache[sheetName];
+  if (cached && cached.lastColumn === lastColumn) return cached.headers.slice();
+  if (lastColumn <= 0) throw new Error('Header sheet "' + sheetName + '" kosong.');
+  var headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
+  var seen = {};
+  for (var i = 0; i < headers.length; i++) {
+    var header = String(headers[i] == null ? '' : headers[i]).trim();
+    if (!header) throw new Error('Header kosong pada sheet "' + sheetName + '".');
+    if (seen[header]) throw new Error('Header duplikat "' + header + '" pada sheet "' + sheetName + '".');
+    seen[header] = true;
+    headers[i] = header;
+  }
+  _sheetHeadersExecutionCache[sheetName] = { lastColumn: lastColumn, headers: headers.slice() };
+  return headers;
+}
+
+/** Append banyak object dengan satu setValues(). */
+function appendRowsObj(sheetName, objects) {
+  if (!Array.isArray(objects)) throw new Error('objects harus berupa array.');
+  if (objects.length === 0) return { first_row: 0, written: 0 };
+  var sheet = getSheet(sheetName);
+  var headers = getSheetHeaders(sheetName);
+  var matrix = [];
+  for (var i = 0; i < objects.length; i++) {
+    var obj = objects[i];
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('Row object tidak valid.');
+    var row = [];
+    for (var h = 0; h < headers.length; h++) {
+      row.push(Object.prototype.hasOwnProperty.call(obj, headers[h]) ? obj[headers[h]] : '');
+    }
+    matrix.push(row);
+  }
+  var firstRow = sheet.getLastRow() + 1;
+  var range = sheet.getRange(firstRow, 1, matrix.length, headers.length);
+  if (range.getNumRows && range.getNumRows() !== objects.length) throw new Error('Jumlah row target tidak sesuai.');
+  range.setValues(matrix);
+  return { first_row: firstRow, written: objects.length };
+}
+
+/** Legacy row tanpa commit_status tetap dianggap committed. */
+function isOrderCommittedRow(order) {
+  var status = String((order || {}).commit_status || '').trim().toUpperCase();
+  return status === '' || status === 'COMMITTED';
 }
 
 // ============================================================
@@ -133,11 +174,7 @@ function appendRowObj(sheetName, obj) {
  */
 function updateRowById(sheetName, idColumnName, idValue, patchObj) {
   var sheet = getSheet(sheetName);
-  var data = sheet.getDataRange().getValues();
-
-  if (data.length === 0) return false;
-
-  var headers = data[0];
+  var headers = getSheetHeaders(sheetName);
 
   // Cari index kolom ID
   var idColIdx = -1;
@@ -148,24 +185,19 @@ function updateRowById(sheetName, idColumnName, idValue, patchObj) {
     }
   }
   if (idColIdx === -1) return false;
-
-  // Cari baris dengan idValue
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][idColIdx]) === String(idValue)) {
-      // Patch kolom yang ada di patchObj
-      var updatedRow = data[i].slice(); // copy
-      for (var j = 0; j < headers.length; j++) {
-        if (patchObj.hasOwnProperty(headers[j])) {
-          updatedRow[j] = patchObj[headers[j]];
-        }
-      }
-      // Update satu baris sekaligus (baris i+1 karena 1-indexed di sheet)
-      sheet.getRange(i + 1, 1, 1, headers.length).setValues([updatedRow]);
-      return true;
-    }
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return false;
+  var idRange = sheet.getRange(2, idColIdx + 1, lastRow - 1, 1);
+  var match = idRange.createTextFinder(String(idValue)).matchEntireCell(true).findNext();
+  if (!match) return false;
+  var rowNumber = match.getRow();
+  var rowRange = sheet.getRange(rowNumber, 1, 1, headers.length);
+  var updatedRow = rowRange.getValues()[0];
+  for (var j = 0; j < headers.length; j++) {
+    if (Object.prototype.hasOwnProperty.call(patchObj, headers[j])) updatedRow[j] = patchObj[headers[j]];
   }
-
-  return false;
+  rowRange.setValues([updatedRow]);
+  return true;
 }
 
 // ============================================================

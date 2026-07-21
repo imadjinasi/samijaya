@@ -110,7 +110,9 @@ var SHEET_DEFS = [
      'ongkir_sebelum_promo', 'promo_diskon_subtotal', 'promo_diskon_produk',
      'promo_diskon_ongkir', 'promo_diskon_total', 'promo_bonus_poin',
      'promo_multiplier_poin', 'poin_earn_dasar', 'poin_earn_final',
-     'promo_snapshot_json'],
+     'promo_snapshot_json', 'client_request_id', 'request_fingerprint',
+     'commit_status', 'commit_stage', 'commit_error_code', 'commit_snapshot_json',
+     'committed_at'],
     null
   ],
 

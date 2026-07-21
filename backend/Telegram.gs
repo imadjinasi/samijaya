@@ -748,7 +748,7 @@ function handleTelegramWebhook(update) {
       var allOrders = readAll('Orders');
       var order = null;
       for (var i = 0; i < allOrders.length; i++) {
-        if (String(allOrders[i].order_id) === String(orderId)) {
+        if (isOrderCommittedRow(allOrders[i]) && String(allOrders[i].order_id) === String(orderId)) {
           order = allOrders[i];
           break;
         }
@@ -1056,6 +1056,7 @@ function handleAdminCommand(chatId, text) {
     });
 
     for (var i = 0; i < orders.length; i++) {
+      if (!isOrderCommittedRow(orders[i])) continue;
       var st = String(orders[i].status);
       if (st === 'MENUNGGU' || st === 'DIPROSES' || st === 'SIAP') {
         pendingList.push(orders[i]);
@@ -1089,7 +1090,7 @@ function handleAdminCommand(chatId, text) {
     var orders = readAll('Orders');
     var order = null;
     for (var i = 0; i < orders.length; i++) {
-      if (String(orders[i].order_id) === oid) {
+      if (isOrderCommittedRow(orders[i]) && String(orders[i].order_id) === oid) {
         order = orders[i];
         break;
       }
@@ -1149,6 +1150,7 @@ function handleAdminCommand(chatId, text) {
     var sumSub = 0, sumOngkir = 0, sumPoin = 0, sumTotal = 0;
     
     for (var i = 0; i < orders.length; i++) {
+      if (!isOrderCommittedRow(orders[i])) continue;
       var d = getJktDateStr(new Date(orders[i].created_at));
       if (d === today && String(orders[i].status) !== 'BATAL') {
         count++;
@@ -1202,6 +1204,7 @@ function handleAdminCommand(chatId, text) {
       }
       
       for (var i = 0; i < orders.length; i++) {
+        if (!isOrderCommittedRow(orders[i])) continue;
         var oDt = new Date(orders[i].created_at);
         var oUtc = oDt.getTime() + (oDt.getTimezoneOffset() * 60000);
         var oJkt = new Date(oUtc + jktOffset);
@@ -1256,6 +1259,7 @@ function handleAdminCommand(chatId, text) {
       var totalOmzet = 0;
 
       for (var i = 0; i < orders.length; i++) {
+        if (!isOrderCommittedRow(orders[i])) continue;
         var oDt = new Date(orders[i].created_at);
         var oUtc = oDt.getTime() + (oDt.getTimezoneOffset() * 60000);
         var oJkt = new Date(oUtc + jktOffset);
