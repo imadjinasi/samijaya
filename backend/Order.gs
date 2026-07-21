@@ -101,16 +101,12 @@ function _notifyAdminNewOrder(orderObj) {
   // Susun ringkasan items
   var itemsText = '';
   try {
-    var orderItems = readAll('OrderItems');
-    for (var i = 0; i < orderItems.length; i++) {
-      if (String(orderItems[i].order_id) === String(orderObj.order_id)) {
-        itemsText += '  • ' + orderItems[i].nama_snapshot
-          + ' x' + orderItems[i].qty
-          + ' (Rp' + Number(orderItems[i].subtotal).toLocaleString('id') + ')\n';
-      }
-    }
+    itemsText = tgFormatOrderItems(orderObj.order_id, {
+      html: true,
+      priceStyle: 'parentheses'
+    });
   } catch (e) {
-    itemsText = '  (gagal baca items)\n';
+    itemsText = '  (gagal baca items)';
   }
 
   // Format metode kirim
@@ -136,7 +132,7 @@ function _notifyAdminNewOrder(orderObj) {
     + '📦 Metode: ' + metodeInfo + '\n'
     + '📅 Tgl Antar: ' + tglAntar + '\n'
     + '💳 Bayar: ' + orderObj.metode_bayar + '\n\n'
-    + '<b>Items:</b>\n' + (itemsText || '  (kosong)\n')
+    + '<b>Items:</b>\n' + (itemsText || '  (kosong)') + '\n'
     + '\n💰 Subtotal: Rp' + Number(orderObj.subtotal).toLocaleString('id')
     + '\n🚚 Ongkir: Rp' + Number(orderObj.ongkir || 0).toLocaleString('id')
     + '\n🎁 Poin: -Rp' + Number(orderObj.poin_dipakai || 0).toLocaleString('id')

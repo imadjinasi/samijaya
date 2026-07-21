@@ -77,6 +77,79 @@ function tgSend(chatId, text, opts) {
   return tgApi('sendMessage', payload);
 }
 
+/**
+ * Format daftar item order untuk pesan Telegram.
+ * Harga/subtotal hanya dibaca dari snapshot OrderItems; tidak ada hitung ulang.
+ *
+ * @param {string} orderId
+ * @param {Object=} opts { html, priceStyle }
+ * @return {string} tanpa newline di akhir
+ */
+function tgFormatOrderItems(orderId, opts) {
+  opts = opts || {};
+  var useHtml = opts.html === true;
+  var priceStyle = String(opts.priceStyle || 'none');
+
+  function safe(value) {
+    var text = String(value == null ? '' : value);
+    if (!useHtml) return text;
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  var targetOrderId = String(orderId);
+  var addonsByRef = {};
+  var allAddons = readAll('OrderItemAddons');
+  for (var a = 0; a < allAddons.length; a++) {
+    if (String(allAddons[a].order_id) !== targetOrderId) continue;
+    var addonRef = String(allAddons[a].order_item_ref || '');
+    if (!addonRef) continue;
+    var addonKey = '$' + addonRef;
+    if (!addonsByRef[addonKey]) addonsByRef[addonKey] = [];
+    var addonName = String(allAddons[a].nama_addon_snapshot || '');
+    if (addonName) addonsByRef[addonKey].push(addonName);
+  }
+
+  var lines = [];
+  var allItems = readAll('OrderItems');
+  for (var i = 0; i < allItems.length; i++) {
+    var item = allItems[i];
+    if (String(item.order_id) !== targetOrderId) continue;
+
+    var itemLine = '  • ' + safe(item.nama_snapshot) + ' ×' + String(item.qty || '');
+    if (priceStyle === 'parentheses') {
+      itemLine += ' (subtotal Rp' + Number(item.subtotal || 0).toLocaleString('id') + ')';
+    } else if (priceStyle === 'equals') {
+      itemLine += ' — subtotal Rp' + Number(item.subtotal || 0).toLocaleString('id');
+    }
+    lines.push(itemLine);
+
+    var variantName = String(item.variant_nama_snapshot || '');
+    if (variantName) {
+      var axisName = String(item.nama_axis_snapshot || '') || 'Varian';
+      lines.push('    ' + safe(axisName) + ': ' + safe(variantName));
+    }
+
+    var itemRef = String(item.order_item_ref || '');
+    var addonNames = addonsByRef['$' + itemRef] || [];
+    if (addonNames.length > 0) {
+      lines.push('    + ' + addonNames.map(safe).join(', '));
+    }
+  }
+
+  return lines.join('\n');
+}
+
+/** Segarkan blok item pada teks polos pesan order sebelum edit status. */
+function tgRefreshOrderItemsText(messageText, orderId) {
+  var itemsText = tgFormatOrderItems(orderId, { priceStyle: 'parentheses' }) || '  (kosong)';
+  return String(messageText || '').replace(
+    /((?:Items|Daftar Item):\n)[\s\S]*?(\n💰 Subtotal:)/,
+    function(_, heading, subtotalHeading) {
+      return heading + itemsText + subtotalHeading;
+    }
+  );
+}
+
 // ============================================================
 // 3. tgSendToAdmins(text, opts)
 // ============================================================
@@ -355,6 +428,11 @@ function handleTelegramWebhook(update) {
       }
 
       var textLama = message ? (message.text || '') : '';
+      function statusMessageText(statusLine) {
+        // Pesan status membawa ulang ringkasan order; segarkan item agar order
+        // lama juga menampilkan snapshot varian dan add-on.
+        return tgRefreshOrderItemsText(textLama, orderId) + '\n\n' + statusLine;
+      }
       
       function getCabang(ord) {
         if (ord.metode_kirim === 'DIANTAR') return ord.alamat_snapshot || '-';
@@ -462,7 +540,7 @@ function handleTelegramWebhook(update) {
           notifyOtherAdmins('DIPROSES');
           tgApi('editMessageText', {
             chat_id: chatMsgId, message_id: msgId,
-            text: textLama + '\n\n🟡 Status: DIPROSES',
+            text: statusMessageText('🟡 Status: DIPROSES'),
             reply_markup: { inline_keyboard: [[{text: '🟢 Siap', callback_data: 'st:SIAP:'+orderId}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+orderId}], buildActionRow(order, 'ORDER_DIPROSES', tmplData)] }
           });
         }
@@ -473,7 +551,7 @@ function handleTelegramWebhook(update) {
           notifyOtherAdmins('SIAP');
           tgApi('editMessageText', {
             chat_id: chatMsgId, message_id: msgId,
-            text: textLama + '\n\n🟢 Status: SIAP',
+            text: statusMessageText('🟢 Status: SIAP'),
             reply_markup: { inline_keyboard: [[{text: '✅ Selesai', callback_data: 'st:SELESAI_ASK:'+orderId}, {text: '❌ Batal', callback_data: 'st:BATAL_ASK:'+orderId}], buildActionRow(order, 'ORDER_SIAP', tmplData)] }
           });
         }
@@ -498,7 +576,7 @@ function handleTelegramWebhook(update) {
           notifyOtherAdmins('BATAL');
           tgApi('editMessageText', {
             chat_id: chatMsgId, message_id: msgId,
-            text: textLama + '\n\n❌ Status: BATAL',
+            text: statusMessageText('❌ Status: BATAL'),
             reply_markup: { inline_keyboard: [getWaButtons(order, 'ORDER_BATAL', tmplData)] }
           });
         }
@@ -524,7 +602,7 @@ function handleTelegramWebhook(update) {
           tmplData.POINT = res.data.poin_ditambah || 0;
           tgApi('editMessageText', {
             chat_id: chatMsgId, message_id: msgId,
-            text: textLama + '\n\n✅ Status: SELESAI (+' + tmplData.POINT + ' poin)',
+            text: statusMessageText('✅ Status: SELESAI (+' + tmplData.POINT + ' poin)'),
             reply_markup: { inline_keyboard: [getWaButtons(order, 'ORDER_SELESAI', tmplData)] }
           });
         }
@@ -642,13 +720,10 @@ function handleAdminCommand(chatId, text) {
       return;
     }
 
-    var orderItems = readAll('OrderItems');
-    var itemsHtml = '';
-    for (var k = 0; k < orderItems.length; k++) {
-      if (String(orderItems[k].order_id) === oid) {
-        itemsHtml += esc(orderItems[k].nama_snapshot) + ' × ' + orderItems[k].qty + ' = Rp' + Number(orderItems[k].subtotal).toLocaleString('id') + '\n';
-      }
-    }
+    var itemsHtml = tgFormatOrderItems(oid, {
+      html: true,
+      priceStyle: 'equals'
+    });
 
     var tl = '';
     try {
@@ -672,7 +747,7 @@ function handleAdminCommand(chatId, text) {
       + '📅 Tgl Antar: ' + esc(order.tgl_antar) + '\n'
       + '📍 Alamat/Tujuan: ' + esc(order.alamat_snapshot) + '\n\n'
       + '<b>Daftar Item:</b>\n'
-      + (itemsHtml || '(kosong)\n')
+      + (itemsHtml || '(kosong)') + '\n'
       + '\n💰 Subtotal: Rp' + Number(order.subtotal).toLocaleString('id') + '\n'
       + '🚚 Ongkir: Rp' + Number(order.ongkir || 0).toLocaleString('id') + '\n'
       + '🎁 Poin: -Rp' + Number(order.poin_dipakai || 0).toLocaleString('id') + '\n'
