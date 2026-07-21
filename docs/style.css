@@ -3159,3 +3159,8 @@ select {
   font-weight: 600;
   border: 1px solid var(--espresso);
 }
+
+/* --- Utilities --- */
+.co-hidden {
+  display: none !important;
+}

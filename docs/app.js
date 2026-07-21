@@ -1355,21 +1355,22 @@ function renderShippingDetail(method) {
     var addresses = member.addresses || session.addresses || [];
 
     html += '<div id="delivery-address-selection">';
-    if (addresses && addresses.length > 0) {
-      html += '<select id="co-address-select" class="co-date-input" style="margin-bottom:10px;" onchange="onSavedAddressChange(this.value)">';
-      html += '<option value="">— Pilih alamat tersimpan (opsional) —</option>';
-      for (var i = 0; i < addresses.length; i++) {
-        html += '<option value="' + addresses[i].address_id + '">' + escHtml(addresses[i].label + ' - ' + addresses[i].detail) + '</option>';
-      }
-      html += '</select>';
+    html += '<select id="co-address-select" class="co-date-input" style="margin-bottom:10px;" onchange="onAddressModeChange(this.value)">';
+    var addrsActive = (addresses || []).filter(function(a){ return String(a.status)==='aktif'; });
+    if (addrsActive.length === 0) {
+      html += '<option value="">— Pilih alamat —</option>';
     }
+    for (var i = 0; i < addrsActive.length; i++) {
+      html += '<option value="' + escHtml(addrsActive[i].address_id) + '">' + escHtml(addrsActive[i].label || 'Alamat') + '</option>';
+    }
+    html += '<option value="__manual__">Alamat lainnya...</option>';
+    html += '</select>';
 
-    var showNew = (!addresses || addresses.length === 0);
-    html += '<div id="delivery-new-address" class="' + (showNew ? '' : 'hidden') + '">';
+    html += '<div id="delivery-new-address" class="co-hidden">';
     
     html += '<div class="search-address-wrap">';
     html += '<input type="text" id="co-search-address" class="search-address-input" placeholder="Cari alamat / tempat…" oninput="onSearchAddressInput(event)">';
-    html += '<div id="co-search-results" class="search-results hidden"></div>';
+    html += '<div id="co-search-results" class="search-results co-hidden"></div>';
     html += '</div>';
     
     if (typeof navigator !== 'undefined' && navigator.geolocation) {
@@ -1388,7 +1389,7 @@ function renderShippingDetail(method) {
 
     html += '</div>'; // delivery-new-address
 
-    html += '<div id="delivery-saved-summary" class="hidden">';
+    html += '<div id="delivery-saved-summary" class="co-hidden">';
     html += '<div class="saved-address-card" style="background:#fff; border:1px solid var(--border); border-radius:8px; padding:12px; margin-top:10px;">';
     html += '<div class="saved-address-label" id="summary-label" style="font-weight:bold; font-size:0.9rem; margin-bottom:4px; color:var(--primary);"></div>';
     html += '<div class="saved-address-text" id="summary-text" style="font-size:0.9rem; margin-bottom:4px; line-height:1.4;"></div>';
@@ -1421,6 +1422,25 @@ function renderShippingDetail(method) {
 
   html += '</div>';
   container.innerHTML = html;
+
+  if (method === 'DIANTAR') {
+    setTimeout(function() {
+      var member = session.member || {};
+      var addresses = member.addresses || session.addresses || [];
+      var addrsActive = addresses.filter(function(a){ return String(a.status)==='aktif'; });
+      var selectEl = document.getElementById('co-address-select');
+      
+      if (addrsActive.length === 0) {
+        if (selectEl) selectEl.value = '__manual__';
+        onAddressModeChange('__manual__');
+      } else {
+        var def = addrsActive.filter(function(a){ return String(a.is_default)==='1' || Number(a.is_default)===1 || a.is_default===true; })[0];
+        var chosen = def || addrsActive[0];
+        if (selectEl) selectEl.value = chosen.address_id;
+        onAddressModeChange(chosen.address_id);
+      }
+    }, 50);
+  }
 }
 
 function onPickupChange(val) {
@@ -1470,88 +1490,62 @@ function validatePickupTime() {
   return true;
 }
 
-function onSavedAddressChange(val) {
-  var newAddressContainer = document.getElementById('delivery-new-address');
-  var summaryContainer = document.getElementById('delivery-saved-summary');
+function onAddressModeChange(val) {
+  var summary = document.getElementById('delivery-saved-summary');
+  var manual = document.getElementById('delivery-new-address');
   
-  if (!val || val === '') {
-    if (newAddressContainer) newAddressContainer.classList.remove('hidden');
-    if (summaryContainer) summaryContainer.classList.add('hidden');
+  if (val === '__manual__') {
+    if (summary) summary.classList.add('co-hidden');
+    if (manual) manual.classList.remove('co-hidden');
     
     checkoutState.address_id = '';
-    setTimeout(function() {
-      if (typeof initDeliveryMap === 'function') {
-        initDeliveryMap('delivery-map-section', onPinMoved);
-      }
-    }, 120);
-    checkoutState.lat = '';
-    checkoutState.lng = '';
-    checkoutState.ongkir = null;
-    checkoutState.alamat_teks = '';
-    checkoutState.detail_alamat = '';
-    checkoutState.label_alamat = '';
+    checkoutState.lat = null; checkoutState.lng = null;
+    checkoutState.alamat_teks = ''; checkoutState.label_alamat = ''; checkoutState.detail_alamat = '';
+    
     var elAlamat = document.getElementById('co-alamat-teks');
     if (elAlamat) elAlamat.value = '';
     var elLabel = document.getElementById('co-label-alamat');
     if (elLabel) elLabel.value = '';
     var elDetail = document.getElementById('co-detail-alamat');
     if (elDetail) elDetail.value = '';
-    updateCheckoutSummary();
-  } else {
-    if (newAddressContainer) newAddressContainer.classList.add('hidden');
-    if (summaryContainer) summaryContainer.classList.remove('hidden');
     
-    checkoutState.address_id = val;
+    setTimeout(function(){ 
+      if (typeof initDeliveryMap === 'function') {
+        initDeliveryMap('delivery-map-section', onPinMoved); 
+      }
+    }, 120);
+    calculateOngkir();
+  } else if (val && val !== '') {
     var allAddresses = session.addresses || (session.member && session.member.addresses) || [];
-    var addr = null;
-    for (var i = 0; i < allAddresses.length; i++) {
-      if (allAddresses[i].address_id === val) {
-        addr = allAddresses[i];
-        break;
-      }
-    }
-    if (addr) {
-      checkoutState.lat = addr.latitude;
-      checkoutState.lng = addr.longitude;
-      checkoutState.alamat_teks = addr.alamat_snapshot || '';
-      checkoutState.detail_alamat = addr.detail || '';
-      checkoutState.label_alamat = addr.label || '';
-      
-      // Update form values
-      var elAlamat = document.getElementById('co-alamat-teks');
-      if (elAlamat) elAlamat.value = checkoutState.alamat_teks;
-      var elLabel = document.getElementById('co-label-alamat');
-      if (elLabel) elLabel.value = checkoutState.label_alamat;
-      var elDetail = document.getElementById('co-detail-alamat');
-      if (elDetail) elDetail.value = checkoutState.detail_alamat;
-      
-      // Update read-only summary
-      var sumLabel = document.getElementById('summary-label');
-      var sumText = document.getElementById('summary-text');
-      var sumDetail = document.getElementById('summary-detail');
-      
-      if (sumLabel) {
-        if (checkoutState.label_alamat) {
-          sumLabel.style.display = 'block';
-          sumLabel.textContent = checkoutState.label_alamat;
-        } else {
-          sumLabel.style.display = 'none';
-        }
-      }
-      if (sumText) {
-        sumText.textContent = checkoutState.alamat_teks;
-      }
-      if (sumDetail) {
-        if (checkoutState.detail_alamat) {
-          sumDetail.style.display = 'block';
-          sumDetail.textContent = checkoutState.detail_alamat;
-        } else {
-          sumDetail.style.display = 'none';
-        }
-      }
-      
-      calculateOngkir();
-    }
+    var addr = allAddresses.filter(function(a){ return String(a.address_id)===String(val); })[0];
+    if (!addr) return;
+    
+    checkoutState.address_id = addr.address_id;
+    checkoutState.lat = Number(addr.latitude);
+    checkoutState.lng = Number(addr.longitude);
+    checkoutState.alamat_teks = addr.alamat_snapshot || '';
+    checkoutState.label_alamat = addr.label || '';
+    checkoutState.detail_alamat = addr.detail || '';
+    
+    if (manual) manual.classList.add('co-hidden');
+    if (summary) summary.classList.remove('co-hidden');
+    
+    var sl = document.getElementById('summary-label');
+    var st = document.getElementById('summary-text');
+    var sd = document.getElementById('summary-detail');
+    if (sl) { sl.textContent = addr.label || ''; sl.style.display = addr.label ? 'block' : 'none'; }
+    if (st) { st.textContent = checkoutState.alamat_teks; }
+    if (sd) { sd.textContent = addr.detail || ''; sd.style.display = addr.detail ? 'block' : 'none'; }
+    
+    calculateOngkir();
+  } else {
+    if (summary) summary.classList.add('co-hidden');
+    if (manual) manual.classList.add('co-hidden');
+    
+    checkoutState.address_id = '';
+    checkoutState.lat = null; checkoutState.lng = null;
+    checkoutState.alamat_teks = ''; checkoutState.label_alamat = ''; checkoutState.detail_alamat = '';
+    calculateOngkir();
   }
 }
 
@@ -1698,7 +1692,8 @@ function calculateOngkir() {
   } else {
     checkoutState.ongkir = hasil.ongkir;
     if (note) {
-      note.innerHTML = 'Jarak: ' + hasil.jarak_km + ' km. Ongkir: ' + formatRupiah(hasil.ongkir);
+      var ongkirText = (hasil.ongkir === 0) ? 'GRATIS' : formatRupiah(hasil.ongkir);
+      note.innerHTML = 'Jarak: ' + hasil.jarak_km + ' km. Ongkir: ' + ongkirText;
       note.style.color = 'inherit';
     }
   }
@@ -1783,7 +1778,7 @@ function updateCheckoutSummary() {
 
   if (method === 'AMBIL' || method === 'OJOL') {
     ongkir = 0;
-    ongkirDisplay = formatRupiah(0);
+    ongkirDisplay = 'GRATIS';
   } else if (method === 'DIANTAR') {
     if (checkoutState.lat && checkoutState.lng) {
       if (checkoutState.ongkir === null) {
@@ -1791,7 +1786,7 @@ function updateCheckoutSummary() {
         ongkirDisplay = '—';
       } else {
         ongkir = checkoutState.ongkir;
-        ongkirDisplay = formatRupiah(ongkir);
+        ongkirDisplay = (ongkir === 0) ? 'GRATIS' : formatRupiah(ongkir);
       }
     } else {
       ongkir = 0;
@@ -2193,7 +2188,8 @@ function renderSuccessScreen(data) {
   // Ringkasan biaya
   html += '<div class="success-cost-box">';
   html += '<div class="success-cost-row"><span>Subtotal produk</span><span>' + formatRupiah(subtotal) + '</span></div>';
-  html += '<div class="success-cost-row"><span>Ongkos kirim</span><span>' + formatRupiah(ongkir) + '</span></div>';
+  var ongkirStr = (ongkir === 0) ? 'GRATIS' : formatRupiah(ongkir);
+  html += '<div class="success-cost-row"><span>Ongkos kirim</span><span>' + ongkirStr + '</span></div>';
   if (poinDipakai > 0) {
     html += '<div class="success-cost-row poin-row"><span>Potongan poin</span><span>-' + formatRupiah(poinDipakai) + '</span></div>';
   }
@@ -2611,7 +2607,9 @@ function renderMyOrders(orders, reviewableMap) {
     // Rincian Biaya
     html += '<div class="my-order-cost-breakdown">';
     html += '<div class="cost-row"><span>Subtotal</span><span>' + formatRupiah(order.subtotal || 0) + '</span></div>';
-    html += '<div class="cost-row"><span>Ongkir</span><span>' + formatRupiah(order.ongkir || 0) + '</span></div>';
+    var orderOngkir = order.ongkir || 0;
+    var orderOngkirStr = (orderOngkir === 0) ? 'GRATIS' : formatRupiah(orderOngkir);
+    html += '<div class="cost-row"><span>Ongkir</span><span>' + orderOngkirStr + '</span></div>';
     if (order.poin_dipakai > 0) {
       html += '<div class="cost-row poin"><span>Potongan Poin</span><span>-' + formatRupiah(order.poin_dipakai) + '</span></div>';
     }
