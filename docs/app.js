@@ -3036,16 +3036,6 @@ function showAddressForm(addr) {
   html += '</div>';
 
   html += '<div style="display:flex; flex-direction:column; gap:6px;">';
-  html += '<label style="font-weight:600; color:var(--brown); font-size:0.9rem;">Detail Alamat (Patokan dsb.)</label>';
-  html += '<textarea id="addr-detail" class="co-date-input" rows="3" required minlength="1" maxlength="200" style="padding:12px 14px; border-radius:12px; border:1px solid var(--line); font-size:15px; width:100%;">' + (isEdit ? escHtml(addr.detail) : '') + '</textarea>';
-  html += '</div>';
-
-  html += '<div style="display:flex; flex-direction:column; gap:6px;">';
-  html += '<label style="font-weight:600; color:var(--brown); font-size:0.9rem;">Alamat Lengkap</label>';
-  html += '<textarea id="addr-alamat-teks" class="co-date-input" rows="3" placeholder="Terisi otomatis dari peta — bisa diedit untuk mengoreksi RT/RW/blok" style="padding:12px 14px; border-radius:12px; border:1px solid var(--line); font-size:15px; width:100%;">' + (isEdit ? escHtml(addr.alamat_snapshot || '') : '') + '</textarea>';
-  html += '</div>';
-
-  html += '<div style="display:flex; flex-direction:column; gap:6px;">';
   html += '<label style="font-weight:600; color:var(--brown); font-size:0.9rem;">Pin Lokasi</label>';
   html += '<div id="addr-search-wrap" style="position:relative; margin-bottom:4px;">';
   html += '<input type="text" id="addr-search" class="co-date-input" placeholder="Cari nama tempat / jalan..." style="padding:10px 14px; border-radius:12px; border:1px solid var(--line); font-size:14px; width:100%;">';
@@ -3055,6 +3045,16 @@ function showAddressForm(addr) {
   html += '<button type="button" style="width:fit-content; padding:8px 16px; border:1.5px solid var(--espresso); border-radius:var(--r-pill); background:transparent; color:var(--espresso); font-weight:600; font-size:0.85rem; cursor:pointer;" onclick="addrUseMyLocation()">📍 Gunakan Lokasi Saya</button>';
   html += '<input type="hidden" id="addr-lat" value="' + (isEdit ? addr.latitude : '') + '" required>';
   html += '<input type="hidden" id="addr-lng" value="' + (isEdit ? addr.longitude : '') + '" required>';
+  html += '</div>';
+
+  html += '<div style="display:flex; flex-direction:column; gap:6px;">';
+  html += '<label style="font-weight:600; color:var(--brown); font-size:0.9rem;">Alamat Lengkap</label>';
+  html += '<textarea id="addr-alamat-teks" class="co-date-input" rows="3" placeholder="Terisi otomatis dari peta — bisa diedit untuk mengoreksi RT/RW/blok" style="padding:12px 14px; border-radius:12px; border:1px solid var(--line); font-size:15px; width:100%;">' + (isEdit ? escHtml(addr.alamat_snapshot || '') : '') + '</textarea>';
+  html += '</div>';
+
+  html += '<div style="display:flex; flex-direction:column; gap:6px;">';
+  html += '<label style="font-weight:600; color:var(--brown); font-size:0.9rem;">Detail Alamat (Patokan dsb.)</label>';
+  html += '<textarea id="addr-detail" class="co-date-input" rows="3" required minlength="1" maxlength="200" style="padding:12px 14px; border-radius:12px; border:1px solid var(--line); font-size:15px; width:100%;">' + (isEdit ? escHtml(addr.detail) : '') + '</textarea>';
   html += '</div>';
 
   html += '<button type="submit" id="btn-submit-addr" style="width:100%; padding:14px; border:none; border-radius:var(--r-pill); background:var(--espresso); color:var(--cream); font-weight:700; font-size:1rem; margin-top:10px; cursor:pointer;">Simpan Alamat</button>';
