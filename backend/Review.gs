@@ -239,7 +239,9 @@ function reviewExpireCleanup() {
     
     var diffDays = (now.getTime() - updatedAt.getTime()) / (1000 * 3600 * 24);
     if (diffDays > 7) {
-      log('ACTIVITY', orderId, 'Review expired: ' + orderId + ' — poin hangus', {});
+      safeLog('ACTIVITY', 'REVIEW_EXPIRED', orderId, {
+        operation: 'reviewExpireOverdue', stage: 'expiry', entity_ref: orderId, retryable: false
+      });
       expiredCount++;
       // Mark as reviewed internally so we don't log it again?
       // For now, we will log it. To prevent logging every day, we could add a dummy review or a new field,

@@ -309,6 +309,45 @@ Jalur transaksi fail-closed ketika nilai penting malformed. Reader display boleh
 
 Fase 8-B tidak menambah kolom dan tidak memerlukan migration. Setup dan migration lama boleh memakai direct range write hanya untuk header, seed, formula, atau backfill internal yang trusted dan tetap wajib memvalidasi prerequisite masing-masing.
 
+## 4C. Cache, timeout, observability, dan failure UX (Fase 8-C)
+
+### Cache registry dan catalog revision
+
+- Cache data aplikasi backend adalah `catalog_cache` (TTL 300 detik) dan `setting_<KEY>` (TTL 300 detik). Telegram webhook dedup `tg_upd_*` serta login rate-limit bukan cache data aplikasi.
+- Invalidasi dilakukan setelah source mutation sukses. Settings hanya menghapus key terkait; writer Products/DeliverySlots/Settings publik menghapus katalog dan memperbarui revision. Kegagalan invalidasi atau revision dicatat best-effort dan tidak membatalkan commit.
+- `getCatalog.data.catalog_revision` adalah field additive. Nilainya opaque (`timestamp-random`), disimpan ringan pada Script Properties, tidak memakai Spreadsheet, tidak bertambah pada read, dan bukan counter atomic.
+- Browser boleh initial-render dari `sessionStorage`, kemudian selalu melakukan background refresh saat load untuk menemukan revision/data baru. Revision bukan push invalidation. Response lama atau request yang sudah tidak relevan wajib diabaikan.
+- Cache browser malformed/corrupt dibuang. TTL 5 menit tetap menjadi fallback saat revision/cache invalidation gagal.
+- Perubahan manual langsung di Spreadsheet tidak dapat menaikkan revision. Perubahan tersebut terlihat setelah TTL backend/browser atau setelah admin menjalankan `/clearcache`.
+- `/clearcache` hanya membersihkan cache data Settings dan katalog serta mengganti revision. Command ini tidak menyentuh webhook dedup, login rate-limit, session, pending order, cart, atau campaign-seen browser.
+
+### Timeout dan error transport frontend
+
+- Read ringan: 12 detik; validation/preview: 15 detik; mutation non-order: 20 detik; `createOrder`: 30 detik; `getOrderByRequestId`: 15 detik; geocoding/search: 9 detik.
+- Helper request memeriksa HTTP status, JSON valid, dan envelope API. Kategori konsisten: timeout, network, session, validation, stale, busy, unknown transaction, recovery, dan server/internal.
+- Mutation tidak di-retry otomatis. Timeout create order tetap menghasilkan state lokal `UNKNOWN`; safe resend tetap melakukan lookup dahulu.
+- Browser tanpa `AbortController` memakai timeout settled guard dan request sequence. Network yang sudah berjalan mungkin tidak dapat dibatalkan, tetapi late response tidak boleh memutasi UI dan timer selalu dibersihkan setelah settle.
+
+### Error envelope dan correlation
+
+- Envelope error tetap `{ok:false,error,code}` dan dapat secara additive membawa `correlation_id` serta `reference_code`.
+- Create order memakai `client_request_id` UUID tervalidasi sebagai correlation dan idempotency key sesuai kontrak 8-A2. Fase 8-C tidak mengubah aturan idempotency.
+- Operasi non-order memakai correlation ID server-side. Nilai correlation bebas dari client tidak diterima ke log.
+- Reference code terutama ditampilkan untuk `INTERNAL` dan `*_RECOVERY_REQUIRED`; validation biasa tidak wajib menampilkannya.
+
+### Safe structured operational logging
+
+- Contract logis: timestamp, severity, event code, operation, stage, correlation ID, safe entity reference, error code, dan retryable. Metadata disimpan pada `detail_json`; schema sheet Logs tidak berubah.
+- Metadata memakai allowlist dan batas panjang. Redaction dilakukan sebelum serialization. OTP, session token, password, capability key, nomor HP lengkap, alamat, komentar/catatan, raw request, raw Telegram update, dan raw external response body dilarang dicatat.
+- Serialization dan write log dibungkus fail-safe. Kegagalan logger tidak memanggil logger yang sama secara rekursif dan tidak menggagalkan flow utama.
+
+### Failure UX dan network eksternal
+
+- Session expiry hanya membersihkan session lokal dan meminta login ulang; cart, pending order unresolved, serta state `UNKNOWN` tidak berubah dan tidak ada redirect/login loop.
+- Validation menunjuk input yang perlu diperbaiki. Timeout/network mempertahankan input dan menawarkan retry manual. Stale data menawarkan refresh. Busy memakai tombol sama. Unknown order wajib diperiksa tanpa blind resend. Recovery meminta menghubungi admin.
+- Geocoding membedakan not-found dari network/timeout, mempertahankan alamat valid sebelumnya, serta mengabaikan hasil lama setelah lokasi baru atau navigasi.
+- `UrlFetchApp.fetch()` tidak dapat dibatalkan setelah dimulai. Telegram deadline hanya budget sebelum network call, bukan hard network timeout. HTTP, malformed JSON, API error, dan network failure diklasifikasikan; notifikasi setelah commit tetap best-effort tanpa retry otomatis.
+
 ## 5. Struktur Repo
 
 ```

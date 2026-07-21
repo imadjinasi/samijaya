@@ -41,9 +41,11 @@ function catalogGetCatalog() {
   var cached = cache.get(_CATALOG_CACHE_KEY);
   if (cached) {
     try {
-      return { ok: true, data: JSON.parse(cached) };
+      var cachedData = JSON.parse(cached);
+      cachedData.catalog_revision = catalogGetRevision();
+      return { ok: true, data: cachedData };
     } catch (e) {
-      // Cache rusak, lanjut baca dari sheet
+      cacheInvalidateKey(_CATALOG_CACHE_KEY, { operation: 'catalogGetCatalog' });
     }
   }
 
@@ -160,7 +162,8 @@ function catalogGetCatalog() {
     deliverySlots: deliverySlots,
     holidays: holidays,
     settings: settings,
-    campaigns: campaignsReadActive()
+    campaigns: campaignsReadActive(),
+    catalog_revision: catalogGetRevision()
   };
 
   // Simpan ke cache (stringify seluruh object)
@@ -169,7 +172,9 @@ function catalogGetCatalog() {
     cache.put(_CATALOG_CACHE_KEY, catalogStr, _CATALOG_CACHE_TTL);
   } catch (e) {
     // Gagal cache (misalnya terlalu besar), lanjut tanpa error
-    log('ERROR', 'catalog_cache', 'Gagal cache catalog: ' + e.message, null);
+    safeLog('ERROR', 'CATALOG_CACHE_WRITE_FAILED', '', {
+      operation: 'catalogGetCatalog', stage: 'cache_write', error_code: 'CACHE_WRITE_FAILED', retryable: true
+    });
   }
 
   return { ok: true, data: catalogData };

@@ -43,6 +43,9 @@ const context = {
     return fn();
   },
   clearSettingsCache() {},
+  cacheInvalidateSetting(key) { cacheRemovals.push('setting_' + key); return true; },
+  invalidateCatalogAfterMutation() { cacheRemovals.push('catalog_cache'); return { ok: true }; },
+  clearApplicationDataCaches() { cacheRemovals.push('catalog_cache'); return { ok: true }; },
   sheetParseId(value, pattern, maxLength) {
     const text = String(value == null ? '' : value).trim();
     return text && text.length <= maxLength && pattern.test(text) ? text : null;
@@ -124,18 +127,18 @@ assert.match(sent.at(-1).text, /Login gagal/);
 assert.strictEqual(sheets.Settings[1].value, '');
 
 // Store writes: success, idempotent, busy, target missing, update false.
-reset(); sheets.Settings = [{ key: 'TOKO_BUKA', value: '1' }]; command('/tutuptoko'); assert.strictEqual(sheets.Settings[0].value, '0');
-reset(); sheets.Settings = [{ key: 'TOKO_BUKA', value: '0' }]; command('/tutuptoko'); assert.match(sent[0].text, /sudah/);
+reset(); sheets.Settings = [{ key: 'TOKO_BUKA', value: '1' }]; command('/tutuptoko'); assert.strictEqual(sheets.Settings[0].value, '0'); assert.deepStrictEqual(cacheRemovals, ['setting_TOKO_BUKA', 'catalog_cache']);
+reset(); sheets.Settings = [{ key: 'TOKO_BUKA', value: '0' }]; command('/tutuptoko'); assert.match(sent[0].text, /sudah/); assert.strictEqual(cacheRemovals.length, 0);
 reset(); sheets.Settings = [{ key: 'TOKO_BUKA', value: '1' }]; lockMode = 'busy'; command('/tutuptoko'); assert.match(sent[0].text, /sibuk/); assert.strictEqual(sheets.Settings[0].value, '1');
 reset(); sheets.Settings = []; command('/bukatoko'); assert.match(sent[0].text, /tidak ditemukan/);
-reset(); sheets.Settings = [{ key: 'TOKO_BUKA', value: '0' }]; forceUpdateFalse = true; command('/bukatoko'); assert.match(sent[0].text, /gagal diperbarui/);
+reset(); sheets.Settings = [{ key: 'TOKO_BUKA', value: '0' }]; forceUpdateFalse = true; command('/bukatoko'); assert.match(sent[0].text, /gagal diperbarui/); assert.strictEqual(cacheRemovals.length, 0);
 
 // Slot, product, and review write paths re-read inside lock and never claim false success.
-reset(); sheets.DeliverySlots = [{ slot_id: 'S1', status: 'aktif' }]; command('/tutupslot S1'); assert.strictEqual(sheets.DeliverySlots[0].status, 'nonaktif');
+reset(); sheets.DeliverySlots = [{ slot_id: 'S1', status: 'aktif' }]; command('/tutupslot S1'); assert.strictEqual(sheets.DeliverySlots[0].status, 'nonaktif'); assert.deepStrictEqual(cacheRemovals, ['catalog_cache']);
 sent.length = 0; command('/tutupslot S1'); assert.match(sent[0].text, /sudah ditutup/);
 reset(); sheets.DeliverySlots = []; command('/bukaslot HILANG'); assert.match(sent[0].text, /tidak ditemukan/);
-reset(); sheets.Products = [{ product_id: 'P1', nama: '<Kopi>', tersedia: '1' }]; forceUpdateFalse = true; command('/produk P1 off'); assert.match(sent[0].text, /gagal diperbarui/);
-reset(); sheets.Products = [{ product_id: 'P1', nama: '<Kopi>', tersedia: '1' }]; command('/produk P1 off'); assert.strictEqual(sheets.Products[0].tersedia, '0'); assert.match(sent[0].text, /&lt;Kopi&gt;/);
+reset(); sheets.Products = [{ product_id: 'P1', nama: '<Kopi>', tersedia: '1' }]; forceUpdateFalse = true; command('/produk P1 off'); assert.match(sent[0].text, /gagal diperbarui/); assert.strictEqual(cacheRemovals.length, 0);
+reset(); sheets.Products = [{ product_id: 'P1', nama: '<Kopi>', tersedia: '1' }]; command('/produk P1 off'); assert.strictEqual(sheets.Products[0].tersedia, '0'); assert.match(sent[0].text, /&lt;Kopi&gt;/); assert.deepStrictEqual(cacheRemovals, ['catalog_cache']);
 reset(); sheets.Reviews = [{ review_id: 'R1', status: 'aktif' }]; command('/ulasan hide R1'); assert.strictEqual(sheets.Reviews[0].status, 'hidden');
 sent.length = 0; command('/ulasan hide R1'); assert.match(sent[0].text, /sudah disembunyikan/);
 reset(); sheets.Reviews = []; command('/ulasan show HILANG'); assert.match(sent[0].text, /tidak ditemukan/);

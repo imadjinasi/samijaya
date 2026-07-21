@@ -27,8 +27,19 @@ var WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxwvjM6cZLD5OIbj7-huI
  * @param  {Object} payload — body JSON
  * @return {Object} parsed JSON response dari Telegram
  */
-function tgApi(method, payload) {
+function tgApi(method, payload, context) {
+  context = context || {};
+  var correlationId = isValidServerCorrelationId(context.correlation_id) ? context.correlation_id : createServerCorrelationId();
+  var deadlineMs = Number(context.deadline_ms) || (Date.now() + 25000);
+  if (Date.now() >= deadlineMs) {
+    safeLog('WARN', 'TELEGRAM_BUDGET_EXHAUSTED', '', {
+      operation: 'tgApi', stage: 'before_fetch', method: method, correlation_id: correlationId,
+      error_code: 'TELEGRAM_BUDGET_EXHAUSTED', retryable: true
+    });
+    return { ok: false, code: 'TELEGRAM_BUDGET_EXHAUSTED', retryable: true };
+  }
   var token = getSetting('TELEGRAM_BOT_TOKEN');
+  if (!token) return { ok: false, code: 'TELEGRAM_NOT_CONFIGURED', retryable: false };
   var url = 'https://api.telegram.org/bot' + token + '/' + method;
 
   var options = {
@@ -38,21 +49,52 @@ function tgApi(method, payload) {
     muteHttpExceptions: true
   };
 
-  var resp = UrlFetchApp.fetch(url, options);
-  var result = JSON.parse(resp.getContentText());
+  var resp;
+  try {
+    // UrlFetchApp cannot be cancelled once started. The deadline above is an
+    // operational start budget, not a hard network timeout.
+    resp = UrlFetchApp.fetch(url, options);
+  } catch (_) {
+    safeLog('ERROR', 'TELEGRAM_NETWORK_FAILED', '', {
+      operation: 'tgApi', stage: 'fetch', method: method, correlation_id: correlationId,
+      error_code: 'TELEGRAM_NETWORK_ERROR', retryable: true
+    });
+    return { ok: false, code: 'TELEGRAM_NETWORK_ERROR', retryable: true };
+  }
+  var status = resp.getResponseCode ? Number(resp.getResponseCode()) : 0;
+  var result;
+  try { result = JSON.parse(String(resp.getContentText() || '')); }
+  catch (_) {
+    safeLog('ERROR', 'TELEGRAM_RESPONSE_INVALID', '', {
+      operation: 'tgApi', stage: 'parse', method: method, http_status: status,
+      correlation_id: correlationId, error_code: 'TELEGRAM_INVALID_RESPONSE', retryable: status >= 500 || status === 0
+    });
+    return { ok: false, code: 'TELEGRAM_INVALID_RESPONSE', http_status: status, retryable: status >= 500 || status === 0 };
+  }
 
-  if (!result.ok) {
+  if (status < 200 || status >= 300) {
+    var httpRetryable = status === 0 || status === 408 || status === 429 || status >= 500;
+    safeLog('ERROR', 'TELEGRAM_HTTP_FAILED', '', {
+      operation: 'tgApi', stage: 'http', method: method, http_status: status,
+      telegram_error_code: result && result.error_code || '', correlation_id: correlationId,
+      error_code: 'TELEGRAM_HTTP_ERROR', retryable: httpRetryable
+    });
+    return { ok: false, code: 'TELEGRAM_HTTP_ERROR', http_status: status, retryable: httpRetryable };
+  }
+
+  if (!result || result.ok !== true) {
     try {
       safeLog('ERROR', 'TELEGRAM_API_ERROR', '', {
-        function: 'tgApi',
+        operation: 'tgApi',
         method: method,
         http_status: resp.getResponseCode ? resp.getResponseCode() : '',
-        telegram_error_code: result.error_code || ''
+        telegram_error_code: result && result.error_code || '', correlation_id: correlationId,
+        error_code: 'TELEGRAM_API_ERROR', retryable: result && (result.error_code === 429 || result.error_code >= 500)
       });
     } catch (_) {}
   }
 
-  return result;
+  return result && typeof result === 'object' ? result : { ok: false, code: 'TELEGRAM_INVALID_RESPONSE', retryable: false };
 }
 
 // ============================================================
@@ -291,12 +333,15 @@ function tgRefreshOrderItemsText(messageText, orderId) {
 function tgSendToAdmins(text, opts) {
   var raw = getSetting('ADMIN_CHAT_IDS') || '';
   var ids = raw.split(',');
+  var results = [];
   for (var i = 0; i < ids.length; i++) {
     var id = ids[i].trim();
     if (id) {
-      tgSend(id, text, opts);
+      try { results.push(tgSend(id, text, opts)); }
+      catch (_) { results.push({ ok: false, code: 'TELEGRAM_NETWORK_ERROR', retryable: true }); }
     }
   }
+  return results;
 }
 
 // ============================================================
@@ -697,7 +742,7 @@ function handleTelegramWebhook(update) {
           tgSend(chatId, 'ℹ️ Anda sudah terdaftar sebagai admin.');
           return { ok: true };
         }
-        clearSettingsCache();
+        cacheInvalidateSetting('ADMIN_CHAT_IDS', { operation: 'telegramAdminLogin' });
         tgSend(chatId, '✅ Login berhasil, Anda kini terdaftar sebagai admin.');
         try { safeLog('ACTIVITY', 'TG_ADMIN_LOGIN_SUCCESS', '', { function: 'handleTelegramWebhook', stage: 'login' }); } catch (_) {}
         return { ok: true };
@@ -1440,8 +1485,8 @@ function handleAdminCommand(chatId, text) {
     });
     if (!closeStoreResult || !closeStoreResult.ok) { tgSend(chatId, '❌ ' + esc(closeStoreResult && closeStoreResult.error || 'Gagal menutup toko')); return; }
     if (!closeStoreResult.data.unchanged) {
-      clearSettingsCache();
-      CacheService.getScriptCache().remove('catalog_cache');
+      cacheInvalidateSetting('TOKO_BUKA', { operation: 'telegramCloseStore' });
+      invalidateCatalogAfterMutation('telegramCloseStore');
     }
     tgSend(chatId, closeStoreResult.data.unchanged ? 'ℹ️ Toko sudah dalam keadaan TUTUP.' : '🛑 Toko sudah TUTUP. Order baru akan ditolak.');
     return;
@@ -1462,8 +1507,8 @@ function handleAdminCommand(chatId, text) {
     });
     if (!openStoreResult || !openStoreResult.ok) { tgSend(chatId, '❌ ' + esc(openStoreResult && openStoreResult.error || 'Gagal membuka toko')); return; }
     if (!openStoreResult.data.unchanged) {
-      clearSettingsCache();
-      CacheService.getScriptCache().remove('catalog_cache');
+      cacheInvalidateSetting('TOKO_BUKA', { operation: 'telegramOpenStore' });
+      invalidateCatalogAfterMutation('telegramOpenStore');
     }
     tgSend(chatId, openStoreResult.data.unchanged ? 'ℹ️ Toko sudah dalam keadaan BUKA.' : '✅ Toko sudah BUKA.');
     return;
@@ -1490,7 +1535,7 @@ function handleAdminCommand(chatId, text) {
       return { ok: true, data: { unchanged: false } };
     });
     if (!slotWriteResult || !slotWriteResult.ok) { tgSend(chatId, '❌ ' + esc(slotWriteResult && slotWriteResult.error || 'Operasi slot gagal')); return; }
-    if (!slotWriteResult.data.unchanged) CacheService.getScriptCache().remove('catalog_cache');
+    if (!slotWriteResult.data.unchanged) invalidateCatalogAfterMutation('telegramSlotStatus');
     
     if (newStatus === 'nonaktif') {
       tgSend(chatId, (slotWriteResult.data.unchanged ? 'ℹ️' : '🛑') + ' Slot <code>' + esc(slotId) + '</code> sudah ditutup.');
@@ -1544,7 +1589,7 @@ function handleAdminCommand(chatId, text) {
       return { ok: true, data: { unchanged: false, product: prod } };
     });
     if (!productWriteResult || !productWriteResult.ok) { tgSend(chatId, '❌ ' + esc(productWriteResult && productWriteResult.error || 'Operasi produk gagal')); return; }
-    if (!productWriteResult.data.unchanged) CacheService.getScriptCache().remove('catalog_cache');
+    if (!productWriteResult.data.unchanged) invalidateCatalogAfterMutation('telegramProductAvailability');
     tgSend(chatId, (productWriteResult.data.unchanged ? 'ℹ️' : '📦') + ' Produk <b>' +
       esc(productWriteResult.data.product.nama) + '</b> ' + (productWriteResult.data.unchanged ? 'sudah ' : '→ ') + statusText);
     return;
@@ -1633,8 +1678,7 @@ function handleAdminCommand(chatId, text) {
 
   if (cmd === '/clearcache') {
     if (args.length !== 0) { tgSend(chatId, '⚠️ Format: /clearcache'); return; }
-    clearSettingsCache();
-    CacheService.getScriptCache().remove('catalog_cache');
+    clearApplicationDataCaches();
     tgSend(chatId, '🧹 Cache dibersihkan. Settings & katalog akan dibaca ulang.');
     return;
   }

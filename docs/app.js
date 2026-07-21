@@ -21,6 +21,10 @@ var _promoRevalidateTimer = null;
 var _promoRequestSequence = 0;
 var _pendingPromoFromUrl = '';
 var _pendingPromoConsumed = false;
+var _catalogRequestSequence = 0;
+var _catalogAppliedSequence = 0;
+var _sessionExpiryHandled = false;
+var _deliveryLocationSequence = 0;
 
 function createPromoState() {
   return {
@@ -87,19 +91,34 @@ function getCatalogCache() {
     var raw = sessionStorage.getItem(CATALOG_CACHE_KEY);
     if (!raw) return null;
     var obj = JSON.parse(raw);
-    if (!obj || !obj.data || !obj.savedAt) return null;
+    if (!obj || !isValidCatalogData(obj.data) || !Number.isFinite(Number(obj.savedAt))) {
+      clearCatalogCache();
+      return null;
+    }
     var age = Date.now() - obj.savedAt;
-    return { data: obj.data, age: age, expired: age > CATALOG_CACHE_TTL_MS };
+    if (age < 0) { clearCatalogCache(); return null; }
+    return { data: obj.data, revision: String(obj.revision || obj.data.catalog_revision || 'legacy'), age: age, expired: age > CATALOG_CACHE_TTL_MS };
   } catch(e) {
+    clearCatalogCache();
     return null;
   }
 }
 
+function isValidCatalogData(data) {
+  return !!data && typeof data === 'object' && Array.isArray(data.categories) &&
+    Array.isArray(data.products) && Array.isArray(data.pickupLocations) &&
+    Array.isArray(data.deliverySlots) && Array.isArray(data.holidays) &&
+    data.settings && typeof data.settings === 'object' &&
+    (data.campaigns === undefined || Array.isArray(data.campaigns));
+}
+
 function setCatalogCache(data) {
   try {
-    var payload = { data: data, savedAt: Date.now() };
+    if (!isValidCatalogData(data)) return false;
+    var payload = { data: data, revision: String(data.catalog_revision || 'legacy'), savedAt: Date.now() };
     sessionStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify(payload));
-  } catch(e) {}
+    return true;
+  } catch(e) { return false; }
 }
 
 function clearCatalogCache() {
@@ -109,25 +128,151 @@ function clearCatalogCache() {
 }
 
 // === API HELPER ===
+var API_TIMEOUTS = { read: 12000, validation: 15000, mutation: 20000, createOrder: 30000, orderLookup: 15000 };
+var API_ACTION_CLASS = {
+  requestOtp:'validation', verifyOtp:'validation', validatePromo:'validation',
+  updateProfile:'mutation', addAddress:'mutation', updateAddress:'mutation', deleteAddress:'mutation',
+  addressSetDefault:'mutation', submitReview:'mutation', deleteMyReview:'mutation', orderMarkSeen:'mutation',
+  createOrder:'createOrder', getOrderByRequestId:'orderLookup'
+};
+
+function ApiRequestError(kind, message, detail) {
+  this.name = 'ApiRequestError'; this.kind = kind; this.message = message || kind;
+  this.code = kind; this.detail = detail || {};
+}
+
+function applyCatalogResponse(data, sequence, options) {
+  options = options || {};
+  if (!isValidCatalogData(data) || sequence < _catalogAppliedSequence || sequence !== _catalogRequestSequence) return false;
+  _catalogAppliedSequence = sequence;
+  var previousRevision = catalog && String(catalog.catalog_revision || 'legacy');
+  var nextRevision = String(data.catalog_revision || 'legacy');
+  var contentChanged = false;
+  try { contentChanged = !!catalog && JSON.stringify(catalog) !== JSON.stringify(data); } catch (_) { contentChanged = true; }
+  catalog = data;
+  setCatalogCache(data);
+  if (options.render || previousRevision !== nextRevision || contentChanged) {
+    renderCategories(catalog.categories);
+    renderProducts(catalog.products);
+    renderViewMode();
+  }
+  return true;
+}
+
+async function requestCatalogRefresh(options) {
+  options = options || {};
+  var sequence = ++_catalogRequestSequence;
+  var result = await api('getCatalog');
+  if (sequence !== _catalogRequestSequence) return { ok: false, code: 'STALE_RESPONSE', error_category: 'STALE' };
+  if (result.ok && applyCatalogResponse(result.data, sequence, { render: !!options.render })) return result;
+  return result.ok ? { ok: false, code: 'CATALOG_MALFORMED', error_category: 'SERVER' } : result;
+}
+
+async function refreshCatalog() {
+  clearCatalogCache();
+  try {
+    var result = await requestCatalogRefresh({ render: true });
+    showToast(result.ok ? 'Katalog sudah diperbarui.' : 'Katalog belum dapat diperbarui. Coba lagi.');
+    return result;
+  } catch (error) {
+    showToast(apiFailureMessage(error, false));
+    return { ok: false, code: error && error.kind || 'NETWORK' };
+  }
+}
+
+function renderCatalogFailure(message) {
+  var grid = document.getElementById('product-grid');
+  if (!grid) return;
+  grid.innerHTML = '<div style="text-align:center;padding:32px 16px;">' + escHtml(message || 'Katalog belum dapat dimuat.') +
+    '<br><button type="button" class="btn-secondary" style="margin-top:12px" onclick="refreshCatalog()">Coba muat ulang katalog</button></div>';
+}
+ApiRequestError.prototype = Object.create(Error.prototype);
+ApiRequestError.prototype.constructor = ApiRequestError;
+
+function apiTimeoutFor(action, options) {
+  if (options && options.timeoutMs) return Number(options.timeoutMs);
+  return API_TIMEOUTS[API_ACTION_CLASS[action] || 'read'];
+}
+
+function classifyApiEnvelope(res) {
+  var code = String(res && res.code || '');
+  if (code === 'UNAUTHORIZED') return 'SESSION';
+  if (code === 'SIBUK_COBA_LAGI' || code === 'LOCK_TIMEOUT') return 'BUSY';
+  if (code === 'ORDER_STILL_PROCESSING' || code === 'ORDER_NOT_FOUND') return 'UNKNOWN_TRANSACTION';
+  if (/RECOVERY_REQUIRED/.test(code)) return 'RECOVERY';
+  if (/STALE|TIDAK_TERSEDIA|SLOT_PENUH/.test(code)) return 'STALE';
+  if (code === 'BAD_REQUEST' || /INVALID|REQUIRED|TIDAK_VALID|MIN_ORDER|LUAR_JANGKAUAN/.test(code)) return 'VALIDATION';
+  return res && res.ok === false ? 'SERVER' : 'OK';
+}
+
+function handleSessionExpired() {
+  if (_sessionExpiryHandled) return;
+  _sessionExpiryHandled = true;
+  session = { token: null, member: null };
+  try { localStorage.removeItem('sj_session'); } catch (_) {}
+  // Cart and unresolved pending order deliberately remain untouched.
+  try { renderHeader(); } catch (_) {}
+  showToast('Sesi habis. Silakan login ulang. Data keranjang tetap tersimpan.');
+  setTimeout(function() { _sessionExpiryHandled = false; }, 1000);
+}
+
 async function api(action, payload, options) {
   if (!payload) payload = {};
   options = options || {};
   var body = { action: action, payload: payload };
   if (session.token) body.token = session.token;
-  var controller = null;
-  var timeoutId = null;
-  if (options.timeoutMs && typeof AbortController !== 'undefined') {
+  var controller = null, timeoutId = null, settled = false;
+  var timeoutMs = apiTimeoutFor(action, options);
+  if (typeof AbortController !== 'undefined') {
     controller = new AbortController();
-    timeoutId = setTimeout(function() { controller.abort(); }, options.timeoutMs);
   }
-  try {
-    var fetchOptions = { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(body) };
-    if (controller) fetchOptions.signal = controller.signal;
-    var res = await fetch(API_URL, fetchOptions);
-    return res.json();
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
+  var fetchOptions = { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(body) };
+  if (controller) fetchOptions.signal = controller.signal;
+  return new Promise(function(resolve, reject) {
+    timeoutId = setTimeout(function() {
+      if (settled) return;
+      settled = true;
+      if (controller) try { controller.abort(); } catch (_) {}
+      reject(new ApiRequestError('TIMEOUT', 'Permintaan melewati batas waktu', { action: action, timeout_ms: timeoutMs }));
+    }, timeoutMs);
+    Promise.resolve().then(function() { return fetch(API_URL, fetchOptions); }).then(function(res) {
+      if (settled) return;
+      if (!res || !res.ok) throw new ApiRequestError('HTTP', 'Server mengembalikan HTTP error', { status: res && res.status });
+      return res.text().then(function(text) {
+        var parsed;
+        try { parsed = JSON.parse(text); } catch (_) { throw new ApiRequestError('NON_JSON', 'Respons server tidak valid'); }
+        if (!parsed || typeof parsed !== 'object' || typeof parsed.ok !== 'boolean') throw new ApiRequestError('NON_JSON', 'Format respons server tidak valid');
+        return parsed;
+      });
+    }).then(function(parsed) {
+      if (settled) return;
+      settled = true; clearTimeout(timeoutId); timeoutId = null;
+      parsed.error_category = classifyApiEnvelope(parsed);
+      if (parsed.error_category === 'SESSION') handleSessionExpired();
+      resolve(parsed);
+    }).catch(function(err) {
+      if (settled) return;
+      settled = true; clearTimeout(timeoutId); timeoutId = null;
+      if (err && err.name === 'AbortError') reject(new ApiRequestError('TIMEOUT', 'Permintaan melewati batas waktu', { action: action }));
+      else if (err instanceof ApiRequestError) reject(err);
+      else reject(new ApiRequestError('NETWORK', 'Tidak dapat terhubung ke server', { action: action }));
+    });
+  });
+}
+
+function apiFailureMessage(error, mutation) {
+  if (error && error.kind === 'TIMEOUT') return 'Permintaan terlalu lama. ' + (mutation ? 'Data tidak dikirim ulang otomatis; silakan coba lagi.' : 'Silakan coba lagi.');
+  if (error && error.kind === 'NON_JSON') return 'Respons server tidak dapat dibaca. Silakan coba lagi.';
+  if (error && error.kind === 'HTTP') return 'Server sedang bermasalah. Silakan coba lagi.';
+  return 'Jaringan bermasalah. ' + (mutation ? 'Data tetap tersimpan di formulir; silakan coba lagi.' : 'Silakan coba lagi.');
+}
+
+function apiEnvelopeMessage(result, fallback) {
+  var message = String(result && result.error || fallback || 'Terjadi kesalahan.');
+  if (result && result.reference_code && (result.code === 'INTERNAL' || /RECOVERY_REQUIRED/.test(String(result.code || '')))) {
+    message += ' Kode referensi: ' + String(result.reference_code).replace(/[^A-Z0-9_-]/gi, '').substring(0, 16);
   }
+  return message;
 }
 
 // === FORMAT HELPERS ===
@@ -1293,7 +1438,6 @@ async function requestOtpFlow(hp) {
   showLoading();
   try {
     var res = await api('requestOtp', { no_hp: hp });
-    hideLoading();
     if (res.ok) {
       showOtpModal(hp);
     } else if (res.code === 'OTP_COOLDOWN') {
@@ -1303,8 +1447,9 @@ async function requestOtpFlow(hp) {
       showToast(res.error || 'Gagal mengirim OTP');
     }
   } catch (e) {
+    showToast(apiFailureMessage(e, false));
+  } finally {
     hideLoading();
-    showToast('Gagal terhubung ke server');
   }
 }
 
@@ -1406,7 +1551,6 @@ async function resendOtp(no_hp) {
   showLoading();
   try {
     var res = await api('requestOtp', { no_hp: no_hp });
-    hideLoading();
     if (res.ok) {
       showToast('OTP baru telah dikirim');
       startOtpCooldown(120, no_hp);
@@ -1418,8 +1562,9 @@ async function resendOtp(no_hp) {
       showToast(res.error || 'Gagal mengirim OTP');
     }
   } catch (e) {
+    showToast(apiFailureMessage(e, false));
+  } finally {
     hideLoading();
-    showToast('Gagal terhubung ke server');
   }
 }
 
@@ -1448,8 +1593,6 @@ async function handleVerifyOtp(no_hp, nama) {
     var payload = { no_hp: no_hp, otp: otp };
     if (nama) payload.nama = nama;
     var res = await api('verifyOtp', payload);
-    hideLoading();
-
     if (res.ok) {
       session.token = res.data.token;
       session.member = res.data.member;
@@ -1484,9 +1627,11 @@ async function handleVerifyOtp(no_hp, nama) {
       if (btn) btn.disabled = false;
     }
   } catch (e) {
+    var otpError = document.getElementById('otp-error');
+    if (otpError) otpError.textContent = apiFailureMessage(e, false);
+  } finally {
     hideLoading();
-    document.getElementById('otp-error').textContent = 'Gagal terhubung ke server';
-    if (btn) btn.disabled = false;
+    if (btn && btn.isConnected) btn.disabled = false;
   }
 }
 
@@ -1536,8 +1681,6 @@ async function handleRegister(no_hp) {
   try {
     // Reuse the OTP by verifying directly
     var res = await api('verifyOtp', { no_hp: no_hp, otp: _pendingOtp, nama: nama });
-    hideLoading();
-
     if (res.ok) {
       _pendingOtp = '';
       session.token = res.data.token;
@@ -1566,9 +1709,11 @@ async function handleRegister(no_hp) {
       if (btn) btn.disabled = false;
     }
   } catch (e) {
+    var registerError = document.getElementById('register-error');
+    if (registerError) registerError.textContent = apiFailureMessage(e, false);
+  } finally {
     hideLoading();
-    document.getElementById('register-error').textContent = 'Gagal terhubung ke server';
-    if (btn) btn.disabled = false;
+    if (btn && btn.isConnected) btn.disabled = false;
   }
 }
 
@@ -1651,6 +1796,8 @@ function openCheckoutScreen() {
 }
 
 function closeCheckoutScreen() {
+  _deliveryLocationSequence++;
+  if (typeof invalidateMapRequests === 'function') invalidateMapRequests();
   setPageTitle('home');
   document.getElementById('checkout-screen').classList.add('hidden');
   document.body.style.overflow = '';
@@ -2183,6 +2330,7 @@ async function onSearchAddressInput(e) {
   _searchAddressTimer = setTimeout(async function() {
     if (typeof searchPlacePhoton !== 'function') return;
     var results = await searchPlacePhoton(val);
+    if (!resContainer || !resContainer.isConnected) return;
     if (results.length > 0) {
       var html = '';
       for (var i = 0; i < results.length; i++) {
@@ -2193,6 +2341,8 @@ async function onSearchAddressInput(e) {
       resContainer.classList.remove('hidden');
     } else {
       resContainer.classList.add('hidden');
+      if (results.error_category === 'NETWORK' || results.error_category === 'TIMEOUT') showToast('Jaringan pencarian lokasi bermasalah. Coba lagi.');
+      else if (results.error_category === 'NOT_FOUND') showToast('Lokasi tidak ditemukan. Coba kata kunci lain.');
     }
   }, 400);
 }
@@ -2260,6 +2410,7 @@ function onPinMoved(lat, lng) {
 
 var _lastGeocodedFor = '';
 async function updateDeliveryLocation(lat, lng) {
+  var locationSequence = ++_deliveryLocationSequence;
   checkoutState.lat = lat;
   checkoutState.lng = lng;
   checkoutState.address_id = '';
@@ -2267,14 +2418,19 @@ async function updateDeliveryLocation(lat, lng) {
   
   var key = lat + ',' + lng;
   if (_lastGeocodedFor !== key) {
+    var previousAlamat = checkoutState.alamat_teks || '';
     var alamat = '';
     if (typeof reverseGeocode === 'function') {
       alamat = await reverseGeocode(lat, lng);
     }
-    _lastGeocodedFor = key;
-    checkoutState.alamat_teks = alamat;
+    if (locationSequence !== _deliveryLocationSequence) return;
+    _lastGeocodedFor = alamat ? key : '';
+    checkoutState.alamat_teks = alamat || previousAlamat;
     var elAlamat = document.getElementById('co-alamat-teks');
-    if (elAlamat) elAlamat.value = alamat;
+    if (elAlamat) elAlamat.value = alamat || previousAlamat;
+    if (!alamat && typeof _lastGeocodeFailure !== 'undefined' && _lastGeocodeFailure !== 'STALE') {
+      showToast(_lastGeocodeFailure === 'NOT_FOUND' ? 'Alamat tidak ditemukan. Lokasi sebelumnya tetap dipertahankan.' : 'Jaringan geocoding bermasalah. Lokasi sebelumnya tetap dipertahankan.');
+    }
   }
   
   calculateOngkir();
@@ -2952,7 +3108,7 @@ async function handleCreateOrder(allowSafeResend) {
         updatePromoUI();
         updateCheckoutSummary();
       } else {
-        errMsg = res.error || 'Gagal membuat pesanan, coba lagi.';
+        errMsg = apiEnvelopeMessage(res, 'Gagal membuat pesanan, coba lagi.');
       }
 
       // Tampilkan pesan error
@@ -2961,7 +3117,7 @@ async function handleCreateOrder(allowSafeResend) {
 
       if (code === 'ORDER_RECOVERY_REQUIRED') {
         keepSubmitLocked = true;
-        renderUnknownOrderState(pending, 'Pesanan memerlukan pemeriksaan admin. Jangan mengirim ulang.', true);
+        renderUnknownOrderState(pending, apiEnvelopeMessage(res, 'Pesanan memerlukan pemeriksaan admin. Jangan mengirim ulang.'), true);
       }
 
       if (goToSlot) {
@@ -3006,7 +3162,7 @@ async function checkPendingOrder() {
       return renderUnknownOrderState(pending, 'Pesanan belum ditemukan. Anda dapat mengirim ulang secara aman.');
     }
     if (result.code === 'ORDER_STILL_PROCESSING') return renderUnknownOrderState(pending, 'Pesanan masih diproses. Silakan periksa lagi.');
-    if (result.code === 'ORDER_RECOVERY_REQUIRED') return renderUnknownOrderState(pending, 'Pesanan memerlukan pemeriksaan admin. Jangan mengirim ulang.', true);
+    if (result.code === 'ORDER_RECOVERY_REQUIRED') return renderUnknownOrderState(pending, apiEnvelopeMessage(result, 'Pesanan memerlukan pemeriksaan admin. Jangan mengirim ulang.'), true);
     renderUnknownOrderState(pending, result.error || 'Belum dapat memastikan hasil pesanan.');
   } catch (_) {
     renderUnknownOrderState(pending, 'Pemeriksaan gagal tersambung. Hasil pesanan masih belum diketahui.');
@@ -3236,13 +3392,9 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     if (isRefresh || !cache || !cache.data) {
       clearCatalogCache();
-      var catRes = await api('getCatalog');
+      var catRes = await requestCatalogRefresh({ render: true });
       if (catRes.ok) {
-        catalog = catRes.data;
-        setCatalogCache(catalog);
-        renderCategories(catalog.categories);
-        renderProducts(catalog.products);
-        renderViewMode();
+        // requestCatalogRefresh already applied and rendered this response.
       } else {
         if (cache && cache.data) {
           catalog = cache.data;
@@ -3251,6 +3403,7 @@ document.addEventListener('DOMContentLoaded', async function () {
           renderViewMode();
         } else {
           showToast('Gagal memuat katalog');
+          renderCatalogFailure('Katalog belum dapat dimuat.');
         }
       }
     } else {
@@ -3260,24 +3413,9 @@ document.addEventListener('DOMContentLoaded', async function () {
       renderProducts(catalog.products);
       renderViewMode();
       
-      // Stale-while-revalidate di background
-      if (cache.expired) {
-        api('getCatalog').then(function(catResBg) {
-          if (catResBg.ok) {
-            setCatalogCache(catResBg.data);
-            var oldCount = (catalog.products || []).length + (catalog.categories || []).length;
-            var newCount = (catResBg.data.products || []).length + (catResBg.data.categories || []).length;
-            if (oldCount !== newCount) {
-              catalog = catResBg.data;
-              renderCategories(catalog.categories);
-              renderProducts(catalog.products);
-              renderViewMode();
-            } else {
-              catalog = catResBg.data;
-            }
-          }
-        }).catch(function() {});
-      }
+      // Background refresh tetap dijalankan agar revision baru ditemukan. Ini
+      // polling ringan saat load, bukan push invalidation dari server.
+      requestCatalogRefresh({ render: false }).catch(function() {});
     }
 
     // Tunggu fetch reviews selesai
@@ -3287,10 +3425,11 @@ document.addEventListener('DOMContentLoaded', async function () {
       renderPublicReviews();
     }
   } catch (e) {
-    showToast('Gagal terhubung ke server');
+    showToast(apiFailureMessage(e, false));
+    if (!catalog) renderCatalogFailure(apiFailureMessage(e, false));
+  } finally {
+    hideLoading();
   }
-
-  hideLoading();
 
   // Homepage sudah dirender; antrean tidak menghambat initial render.
   setTimeout(startCampaignQueue, 0);
@@ -3808,9 +3947,10 @@ async function loadProfile() {
       document.getElementById('profile-content').innerHTML = '<div style="text-align:center; padding: 40px 0; color:var(--danger)">Gagal memuat profil.</div>';
     }
   } catch (e) {
-    document.getElementById('profile-content').innerHTML = '<div style="text-align:center; padding: 40px 0; color:var(--danger)">Gagal terhubung ke server.</div>';
+    document.getElementById('profile-content').innerHTML = '<div style="text-align:center; padding: 40px 0; color:var(--danger)">' + escHtml(apiFailureMessage(e, false)) + '</div>';
+  } finally {
+    hideLoading();
   }
-  hideLoading();
 }
 
 function renderProfileForm(member) {
@@ -3886,12 +4026,11 @@ async function submitProfile() {
       showToast(res.error || 'Gagal menyimpan profil');
     }
   } catch (e) {
-    showToast('Gagal terhubung ke server');
+    showToast(apiFailureMessage(e, true));
+  } finally {
+    _submitting = false;
+    if (btn && btn.isConnected) { btn.disabled = false; btn.textContent = prevText; }
   }
-
-  _submitting = false;
-  btn.disabled = false;
-  btn.textContent = prevText;
 }
 
 // === ALAMAT SAYA ===
@@ -3948,9 +4087,10 @@ async function loadMyAddresses() {
       document.getElementById('address-content').innerHTML = '<div style="text-align:center; padding: 40px 0; color:var(--danger)">Gagal memuat alamat.</div>';
     }
   } catch (e) {
-    document.getElementById('address-content').innerHTML = '<div style="text-align:center; padding: 40px 0; color:var(--danger)">Gagal terhubung ke server.</div>';
+    document.getElementById('address-content').innerHTML = '<div style="text-align:center; padding: 40px 0; color:var(--danger)">' + escHtml(apiFailureMessage(e, false)) + '</div>';
+  } finally {
+    hideLoading();
   }
-  hideLoading();
 }
 
 function renderMyAddressesList(addresses) {
@@ -4083,10 +4223,16 @@ function showAddressForm(addr) {
         var key = lat + ',' + lng;
         if (_addrLastGeocoded !== key) {
           var el = document.getElementById('addr-alamat-teks');
+          var previousValue = el ? el.value : '';
           if (el) el.value = "Mencari alamat...";
           if (typeof reverseGeocode === 'function') {
             var addrStr = await reverseGeocode(lat, lng);
-            if (el) el.value = addrStr;
+            if (!el || !el.isConnected) return;
+            if (addrStr) el.value = addrStr;
+            else {
+              el.value = previousValue;
+              if (typeof _lastGeocodeFailure !== 'undefined' && _lastGeocodeFailure !== 'STALE') showToast(_lastGeocodeFailure === 'NOT_FOUND' ? 'Alamat tidak ditemukan.' : 'Jaringan geocoding bermasalah. Alamat sebelumnya dipertahankan.');
+            }
           }
           _addrLastGeocoded = key;
         }
@@ -4117,28 +4263,24 @@ function showAddressForm(addr) {
       if (q.length < 3) { resEl.classList.add('hidden'); return; }
       
       searchTimer = setTimeout(function() {
-        fetch('https://photon.komoot.io/api/?q=' + encodeURIComponent(q) + '&limit=5')
-          .then(function(r){return r.json()})
-          .then(function(data) {
-            if(!data.features || data.features.length === 0) {
+        if (typeof searchPlacePhoton !== 'function') return;
+        searchPlacePhoton(q).then(function(results) {
+            if(!results || results.length === 0) {
               resEl.classList.add('hidden'); return;
             }
             resEl.innerHTML = '';
-            data.features.forEach(function(f) {
-              var name = f.properties.name || '';
-              var city = f.properties.city || f.properties.state || '';
+            results.forEach(function(result) {
               var div = document.createElement('div');
               div.className = 'search-result-item';
-              div.textContent = name + (city ? ', ' + city : '');
+              div.textContent = result.label;
               div.onclick = function() {
-                var c = f.geometry.coordinates; // [lng, lat]
-                marker.setLatLng([c[1], c[0]]);
-                window.addrMapInstance.setView([c[1], c[0]], 16);
-                document.getElementById('addr-lat').value = c[1];
-                document.getElementById('addr-lng').value = c[0];
+                marker.setLatLng([result.lat, result.lng]);
+                window.addrMapInstance.setView([result.lat, result.lng], 16);
+                document.getElementById('addr-lat').value = result.lat;
+                document.getElementById('addr-lng').value = result.lng;
                 resEl.classList.add('hidden');
                 searchInput.value = div.textContent;
-                if (window.updateAddrAlamatTeks) window.updateAddrAlamatTeks(c[1], c[0]);
+                if (window.updateAddrAlamatTeks) window.updateAddrAlamatTeks(result.lat, result.lng);
               };
               resEl.appendChild(div);
             });
@@ -4179,6 +4321,7 @@ function addrUseMyLocation() {
 }
 
 function hideAddressForm() {
+  if (typeof invalidateMapRequests === 'function') invalidateMapRequests();
   var modal = document.getElementById('address-form-modal');
   if (modal) modal.classList.add('hidden');
 }
@@ -4222,12 +4365,11 @@ async function submitAddress(addressId) {
       alert('Gagal: ' + (res.error || 'Gagal menyimpan alamat'));
     }
   } catch (e) {
-    alert('Gagal terhubung ke server');
+    alert(apiFailureMessage(e, true));
+  } finally {
+    _submitting = false;
+    if (btn && btn.isConnected) { btn.disabled = false; btn.textContent = prev; }
   }
-
-  _submitting = false;
-  btn.disabled = false;
-  btn.textContent = prev;
 }
 
 async function deleteAddress(addressId) {
@@ -4383,13 +4525,10 @@ async function submitReview() {
       showToast(res.error || 'Gagal mengirim ulasan');
     }
   } catch (e) {
-    showToast('Gagal terhubung ke server');
-  }
-  
-  _submitting = false;
-  if (btn) {
-    btn.disabled = false;
-    btn.textContent = 'Kirim Ulasan';
+    showToast(apiFailureMessage(e, true));
+  } finally {
+    _submitting = false;
+    if (btn && btn.isConnected) { btn.disabled = false; btn.textContent = 'Kirim Ulasan'; }
   }
 }
 

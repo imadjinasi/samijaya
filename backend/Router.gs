@@ -21,6 +21,8 @@
  * @return {ContentService.TextOutput}
  */
 function doPost(e) {
+  var requestCorrelationId = '';
+  var requestAction = '';
   try {
     var suppliedTelegramKey = '';
     try {
@@ -117,6 +119,7 @@ function doPost(e) {
 
     // --- Routing action biasa (dari frontend) ---
     var action  = body.action || '';
+    requestAction = String(action || '').substring(0, 60);
     var payload = body.payload || {};
     var token   = body.token || '';
 
@@ -132,6 +135,9 @@ function doPost(e) {
       });
     }
 
+    requestCorrelationId = action === 'createOrder' && typeof _orderNormalizeRequestId === 'function'
+      ? (_orderNormalizeRequestId(payload.client_request_id) || createServerCorrelationId())
+      : createServerCorrelationId();
     var result;
     switch (action) {
       case 'ping':
@@ -207,14 +213,20 @@ function doPost(e) {
         break;
     }
 
-    return jsonResponse(result);
+    return jsonResponse(attachErrorCorrelation(result, requestCorrelationId));
 
   } catch (err) {
-    try { safeLog('ERROR', 'ROUTER_INTERNAL_ERROR', '', { function: 'doPost', stage: 'outer' }); } catch (_) {}
+    if (!requestCorrelationId) requestCorrelationId = createServerCorrelationId();
+    safeLog('ERROR', 'ROUTER_INTERNAL_ERROR', '', {
+      operation: requestAction || 'doPost', stage: 'outer', correlation_id: requestCorrelationId,
+      error_code: 'INTERNAL', retryable: false
+    });
     return jsonResponse({
       ok: false,
       error: 'Server error',
-      code: 'INTERNAL'
+      code: 'INTERNAL',
+      correlation_id: requestCorrelationId,
+      reference_code: correlationReference(requestCorrelationId)
     });
   }
 }

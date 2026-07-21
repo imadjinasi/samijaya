@@ -5,10 +5,16 @@
 
 var _map = null;
 var _marker = null;
+var _mapRequestGeneration = 0;
+var _placeSearchSequence = 0;
+var _reverseGeocodeSequence = 0;
+var _lastGeocodeFailure = '';
+var MAP_NETWORK_TIMEOUT_MS = 9000;
 // Fallback origin (Cirebon area) if admin hasn't set any pickup location with valid coords
 var ORIGIN_FALLBACK = { lat: -6.7320, lng: 108.5523 };
 
 function initDeliveryMap(containerId, onPinMoved, initialLat, initialLng) {
+  _mapRequestGeneration++;
   var container = document.getElementById(containerId);
   if (!container) return null;
 
@@ -39,6 +45,40 @@ function initDeliveryMap(containerId, onPinMoved, initialLat, initialLng) {
   return _map;
 }
 
+function invalidateMapRequests() {
+  _mapRequestGeneration++;
+  _placeSearchSequence++;
+  _reverseGeocodeSequence++;
+}
+
+function mapFetchJson(url, timeoutMs) {
+  var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  var settled = false, timer = null;
+  return new Promise(function(resolve, reject) {
+    timer = setTimeout(function() {
+      if (settled) return;
+      settled = true;
+      if (controller) try { controller.abort(); } catch (_) {}
+      var timeoutError = new Error('MAP_TIMEOUT'); timeoutError.kind = 'TIMEOUT'; reject(timeoutError);
+    }, timeoutMs || MAP_NETWORK_TIMEOUT_MS);
+    var options = controller ? { signal: controller.signal } : {};
+    Promise.resolve().then(function() { return fetch(url, options); }).then(function(response) {
+      if (settled) return;
+      if (!response || !response.ok) { var httpError = new Error('MAP_HTTP'); httpError.kind = 'HTTP'; throw httpError; }
+      return response.json();
+    }).then(function(data) {
+      if (settled) return;
+      settled = true; clearTimeout(timer); timer = null; resolve(data);
+    }).catch(function(error) {
+      if (settled) return;
+      settled = true; clearTimeout(timer); timer = null;
+      if (error && error.name === 'AbortError') error.kind = 'TIMEOUT';
+      if (!error.kind) error.kind = 'NETWORK';
+      reject(error);
+    });
+  });
+}
+
 function getOriginLatLng(targetLat, targetLng) {
   if (typeof catalog !== 'undefined' && catalog && catalog.pickupLocations) {
     var bestOrigin = null;
@@ -66,12 +106,13 @@ function getOriginLatLng(targetLat, targetLng) {
 }
 
 async function searchPlacePhoton(query) {
+  var sequence = ++_placeSearchSequence;
+  var generation = _mapRequestGeneration;
   var origin = getOriginLatLng();
   var url = 'https://photon.komoot.io/api/?q=' + encodeURIComponent(query) + '&lat=' + origin.lat + '&lon=' + origin.lng + '&limit=5&lang=id';
   try {
-    var res = await fetch(url);
-    if (!res.ok) throw new Error("Photon Error");
-    var data = await res.json();
+    var data = await mapFetchJson(url, MAP_NETWORK_TIMEOUT_MS);
+    if (sequence !== _placeSearchSequence || generation !== _mapRequestGeneration) { var stale = []; stale.error_category = 'STALE'; return stale; }
     var results = [];
     if (data && data.features) {
       for (var i = 0; i < data.features.length; i++) {
@@ -98,9 +139,8 @@ async function searchPlacePhoton(query) {
     // Fallback to Nominatim
     var nomUrl = 'https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(query) + '&limit=5&countrycodes=id';
     try {
-      var nomRes = await fetch(nomUrl);
-      if (!nomRes.ok) return [];
-      var nomData = await nomRes.json();
+      var nomData = await mapFetchJson(nomUrl, MAP_NETWORK_TIMEOUT_MS);
+      if (sequence !== _placeSearchSequence || generation !== _mapRequestGeneration) { var staleFallback = []; staleFallback.error_category = 'STALE'; return staleFallback; }
       var nomResults = [];
       for (var j = 0; j < nomData.length; j++) {
         nomResults.push({
@@ -109,21 +149,27 @@ async function searchPlacePhoton(query) {
           lng: parseFloat(nomData[j].lon)
         });
       }
+      if (!nomResults.length) nomResults.error_category = 'NOT_FOUND';
       return nomResults;
     } catch (err) {
-      return [];
+      var failed = [];
+      failed.error_category = err && err.kind === 'TIMEOUT' ? 'TIMEOUT' : 'NETWORK';
+      return failed;
     }
   }
 }
 
 async function reverseGeocode(lat, lng) {
+  var sequence = ++_reverseGeocodeSequence;
+  var generation = _mapRequestGeneration;
   var url = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lng + '&zoom=18&addressdetails=1';
   try {
-    var res = await fetch(url);
-    if (!res.ok) return "";
-    var data = await res.json();
+    var data = await mapFetchJson(url, MAP_NETWORK_TIMEOUT_MS);
+    if (sequence !== _reverseGeocodeSequence || generation !== _mapRequestGeneration) { _lastGeocodeFailure = 'STALE'; return ""; }
+    _lastGeocodeFailure = data && data.display_name ? '' : 'NOT_FOUND';
     return data.display_name || "";
   } catch (e) {
+    _lastGeocodeFailure = e && e.kind === 'TIMEOUT' ? 'TIMEOUT' : 'NETWORK';
     return "";
   }
 }

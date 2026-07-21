@@ -79,13 +79,10 @@ function _promoError(code, error) {
 }
 
 function _promoLogConfigWarning(promo, reason) {
-  try {
-    log('ERROR', String(promo.promo_id || promo.kode || 'PROMO_CONFIG'), 'Konfigurasi promo tidak valid: ' + reason, {
-      promo_id: String(promo.promo_id || ''),
-      kode: _promoNormalizeCode(promo.kode),
-      reason: reason
-    });
-  } catch (ignored) {}
+  safeLog('ERROR', 'PROMO_CONFIG_INVALID', '', {
+    operation: 'promoValidateConfig', stage: 'validation', entity_ref: promo.promo_id || promo.kode || '',
+    error_code: 'PROMO_CONFIG_INVALID', retryable: false
+  });
 }
 
 function _promoValidateConfig(promo) {

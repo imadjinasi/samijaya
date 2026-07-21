@@ -579,7 +579,7 @@ function sendOtpToAdminTelegram(no_hp, nama, otp, isResend) {
   var waUrl  = waLink(no_hp, waText);
 
   // Kirim ke semua admin dengan tombol inline URL
-  tgSendToAdmins(pesan, {
+  var notificationResults = tgSendToAdmins(pesan, {
     reply_markup: {
       inline_keyboard: [[
         { text: '📲 Kirim OTP via WhatsApp', url: waUrl }
@@ -587,5 +587,11 @@ function sendOtpToAdminTelegram(no_hp, nama, otp, isResend) {
     }
   });
 
-  try { safeLog('NOTIF', 'OTP_NOTIFICATION_SENT', '', { function: 'sendOtpToAdminTelegram', stage: 'telegram' }); } catch (_) {}
+  var sent = false;
+  for (var i = 0; i < (notificationResults || []).length; i++) if (notificationResults[i] && notificationResults[i].ok) sent = true;
+  safeLog(sent ? 'NOTIF' : 'ERROR', sent ? 'OTP_NOTIFICATION_SENT' : 'OTP_NOTIFICATION_FAILED', '', {
+    operation: 'sendOtpToAdminTelegram', stage: 'telegram',
+    error_code: sent ? '' : 'TELEGRAM_NOTIFICATION_FAILED', retryable: !sent
+  });
+  return { ok: sent, results: notificationResults || [] };
 }

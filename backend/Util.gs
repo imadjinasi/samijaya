@@ -392,17 +392,91 @@ function getSetting(key) {
  * Baca semua key di sheet Settings, remove satu-satu dari cache.
  */
 function clearSettingsCache() {
-  var cache = CacheService.getScriptCache();
   var rows = readAll('Settings');
+  var keys = [];
+  for (var i = 0; i < rows.length; i++) keys.push(String(rows[i].key || ''));
+  return cacheInvalidateSettings(keys, { operation: 'clearSettingsCache' });
+}
 
-  var cacheKeys = [];
-  for (var i = 0; i < rows.length; i++) {
-    cacheKeys.push(_SETTING_CACHE_PREFIX + rows[i]['key']);
-  }
+// Cache data aplikasi. Security/dedup/rate-limit state sengaja tidak terdaftar.
+var _APP_CACHE_REGISTRY = {
+  catalog: { key: 'catalog_cache', ttl: 300 },
+  setting: { prefix: 'setting_', ttl: 300 }
+};
+var _CATALOG_REVISION_PROPERTY = 'CATALOG_CACHE_REVISION';
 
-  if (cacheKeys.length > 0) {
-    cache.removeAll(cacheKeys);
+function cacheInvalidateKey(cacheKey, metadata) {
+  try {
+    CacheService.getScriptCache().remove(String(cacheKey));
+    return true;
+  } catch (_) {
+    safeLog('ERROR', 'CACHE_INVALIDATION_FAILED', '', {
+      operation: metadata && metadata.operation || 'cacheInvalidateKey',
+      stage: 'remove', error_code: 'CACHE_UNAVAILABLE', retryable: true
+    });
+    return false;
   }
+}
+
+function cacheInvalidateSetting(key, metadata) {
+  var normalized = String(key == null ? '' : key).trim();
+  if (!normalized) return false;
+  return cacheInvalidateKey(_APP_CACHE_REGISTRY.setting.prefix + normalized, metadata || { operation: 'cacheInvalidateSetting' });
+}
+
+function cacheInvalidateSettings(keys, metadata) {
+  var ok = true;
+  var seen = {};
+  for (var i = 0; i < (keys || []).length; i++) {
+    var key = String(keys[i] || '').trim();
+    if (!key || seen[key]) continue;
+    seen[key] = true;
+    if (!cacheInvalidateSetting(key, metadata)) ok = false;
+  }
+  return ok;
+}
+
+function catalogGetRevision() {
+  try {
+    var value = String(PropertiesService.getScriptProperties().getProperty(_CATALOG_REVISION_PROPERTY) || '');
+    return /^[A-Za-z0-9._-]{1,80}$/.test(value) ? value : 'legacy';
+  } catch (_) {
+    return 'legacy';
+  }
+}
+
+function catalogAdvanceRevision(operation) {
+  var revision = String(Date.now()) + '-' + Utilities.getUuid().replace(/-/g, '').substring(0, 12);
+  try {
+    PropertiesService.getScriptProperties().setProperty(_CATALOG_REVISION_PROPERTY, revision);
+    return revision;
+  } catch (_) {
+    safeLog('ERROR', 'CATALOG_REVISION_UPDATE_FAILED', '', {
+      operation: operation || 'catalogAdvanceRevision', stage: 'property_write',
+      error_code: 'REVISION_WRITE_FAILED', retryable: true
+    });
+    return '';
+  }
+}
+
+/** Dipanggil hanya setelah mutation sumber katalog berhasil commit. */
+function invalidateCatalogAfterMutation(operation) {
+  var cacheOk = cacheInvalidateKey(_APP_CACHE_REGISTRY.catalog.key, { operation: operation || 'catalogMutation' });
+  var revision = catalogAdvanceRevision(operation || 'catalogMutation');
+  return { ok: cacheOk && !!revision, cache_invalidated: cacheOk, revision: revision };
+}
+
+/** Scope /clearcache: hanya cache data aplikasi, tidak menyentuh state keamanan/browser. */
+function clearApplicationDataCaches() {
+  var settingsOk = true;
+  try { settingsOk = clearSettingsCache(); } catch (_) {
+    settingsOk = false;
+    safeLog('ERROR', 'CACHE_INVALIDATION_FAILED', '', { operation: 'clearApplicationDataCaches', stage: 'settings', error_code: 'CACHE_CLEAR_FAILED', retryable: true });
+  }
+  var catalogOk = cacheInvalidateKey(_APP_CACHE_REGISTRY.catalog.key, { operation: 'clearApplicationDataCaches' });
+  // Manual cache clear also changes the opaque revision so browsers discover it on refresh.
+  var revision = catalogAdvanceRevision('clearApplicationDataCaches');
+  return { ok: settingsOk && catalogOk && !!revision, settings: settingsOk, catalog: catalogOk, revision: revision };
 }
 
 // ============================================================
@@ -418,13 +492,8 @@ function clearSettingsCache() {
  * @param {Object|null} detail — object detail atau null
  */
 function log(tipe, refId, pesan, detail) {
-  appendRowObj('Logs', {
-    timestamp: nowJkt(),
-    tipe:        tipe,
-    ref_id:      refId,
-    pesan:       pesan,
-    detail_json: detail ? JSON.stringify(detail) : ''
-  });
+  // Compatibility shim: production callers do not get to persist arbitrary detail.
+  return safeLog(tipe, pesan || 'LEGACY_LOG', refId, { operation: 'legacyLog', stage: 'compat' });
 }
 
 /**
@@ -433,12 +502,15 @@ function log(tipe, refId, pesan, detail) {
  */
 function safeLog(tipe, eventCode, refId, metadata) {
   var allowedKeys = {
-    function: true,
+    function: true, operation: true,
     stage: true,
-    code: true,
+    code: true, error_code: true,
     method: true,
     http_status: true,
     telegram_error_code: true,
+    correlation_id: true,
+    entity_ref: true,
+    retryable: true,
     count: true,
     chunk: true,
     total: true,
@@ -454,7 +526,7 @@ function safeLog(tipe, eventCode, refId, metadata) {
         if (typeof value === 'number' || typeof value === 'boolean') {
           safeMeta[key] = value;
         } else {
-          safeMeta[key] = String(value).substring(0, 120);
+          safeMeta[key] = operationalRedact(value).substring(0, 120);
         }
       }
     }
@@ -468,13 +540,56 @@ function safeLog(tipe, eventCode, refId, metadata) {
   if (/^SJ\d{9}$/.test(candidateRef)) safeRef = candidateRef;
   else safeRef = event;
 
-  appendRowObj('Logs', {
-    timestamp: nowJkt(),
-    tipe: String(tipe || 'ERROR').substring(0, 20),
-    ref_id: safeRef,
-    pesan: event,
-    detail_json: Object.keys(safeMeta).length ? JSON.stringify(safeMeta) : ''
-  });
+  var detailJson = '';
+  try { detailJson = Object.keys(safeMeta).length ? JSON.stringify(safeMeta) : ''; }
+  catch (_) { detailJson = '{"error_code":"LOG_SERIALIZATION_FAILED"}'; }
+  try {
+    appendRowObj('Logs', {
+      timestamp: nowJkt(), tipe: operationalSeverity(tipe), ref_id: safeRef,
+      pesan: event, detail_json: detailJson
+    });
+    return true;
+  } catch (_) {
+    // Deliberately no recursive logger call.
+    return false;
+  }
+}
+
+function operationalSeverity(value) {
+  var severity = String(value || 'ERROR').trim().toUpperCase();
+  if (severity === 'NOTIF' || severity === 'ACTIVITY' || severity === 'ERROR') return severity;
+  if (severity === 'DEBUG' || severity === 'INFO') return 'ACTIVITY';
+  return 'ERROR';
+}
+
+function operationalRedact(value) {
+  var text = String(value == null ? '' : value);
+  text = text.replace(/https:\/\/api\.telegram\.org\/bot[^\/\s]+/gi, 'https://api.telegram.org/bot[REDACTED]');
+  text = text.replace(/\b\d{6}\b/g, '[REDACTED]');
+  text = text.replace(/\b(?:62|0)8\d{7,12}\b/g, '[REDACTED]');
+  text = text.replace(/(token|otp|password|secret|capability|authorization)\s*[:=]\s*[^\s,;]+/gi, '$1=[REDACTED]');
+  return text;
+}
+
+function createServerCorrelationId() {
+  try { return 'c_' + Utilities.getUuid().replace(/-/g, '').toLowerCase().substring(0, 24); }
+  catch (_) { return 'c_' + String(Date.now()) + '_' + String(Math.random()).substring(2, 10); }
+}
+
+function isValidServerCorrelationId(value) { return /^c_[a-z0-9]{16,40}$/.test(String(value || '')); }
+function isValidOperationalCorrelationId(value) {
+  return isValidServerCorrelationId(value) || /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(String(value || ''));
+}
+function correlationReference(value) {
+  var text = String(value || '');
+  return text.length >= 8 ? text.substring(text.length - 8).toUpperCase() : '';
+}
+
+function attachErrorCorrelation(result, correlationId) {
+  if (!result || result.ok !== false || !isValidOperationalCorrelationId(correlationId)) return result;
+  result.correlation_id = correlationId;
+  if (result.code === 'INTERNAL' || /RECOVERY_REQUIRED/.test(String(result.code || ''))) result.reference_code = correlationReference(correlationId);
+  return result;
 }
 
 // ============================================================

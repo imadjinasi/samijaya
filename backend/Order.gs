@@ -157,11 +157,15 @@ function _notifyAdminNewOrder(orderObj, orderItems) {
     }
   };
 
-  tgSendToAdmins(pesan, opts);
-
-  try { safeLog('NOTIF', 'ORDER_NOTIFICATION_SENT', orderObj.order_id, {
-    function: '_notifyAdminNewOrder', stage: 'telegram', order_id: orderObj.order_id
-  }); } catch (_) {}
+  var results = tgSendToAdmins(pesan, opts) || [];
+  var sent = false;
+  for (var i = 0; i < results.length; i++) if (results[i] && results[i].ok) sent = true;
+  safeLog(sent ? 'NOTIF' : 'ERROR', sent ? 'ORDER_NOTIFICATION_SENT' : 'ORDER_NOTIFICATION_FAILED', orderObj.order_id, {
+    operation: '_notifyAdminNewOrder', stage: 'telegram', order_id: orderObj.order_id,
+    correlation_id: _orderNormalizeRequestId(orderObj.client_request_id),
+    error_code: sent ? '' : 'TELEGRAM_NOTIFICATION_FAILED', retryable: !sent
+  });
+  return { ok: sent, results: results };
 }
 
 function _orderNormalizeRequestId(value) {
@@ -1039,7 +1043,7 @@ function orderCreateOrder(payload, token) {
     if (poinDipakai > 0) {
       saldoAkhir = saldoPoinLama - poinDipakai;
       if (saldoAkhir < 0) {
-        try { safeLog('ERROR', 'ORDER_POINT_GUARD', orderId, { function: 'orderCreateOrder', stage: 'point_guard', order_id: orderId }); } catch (_) {}
+        safeLog('ERROR', 'ORDER_POINT_GUARD', orderId, { operation: 'orderCreateOrder', stage: 'point_guard', order_id: orderId, correlation_id: requestId, error_code: 'POIN_TIDAK_CUKUP', retryable: false });
         return { ok: false, code: 'POIN_TIDAK_CUKUP', error: 'Saldo poin tidak mencukupi' };
       }
       pointLedgerExpected = {
@@ -1121,7 +1125,7 @@ function orderCreateOrder(payload, token) {
     try {
       _notifyAdminNewOrder(lockResult._notification.order, lockResult._notification.items);
     } catch (notifyErr) {
-      try { safeLog('ERROR', 'ORDER_NOTIFICATION_FAILED', lockResult.data.order_id, { function: 'orderCreateOrder', stage: 'telegram', order_id: lockResult.data.order_id }); } catch (_) {}
+      safeLog('ERROR', 'ORDER_NOTIFICATION_FAILED', lockResult.data.order_id, { operation: 'orderCreateOrder', stage: 'telegram', order_id: lockResult.data.order_id, correlation_id: _orderNormalizeRequestId(payload && payload.client_request_id), error_code: 'TELEGRAM_NOTIFICATION_FAILED', retryable: true });
     }
   }
   if (lockResult) {
