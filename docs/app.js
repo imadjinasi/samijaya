@@ -2721,14 +2721,11 @@ function renderMyOrders(orders, reviewableMap) {
     
     html += '<div class="my-order-items-preview">';
     var items = order.items || [];
-    if (items.length > 2) {
-      html += renderMyOrderItem(items[0]);
-      html += '<div class="my-order-item-row" style="color:#888;">+ ' + (items.length - 1) + ' item lainnya</div>';
-    } else {
-      for (var j = 0; j < items.length; j++) {
-        html += renderMyOrderItem(items[j]);
-      }
+    var previewItemCount = 0;
+    for (var j = 0; j < items.length; j++) {
+      previewItemCount += Number(items[j].qty) || 0;
     }
+    html += '<div class="my-order-item-row" style="color:#666;">' + previewItemCount + ' item dalam pesanan</div>';
     html += '</div>';
     
     html += '<div class="my-order-total-price">' + formatRupiah(order.total || 0) + '</div>';
