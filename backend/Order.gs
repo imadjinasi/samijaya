@@ -336,7 +336,7 @@ function orderCreateOrder(payload, token) {
           return { ok: false, code: 'VARIANT_MISMATCH', error: 'Varian tidak sesuai dengan produk' };
         }
         
-        hargaItem = Number(varian.harga) || 0;
+        hargaItem = (Number(prod.harga) || 0) + (Number(varian.harga) || 0);
         varIdSnapshot = String(varian.variant_id);
         varNamaSnapshot = String(varian.nama_varian);
         axisNamaSnapshot = String(varian.nama_axis || '');

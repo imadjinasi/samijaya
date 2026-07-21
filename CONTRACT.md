@@ -91,7 +91,9 @@ Tambahan 3 kolom snapshot varian:
 
 ### Perilaku sheet Products vs ProductVariants
 - Untuk produk TANPA varian: kolom `harga` di Products dipakai apa adanya.
-- Untuk produk DENGAN varian: kolom `harga` di Products dipakai sebagai "harga starting from" (untuk display kartu produk); harga aktual per order diambil dari ProductVariants.harga.
+- Untuk produk DENGAN varian: kolom `harga` di Products dipakai sebagai "harga dasar" (untuk display kartu produk).
+- Kolom `harga` di ProductVariants bermakna SELISIH/tambahan dari harga dasar produk. Bisa 0 (tidak menambah) atau positif (menambah).
+- Harga final item = Products.harga (dasar) + ProductVariants.harga (selisih).
 - Sistem detect produk bervarian dengan query ProductVariants.
 
 ### 11. PointHistory
