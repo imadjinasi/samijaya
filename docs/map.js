@@ -90,13 +90,11 @@ async function searchPlacePhoton(query) {
     }
     
     if (results.length > 0) {
-      console.log("Photon search success:", results);
       return results;
     } else {
       throw new Error("Photon empty result");
     }
   } catch (e) {
-    console.log("Photon fallback to Nominatim:", e.message);
     // Fallback to Nominatim
     var nomUrl = 'https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(query) + '&limit=5&countrycodes=id';
     try {

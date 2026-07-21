@@ -131,7 +131,11 @@ Harga 1 item = Products.harga (dasar) + ProductVariants.harga (selisih varian, 0
 - `tipe`: `TAMBAH | PAKAI | KOREKSI`
 
 ### 12. Sessions
-`token | no_hp | member_id | otp | otp_expires_at | otp_used | session_expires_at | created_at`
+`token | no_hp | member_id | otp | otp_expires_at | otp_used | session_expires_at | created_at | otp_failed_attempts | otp_locked_at`
+
+- `otp_failed_attempts`: jumlah kegagalan verifikasi untuk row OTP tersebut; default `0`.
+- `otp_locked_at`: timestamp WIB saat OTP dikunci setelah lima kegagalan; kosong bila belum dikunci.
+- Error `OTP_LOCKED`: OTP tidak dapat digunakan dan pengguna harus meminta OTP baru.
 
 ### 13. MessageTemplates
 `kode | isi | keterangan`
@@ -201,7 +205,10 @@ Harga 1 item = Products.harga (dasar) + ProductVariants.harga (selisih varian, 0
 - `addAddress` — tambah alamat baru member
 - `addressSetDefault` — set 1 alamat jadi default (payload: `{address_id}`, enforce 1 default per member)
 
-Plus jalur webhook Telegram (via `TELEGRAM_SECRET` di header).
+Plus jalur webhook Telegram melalui capability query `tg_key` yang dicocokkan dengan
+Script Property `TELEGRAM_WEBHOOK_KEY` atau `TELEGRAM_WEBHOOK_KEY_NEXT` selama rotasi.
+`TELEGRAM_SECRET` tetap boleh dikirim sebagai header resmi Telegram, tetapi header
+tersebut tidak dianggap terverifikasi oleh GAS.
 
 ## 3A. Aturan PromoCodes (Fase 7.11-A)
 - Maksimal satu kode per order; tidak ada stacking kode.

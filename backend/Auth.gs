@@ -48,10 +48,28 @@ function normalizePhone(s) {
  * @return {string} OTP 6 digit
  */
 function generateOtp() {
-  var n = Math.floor(Math.random() * 1000000);
-  var s = String(n);
-  while (s.length < 6) s = '0' + s;
-  return s;
+  var acceptedLimit = 4294000000; // floor(2^32 / 1,000,000) * 1,000,000
+  for (var attempt = 0; attempt < 20; attempt++) {
+    var entropy = Utilities.getUuid() + Utilities.getUuid();
+    var digest = Utilities.computeDigest(
+      Utilities.DigestAlgorithm.SHA_256,
+      entropy,
+      Utilities.Charset.UTF_8
+    );
+    if (!digest || digest.length < 4) continue;
+    var sample = 0;
+    for (var i = 0; i < 4; i++) {
+      var byteValue = digest[i];
+      if (byteValue < 0) byteValue += 256;
+      sample = sample * 256 + byteValue;
+    }
+    if (sample >= acceptedLimit) continue;
+    var otpNumber = sample % 1000000;
+    var otpString = String(otpNumber);
+    while (otpString.length < 6) otpString = '0' + otpString;
+    return otpString;
+  }
+  throw new Error('OTP_GENERATION_FAILED');
 }
 
 // ============================================================
@@ -97,12 +115,14 @@ function authRequestOtp(payload) {
       if (!lastSession || createdAt > new Date(lastSession.created_at).getTime()) {
         lastSession = sessions[i];
       }
-      // Cari session aktif (belum dipakai dan belum expired)
-      if (Number(sessions[i].otp_used) === 0 && new Date(sessions[i].otp_expires_at).getTime() > now.getTime()) {
-        if (!activeSession || new Date(sessions[i].otp_expires_at).getTime() > new Date(activeSession.otp_expires_at).getTime()) {
-          activeSession = sessions[i];
-        }
-      }
+    }
+
+    // Hanya row terbaru yang boleh menjadi OTP aktif. OTP locked tidak boleh
+    // membuat row lama dipakai ulang sebagai resend.
+    if (lastSession && Number(lastSession.otp_used) === 0 &&
+        !String(lastSession.otp_locked_at || '').trim() &&
+        new Date(lastSession.otp_expires_at).getTime() > now.getTime()) {
+      activeSession = lastSession;
     }
 
     // Cek cooldown TETAP (untuk mencegah spam request)
@@ -154,7 +174,9 @@ function authRequestOtp(payload) {
       otp_expires_at: otpExpiresAt,
       otp_used: 0,
       session_expires_at: '',
-      created_at: nowJkt()
+      created_at: nowJkt(),
+      otp_failed_attempts: 0,
+      otp_locked_at: ''
     });
 
     return { ok: true };
@@ -209,25 +231,43 @@ function authVerifyOtp(payload) {
     var sessions = readAll('Sessions');
     var now = new Date();
 
-    // Cari row Sessions: no_hp match, otp match, otp_used == 0, otp_expires_at > sekarang
-    var matchIdx = -1;
+    // Selalu evaluasi OTP terbaru untuk nomor ini. Jangan mencari row lama
+    // berdasarkan kecocokan kode karena counter melekat pada satu OTP.
     var matchRow = null;
+    var matchCreatedMs = -1;
     for (var i = 0; i < sessions.length; i++) {
       var row = sessions[i];
       if (String(row.no_hp) !== noHp) continue;
-      if (String(row.otp).replace(/^'/, "") !== inputOtp) continue;
-      if (Number(row.otp_used) !== 0) continue;
-
-      var expiresAt = new Date(row.otp_expires_at).getTime();
-      if (expiresAt <= now.getTime()) continue;
-
-      matchRow = row;
-      matchIdx = i;
-      break;
+      var createdMs = new Date(row.created_at).getTime();
+      if (isNaN(createdMs)) createdMs = i;
+      if (!matchRow || createdMs >= matchCreatedMs) {
+        matchRow = row;
+        matchCreatedMs = createdMs;
+      }
     }
 
     if (!matchRow) {
-      return { ok: false, error: 'OTP salah atau sudah kedaluwarsa', code: 'OTP_INVALID' };
+      return { ok: false, error: 'Kode OTP tidak valid', code: 'OTP_INVALID' };
+    }
+    if (String(matchRow.otp_locked_at || '').trim()) {
+      return { ok: false, error: 'OTP tidak dapat digunakan. Silakan minta OTP baru.', code: 'OTP_LOCKED' };
+    }
+    if (Number(matchRow.otp_used) !== 0 || new Date(matchRow.otp_expires_at).getTime() <= now.getTime()) {
+      return { ok: false, error: 'Kode OTP tidak valid', code: 'OTP_INVALID' };
+    }
+
+    var storedOtp = String(matchRow.otp).replace(/^'/, '');
+    if (storedOtp !== inputOtp) {
+      var failedAttempts = Math.max(0, Number(matchRow.otp_failed_attempts) || 0) + 1;
+      var attemptPatch = { otp_failed_attempts: failedAttempts };
+      if (failedAttempts >= 5) attemptPatch.otp_locked_at = nowJkt();
+      if (!updateRowById('Sessions', 'token', matchRow.token, attemptPatch)) {
+        throw new Error('OTP_ATTEMPT_UPDATE_FAILED');
+      }
+      if (failedAttempts >= 5) {
+        return { ok: false, error: 'OTP tidak dapat digunakan. Silakan minta OTP baru.', code: 'OTP_LOCKED' };
+      }
+      return { ok: false, error: 'Kode OTP tidak valid', code: 'OTP_INVALID' };
     }
 
     // Cek apakah member sudah terdaftar
@@ -260,16 +300,19 @@ function authVerifyOtp(payload) {
       };
       appendRowObj('Members', member);
     }
+    if (String(member.status || '').trim().toLowerCase() !== 'aktif') {
+      return { ok: false, error: 'Sesi tidak valid atau kedaluwarsa', code: 'UNAUTHORIZED' };
+    }
     
-    // Tandai otp_used = 1 HANYA JIKA lolos pengecekan di atas
-    updateRowById('Sessions', 'token', matchRow.token, { otp_used: 1 });
-
-    // Update member_id dan session_expires_at di row Sessions
+    // Tandai used dan bind session dalam satu update row.
     var sessionExpiresAt = new Date(now.getTime() + (sessionValidDays * 24 * 60 * 60 * 1000)).toISOString();
-    updateRowById('Sessions', 'token', matchRow.token, {
+    if (!updateRowById('Sessions', 'token', matchRow.token, {
+      otp_used: 1,
       member_id: member.member_id,
       session_expires_at: sessionExpiresAt
-    });
+    })) {
+      throw new Error('OTP_SESSION_BIND_FAILED');
+    }
 
     // Ambil alamat aktif untuk member ini
     var allAddresses = readAll('MemberAddresses');
@@ -328,6 +371,7 @@ function requireSession(token) {
   for (var m = 0; m < members.length; m++) {
     if (String(members[m].member_id) === String(matchRow.member_id)) {
       var mem = members[m];
+      if (String(mem.status || '').trim().toLowerCase() !== 'aktif') return null;
       if (mem.tgl_lahir) {
         if (Object.prototype.toString.call(mem.tgl_lahir) === '[object Date]') {
           mem.tgl_lahir = Utilities.formatDate(mem.tgl_lahir, 'Asia/Jakarta', 'yyyy-MM-dd');
@@ -340,10 +384,7 @@ function requireSession(token) {
   }
 
   // Anomali: session valid tapi member tidak ada
-  log('ERROR', matchRow.member_id, 'Session valid tapi member tidak ditemukan', {
-    token: token,
-    member_id: matchRow.member_id
-  });
+  try { safeLog('ERROR', 'SESSION_MEMBER_NOT_FOUND', '', { function: 'requireSession', stage: 'member_lookup' }); } catch (_) {}
   return null;
 }
 
@@ -541,5 +582,5 @@ function sendOtpToAdminTelegram(no_hp, nama, otp, isResend) {
     }
   });
 
-  log('NOTIF', no_hp, 'OTP dikirim ke admin Telegram', { otp: otp, nama: nama });
+  try { safeLog('NOTIF', 'OTP_NOTIFICATION_SENT', '', { function: 'sendOtpToAdminTelegram', stage: 'telegram' }); } catch (_) {}
 }

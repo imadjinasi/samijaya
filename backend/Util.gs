@@ -251,6 +251,56 @@ function log(tipe, refId, pesan, detail) {
   });
 }
 
+/**
+ * Tulis log operasional dengan metadata allowlist. Helper ini sengaja tidak
+ * menerima/menyalin payload arbitrer agar secret dan PII tidak ikut tersimpan.
+ */
+function safeLog(tipe, eventCode, refId, metadata) {
+  var allowedKeys = {
+    function: true,
+    stage: true,
+    code: true,
+    method: true,
+    http_status: true,
+    telegram_error_code: true,
+    count: true,
+    chunk: true,
+    total: true,
+    order_id: true
+  };
+  var safeMeta = {};
+  try {
+    if (metadata && typeof metadata === 'object') {
+      for (var key in allowedKeys) {
+        if (!allowedKeys.hasOwnProperty(key) || !metadata.hasOwnProperty(key)) continue;
+        var value = metadata[key];
+        if (value === null || value === undefined) continue;
+        if (typeof value === 'number' || typeof value === 'boolean') {
+          safeMeta[key] = value;
+        } else {
+          safeMeta[key] = String(value).substring(0, 120);
+        }
+      }
+    }
+  } catch (_) {
+    safeMeta = { code: 'REDACTION_FAILED' };
+  }
+
+  var event = String(eventCode || 'UNKNOWN_EVENT').replace(/[^A-Z0-9_\-]/gi, '_').substring(0, 80);
+  var safeRef = '';
+  var candidateRef = String(refId || '');
+  if (/^SJ\d{9}$/.test(candidateRef)) safeRef = candidateRef;
+  else safeRef = event;
+
+  appendRowObj('Logs', {
+    timestamp: nowJkt(),
+    tipe: String(tipe || 'ERROR').substring(0, 20),
+    ref_id: safeRef,
+    pesan: event,
+    detail_json: Object.keys(safeMeta).length ? JSON.stringify(safeMeta) : ''
+  });
+}
+
 // ============================================================
 // 9. jsonResponse(obj)
 // ============================================================

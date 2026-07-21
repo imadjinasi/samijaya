@@ -154,14 +154,9 @@ function _notifyAdminNewOrder(orderObj, orderItems) {
 
   tgSendToAdmins(pesan, opts);
 
-  log('NOTIF', orderObj.order_id, 'Notif order baru dikirim ke admin Telegram', {
-    member_id:    orderObj.member_id,
-    nama:         orderObj.nama,
-    total:        orderObj.total,
-    metode_kirim: orderObj.metode_kirim,
-    metode_bayar: orderObj.metode_bayar,
-    status:       orderObj.status
-  });
+  try { safeLog('NOTIF', 'ORDER_NOTIFICATION_SENT', orderObj.order_id, {
+    function: '_notifyAdminNewOrder', stage: 'telegram', order_id: orderObj.order_id
+  }); } catch (_) {}
 }
 
 // ============================================================
@@ -786,7 +781,7 @@ function orderCreateOrder(payload, token) {
     if (poinDipakai > 0) {
       var saldoAkhir = saldoPoinLama - poinDipakai;
       if (saldoAkhir < 0) {
-        log('ERROR', 'GUARD_POIN', 'Guard poin minus dicegah di checkout', { member_id: member.member_id, saldo: saldoPoinLama, pakai: poinDipakai });
+        try { safeLog('ERROR', 'ORDER_POINT_GUARD', orderId, { function: 'orderCreateOrder', stage: 'point_guard', order_id: orderId }); } catch (_) {}
         return { ok: false, code: 'POIN_TIDAK_CUKUP', error: 'Saldo poin tidak mencukupi' };
       }
       appendRowObj('PointHistory', {
@@ -810,10 +805,9 @@ function orderCreateOrder(payload, token) {
     try {
       _notifyAdminNewOrder(orderObj, lineItems);
     } catch (notifyErr) {
-      log('ERROR', orderId, 'Notif order baru gagal; order tetap sukses', {
-        error: notifyErr.message,
-        stack: notifyErr.stack
-      });
+      try { safeLog('ERROR', 'ORDER_NOTIFICATION_FAILED', orderId, {
+        function: 'orderCreateOrder', stage: 'telegram', order_id: orderId
+      }); } catch (_) {}
     }
 
     // ----------------------------------------------------------

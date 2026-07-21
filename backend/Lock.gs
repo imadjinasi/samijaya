@@ -39,7 +39,7 @@ function withLock(fn) {
   try {
     return fn();
   } catch (e) {
-    log('ERROR', 'withLock', e.message, { stack: e.stack });
+    try { safeLog('ERROR', 'LOCK_CALLBACK_FAILED', '', { function: 'withLock', stage: 'callback' }); } catch (_) {}
     return {
       ok: false,
       error: 'Terjadi kesalahan sistem',

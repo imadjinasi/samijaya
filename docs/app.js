@@ -1367,7 +1367,9 @@ async function handleVerifyOtp(no_hp, nama) {
       closeOtpModal();
       showRegisterModal(no_hp);
     } else {
-      document.getElementById('otp-error').textContent = res.error || 'OTP salah';
+      document.getElementById('otp-error').textContent = res.code === 'OTP_LOCKED'
+        ? 'OTP tidak dapat digunakan. Silakan tutup dialog dan minta OTP baru.'
+        : (res.error || 'OTP salah');
       if (btn) btn.disabled = false;
     }
   } catch (e) {
@@ -4072,10 +4074,8 @@ async function submitAddress(addressId) {
   _submitting = true;
 
   var action = addressId ? 'updateAddress' : 'addAddress';
-  console.log("SUBMIT ALAMAT payload:", payload);
   try {
     var res = await api(action, payload);
-    console.log("RESPONSE:", res);
     if (res.ok) {
       alert('Alamat berhasil disimpan');
       hideAddressForm();
@@ -4084,7 +4084,6 @@ async function submitAddress(addressId) {
       alert('Gagal: ' + (res.error || 'Gagal menyimpan alamat'));
     }
   } catch (e) {
-    console.log("ERROR:", e);
     alert('Gagal terhubung ke server');
   }
 

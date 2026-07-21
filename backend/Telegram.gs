@@ -42,11 +42,14 @@ function tgApi(method, payload) {
   var result = JSON.parse(resp.getContentText());
 
   if (!result.ok) {
-    log('ERROR', 'tgApi', 'Telegram API error: ' + method, {
-      method: method,
-      payload: payload,
-      response: result
-    });
+    try {
+      safeLog('ERROR', 'TELEGRAM_API_ERROR', '', {
+        function: 'tgApi',
+        method: method,
+        http_status: resp.getResponseCode ? resp.getResponseCode() : '',
+        telegram_error_code: result.error_code || ''
+      });
+    } catch (_) {}
   }
 
   return result;
@@ -153,10 +156,10 @@ function tgSendLong(chatId, text, opts) {
       var result = tgSend(chatId, chunks[i], chunkOpts);
       results.push(result);
       if (result && result.ok === false) {
-        log('ERROR', 'tgSendLong', 'Gagal mengirim chunk Telegram', { chunk: i + 1, total: chunks.length });
+        try { safeLog('ERROR', 'TELEGRAM_CHUNK_FAILED', '', { function: 'tgSendLong', chunk: i + 1, total: chunks.length }); } catch (_) {}
       }
     } catch (err) {
-      log('ERROR', 'tgSendLong', 'Gagal mengirim chunk Telegram', { chunk: i + 1, total: chunks.length });
+      try { safeLog('ERROR', 'TELEGRAM_CHUNK_FAILED', '', { function: 'tgSendLong', chunk: i + 1, total: chunks.length }); } catch (_) {}
       results.push({ ok: false, error: 'Telegram send failed' });
     }
   }
@@ -477,23 +480,47 @@ function tgBuildOrderKeyboard(order) {
  */
 function setWebhook() {
   if (!WEBHOOK_URL) {
-    Logger.log('ERROR: WEBHOOK_URL belum diisi. Isi konstanta WEBHOOK_URL di atas file Telegram.gs dengan URL /exec deployment, lalu run lagi.');
-    return;
+    try { safeLog('ERROR', 'WEBHOOK_CONFIG_MISSING', '', { function: 'setWebhook', stage: 'base_url' }); } catch (_) {}
+    return { ok: false, code: 'WEBHOOK_CONFIG_MISSING' };
   }
 
+  var properties = PropertiesService.getScriptProperties();
+  var nextKey = String(properties.getProperty('TELEGRAM_WEBHOOK_KEY_NEXT') || '');
+  var currentKey = String(properties.getProperty('TELEGRAM_WEBHOOK_KEY') || '');
+  var webhookKey = nextKey || currentKey;
+  if (!webhookKey) {
+    try { safeLog('ERROR', 'WEBHOOK_CONFIG_MISSING', '', { function: 'setWebhook', stage: 'capability' }); } catch (_) {}
+    return { ok: false, code: 'WEBHOOK_CONFIG_MISSING' };
+  }
+  var separator = WEBHOOK_URL.indexOf('?') === -1 ? '?' : '&';
+  var targetUrl = WEBHOOK_URL + separator + 'tg_key=' + encodeURIComponent(webhookKey);
   var secret = getSetting('TELEGRAM_SECRET');
-  if (!secret) {
-    Logger.log('ERROR: TELEGRAM_SECRET belum diisi di sheet Settings.');
-    return;
-  }
 
-  var result = tgApi('setWebhook', {
-    url: WEBHOOK_URL,
-    secret_token: secret,
+  var webhookPayload = {
+    url: targetUrl,
     allowed_updates: ['message', 'callback_query']
-  });
+  };
+  if (secret) webhookPayload.secret_token = secret;
+  var result = tgApi('setWebhook', webhookPayload);
 
-  Logger.log('setWebhook result: ' + JSON.stringify(result));
+  try { safeLog(result && result.ok ? 'ACTIVITY' : 'ERROR', 'SET_WEBHOOK_RESULT', '', {
+    function: 'setWebhook', code: result && result.ok ? 'OK' : 'FAILED',
+    telegram_error_code: result && result.error_code
+  }); } catch (_) {}
+  return { ok: !!(result && result.ok), code: result && result.ok ? 'OK' : 'FAILED' };
+}
+
+function finalizeWebhookKeyRotation() {
+  var properties = PropertiesService.getScriptProperties();
+  var nextKey = String(properties.getProperty('TELEGRAM_WEBHOOK_KEY_NEXT') || '');
+  if (!nextKey) {
+    try { safeLog('ERROR', 'WEBHOOK_ROTATION_NOT_READY', '', { function: 'finalizeWebhookKeyRotation', stage: 'next_missing' }); } catch (_) {}
+    return { ok: false, code: 'WEBHOOK_ROTATION_NOT_READY' };
+  }
+  properties.setProperty('TELEGRAM_WEBHOOK_KEY', nextKey);
+  properties.deleteProperty('TELEGRAM_WEBHOOK_KEY_NEXT');
+  try { safeLog('ACTIVITY', 'WEBHOOK_ROTATION_FINALIZED', '', { function: 'finalizeWebhookKeyRotation', code: 'OK' }); } catch (_) {}
+  return { ok: true, code: 'OK' };
 }
 
 // ============================================================
@@ -504,7 +531,63 @@ function setWebhook() {
  */
 function deleteWebhook() {
   var result = tgApi('deleteWebhook', {});
-  Logger.log('deleteWebhook result: ' + JSON.stringify(result));
+  try { safeLog(result && result.ok ? 'ACTIVITY' : 'ERROR', 'DELETE_WEBHOOK_RESULT', '', {
+    function: 'deleteWebhook', code: result && result.ok ? 'OK' : 'FAILED',
+    telegram_error_code: result && result.error_code
+  }); } catch (_) {}
+  return { ok: !!(result && result.ok), code: result && result.ok ? 'OK' : 'FAILED' };
+}
+
+function _tgLoginRateKey(chatId) {
+  return 'tg_login_fail_' + sha256(String(chatId));
+}
+
+function _tgReadLoginRate(chatId) {
+  return withLock(function() {
+    try {
+      var cache = CacheService.getScriptCache();
+      var raw = cache.get(_tgLoginRateKey(chatId));
+      if (!raw) return { ok: true, data: { count: 0, started_at_ms: Date.now(), available: true } };
+      var parsed = JSON.parse(raw);
+      var started = Number(parsed && parsed.started_at_ms) || 0;
+      if (!started || Date.now() - started >= 900000) {
+        return { ok: true, data: { count: 0, started_at_ms: Date.now(), available: true } };
+      }
+      return { ok: true, data: { count: Math.max(0, Number(parsed.count) || 0), started_at_ms: started, available: true } };
+    } catch (_) {
+      try { safeLog('ERROR', 'TG_LOGIN_RATE_LIMIT_UNAVAILABLE', '', { function: '_tgReadLoginRate', stage: 'read' }); } catch (_) {}
+      return { ok: true, data: { count: 0, started_at_ms: Date.now(), available: false } };
+    }
+  });
+}
+
+function _tgRecordLoginFailure(chatId, state) {
+  if (!state || state.available === false) return 0;
+  var result = withLock(function() {
+    try {
+      var cache = CacheService.getScriptCache();
+      var key = _tgLoginRateKey(chatId);
+      var raw = cache.get(key);
+      var current = raw ? JSON.parse(raw) : null;
+      var started = Number(current && current.started_at_ms) || Number(state.started_at_ms) || Date.now();
+      var withinWindow = Date.now() - started < 900000;
+      if (!withinWindow) started = Date.now();
+      var count = (withinWindow ? Math.max(0, Number(current && current.count) || 0) : 0) + 1;
+      var elapsed = Math.floor((Date.now() - started) / 1000);
+      cache.put(key, JSON.stringify({ count: count, started_at_ms: started }), Math.max(1, 900 - elapsed));
+      return { ok: true, data: { count: count } };
+    } catch (_) {
+      try { safeLog('ERROR', 'TG_LOGIN_RATE_LIMIT_UNAVAILABLE', '', { function: '_tgRecordLoginFailure', stage: 'write' }); } catch (_) {}
+      return { ok: true, data: { count: 0 } };
+    }
+  });
+  return result && result.data ? Number(result.data.count) || 0 : 0;
+}
+
+function _tgResetLoginRate(chatId) {
+  try { CacheService.getScriptCache().remove(_tgLoginRateKey(chatId)); } catch (_) {
+    try { safeLog('ERROR', 'TG_LOGIN_RATE_LIMIT_UNAVAILABLE', '', { function: '_tgResetLoginRate', stage: 'remove' }); } catch (_) {}
+  }
 }
 
 // ============================================================
@@ -555,11 +638,24 @@ function handleTelegramWebhook(update) {
           return { ok: true };
         }
 
+        var loginRateResult = _tgReadLoginRate(chatId);
+        var loginRateState = loginRateResult && loginRateResult.data
+          ? loginRateResult.data : { count: 0, available: false };
+        if (loginRateState.available !== false && loginRateState.count >= 5) {
+          tgSend(chatId, 'Login ditolak sementara karena terlalu banyak percobaan. Coba lagi nanti.');
+          return { ok: true };
+        }
+
         // Hash password & bandingkan
         var inputHash    = sha256(password);
         var expectedHash = getSetting('ADMIN_PASSWORD_HASH');
 
         if (!expectedHash || inputHash !== expectedHash) {
+          var failedLoginCount = _tgRecordLoginFailure(chatId, loginRateState);
+          if (failedLoginCount >= 5) {
+            tgSend(chatId, 'Login ditolak sementara karena terlalu banyak percobaan. Coba lagi nanti.');
+            return { ok: true };
+          }
           tgSend(chatId, '❌ Password salah.');
           return { ok: true };
         }
@@ -587,13 +683,15 @@ function handleTelegramWebhook(update) {
           tgSend(chatId, '❌ Login gagal: ' + tgEscapeHtml(loginResult && loginResult.error ? loginResult.error : 'operasi tidak dapat diproses'));
           return { ok: true };
         }
+
+        _tgResetLoginRate(chatId);
         if (loginResult.data && loginResult.data.already_admin) {
           tgSend(chatId, 'ℹ️ Anda sudah terdaftar sebagai admin.');
           return { ok: true };
         }
         clearSettingsCache();
         tgSend(chatId, '✅ Login berhasil, Anda kini terdaftar sebagai admin.');
-        log('ACTIVITY', chatId, 'Admin login via Telegram', { chat_id: chatId });
+        try { safeLog('ACTIVITY', 'TG_ADMIN_LOGIN_SUCCESS', '', { function: 'handleTelegramWebhook', stage: 'login' }); } catch (_) {}
         return { ok: true };
       }
 
@@ -851,8 +949,8 @@ function handleTelegramWebhook(update) {
     return { ok: true };
 
   } catch (err) {
-    log('ERROR', 'handleTelegramWebhook', err.message, { stack: err.stack });
-    return { ok: true }; // Tetap ok agar Telegram tidak retry terus
+    try { safeLog('ERROR', 'TG_HANDLER_FAILED', '', { function: 'handleTelegramWebhook', stage: 'exception' }); } catch (_) {}
+    return { ok: false, code: 'TG_HANDLER_FAILED' };
   }
 }
 

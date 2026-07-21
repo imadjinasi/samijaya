@@ -22,51 +22,96 @@
  */
 function doPost(e) {
   try {
+    var suppliedTelegramKey = '';
+    try {
+      suppliedTelegramKey = e && e.parameter ? String(e.parameter.tg_key || '') : '';
+    } catch (_) {}
+
     // --- Parse body ---
     var body;
     try {
-      body = JSON.parse(e.postData.contents);
+      body = JSON.parse(e && e.postData ? e.postData.contents : '');
     } catch (parseErr) {
+      if (suppliedTelegramKey) {
+        try { safeLog('ERROR', 'TG_WEBHOOK_REJECTED', '', { function: 'doPost', stage: 'json' }); } catch (_) {}
+        return HtmlService.createHtmlOutput('ok');
+      }
       return jsonResponse({
         ok: false,
         error: 'Invalid JSON',
         code: 'BAD_REQUEST'
       });
     }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      if (suppliedTelegramKey) {
+        try { safeLog('ERROR', 'TG_WEBHOOK_REJECTED', '', { function: 'doPost', stage: 'shape' }); } catch (_) {}
+        return HtmlService.createHtmlOutput('ok');
+      }
+      return jsonResponse({ ok: false, error: 'Invalid JSON', code: 'BAD_REQUEST' });
+    }
 
     // --- Deteksi Telegram update ---
     // Telegram mengirim update sebagai JSON body dengan property "update_id".
-    // Frontend tidak pernah kirim "update_id", jadi ini aman untuk membedakan.
+    // Frontend tidak pernah kirim "update_id", jadi ini dipakai untuk membedakan jalur.
     // NOTE: Apps Script Web App TIDAK meneruskan custom HTTP header dari POST,
     //   jadi verifikasi X-Telegram-Bot-Api-Secret-Token tidak mungkin di sini.
-    //   Verifikasi cukup via struktur body (update_id + shape valid).
-    //   setWebhook tetap kirim secret_token ke Telegram sebagai best-practice.
+    //   Autentikasi memakai capability tg_key pada query URL webhook.
+    //   setWebhook juga tetap kirim secret_token ke Telegram sebagai defense-in-depth.
     // PENTING: jalur ini HARUS SELALU return HTTP 200 agar Telegram tidak retry.
     if (body.update_id !== undefined) {
+      var scriptProperties = PropertiesService.getScriptProperties();
+      var currentTelegramKey = String(scriptProperties.getProperty('TELEGRAM_WEBHOOK_KEY') || '');
+      var nextTelegramKey = String(scriptProperties.getProperty('TELEGRAM_WEBHOOK_KEY_NEXT') || '');
+      var capabilityValid = !!suppliedTelegramKey &&
+        ((!!currentTelegramKey && suppliedTelegramKey === currentTelegramKey) ||
+         (!!nextTelegramKey && suppliedTelegramKey === nextTelegramKey));
+      if (!capabilityValid) {
+        try { safeLog('ERROR', 'TG_WEBHOOK_REJECTED', '', { function: 'doPost', stage: 'capability' }); } catch (_) {}
+        return HtmlService.createHtmlOutput('ok');
+      }
       // Validasi struktur: harus punya salah satu payload Telegram yang dikenal
       if (!body.message && !body.callback_query && !body.edited_message) {
         // update_id ada tapi tanpa payload valid → abaikan, tetap 200
         return HtmlService.createHtmlOutput('ok');
       }
 
-      // --- Idempotency: cegah eksekusi ganda via update_id ---
-      // Ditempatkan di Router (SEBELUM handler) agar meskipun handler crash,
-      // retry berikutnya tetap di-skip karena cache sudah ter-set.
+      // --- Dedup best-effort: marker ditulis setelah handler sukses ---
       var updateId = String(body.update_id);
-      var cache = CacheService.getScriptCache();
       var cacheKey = 'tg_upd_' + updateId;
-      if (cache.get(cacheKey)) {
+      var cache = null;
+      var alreadyDone = false;
+      try {
+        cache = CacheService.getScriptCache();
+        alreadyDone = !!cache.get(cacheKey);
+      } catch (cacheReadErr) {
+        try { safeLog('ERROR', 'TG_DEDUP_CACHE_UNAVAILABLE', '', { function: 'doPost', stage: 'read' }); } catch (_) {}
+      }
+      if (alreadyDone) {
         // Update sudah diproses sebelumnya → skip
         return HtmlService.createHtmlOutput('ok');
       }
-      cache.put(cacheKey, '1', 600); // TTL 10 menit
+      // Marker DONE ditulis setelah handler mengembalikan sukses.
 
       // Proses handler — SELALU return 200 apa pun hasilnya
       try {
-        handleTelegramWebhook(body);
+        var telegramResult = handleTelegramWebhook(body);
+        if (telegramResult && telegramResult.ok) {
+          try {
+            if (cache) cache.put(cacheKey, 'DONE', 21600);
+          } catch (cacheWriteErr) {
+            try { safeLog('ERROR', 'TG_DEDUP_CACHE_UNAVAILABLE', '', { function: 'doPost', stage: 'write' }); } catch (_) {}
+          }
+        } else {
+          try { safeLog('ERROR', 'TG_HANDLER_FAILED', '', { function: 'doPost', stage: 'handler', code: telegramResult && telegramResult.code }); } catch (_) {}
+        }
       } catch (tgErr) {
-        try { log('ERROR', 'doPost_telegram', tgErr.message, { stack: tgErr.stack }); } catch (_) {}
+        try { safeLog('ERROR', 'TG_HANDLER_FAILED', '', { function: 'doPost', stage: 'exception' }); } catch (_) {}
       }
+      return HtmlService.createHtmlOutput('ok');
+    }
+
+    if (suppliedTelegramKey) {
+      try { safeLog('ERROR', 'TG_WEBHOOK_REJECTED', '', { function: 'doPost', stage: 'shape' }); } catch (_) {}
       return HtmlService.createHtmlOutput('ok');
     }
 
@@ -158,7 +203,7 @@ function doPost(e) {
     return jsonResponse(result);
 
   } catch (err) {
-    log('ERROR', 'doPost', err.message, { stack: err.stack });
+    try { safeLog('ERROR', 'ROUTER_INTERNAL_ERROR', '', { function: 'doPost', stage: 'outer' }); } catch (_) {}
     return jsonResponse({
       ok: false,
       error: 'Server error',

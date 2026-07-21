@@ -129,7 +129,8 @@ var SHEET_DEFS = [
 
   // --- 12. Sessions ---
   ['Sessions',
-    ['token', 'no_hp', 'member_id', 'otp', 'otp_expires_at', 'otp_used', 'session_expires_at', 'created_at'],
+    ['token', 'no_hp', 'member_id', 'otp', 'otp_expires_at', 'otp_used', 'session_expires_at', 'created_at',
+     'otp_failed_attempts', 'otp_locked_at'],
     null
   ],
 
@@ -303,6 +304,5 @@ function hashPassword(str) {
     hex += h;
   }
 
-  Logger.log('SHA-256 of "' + str + '": ' + hex);
   return hex;
 }
