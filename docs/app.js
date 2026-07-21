@@ -536,6 +536,8 @@ function openProductModal(productId) {
 
   var html = '';
   
+  html += '<button class="modal-close" onclick="closeProductModal()" style="position:absolute; top:12px; right:12px; margin:0; width:36px; height:36px; background:rgba(0,0,0,0.4); border-radius:50%; border:none; color:#ffffff; font-size:1.5rem; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; z-index:50; box-shadow:0 2px 8px rgba(0,0,0,0.2); backdrop-filter:blur(4px);">&times;</button>';
+
   html += '<div style="flex: 1 1 auto; overflow-y: auto; padding-bottom: 16px;">';
   if (imgUrl) {
     html += '<div style="position:relative; width:100%; aspect-ratio:1/1; max-height:40vh; background:var(--latte);"><img src="' + imgUrl + '" style="width:100%; height:100%; max-height:40vh; object-fit:cover; cursor:pointer;" onclick="window.open(\'' + imgUrl + '\', \'_blank\')">';
@@ -545,12 +547,10 @@ function openProductModal(productId) {
     } else if (p.badge_promo) {
       html += '<div class="product-badge" style="top:16px;">' + escHtml(p.badge_promo) + '</div>';
     }
-    html += '<button class="modal-close" onclick="closeProductModal()" style="position:absolute; top:8px; right:8px; margin:0; width:44px; height:44px; background:transparent; box-shadow:none; color:#ffffff; text-shadow:0 1px 4px rgba(0,0,0,0.8), 0 0 2px rgba(0,0,0,0.8); font-size:2rem; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; z-index:10;">&times;</button>';
     html += '</div>';
   } else {
     html += '<div style="position:relative; width:100%; aspect-ratio:1/1; max-height:40vh; background:var(--latte); display:flex; align-items:center; justify-content:center; color:var(--brown);">' + ICON.bottle;
     if (isHabis) html += '<div class="product-badge" style="background:#8B2E2E;color:#fff;top:16px;">HABIS</div>';
-    html += '<button class="modal-close" onclick="closeProductModal()" style="position:absolute; top:8px; right:8px; margin:0; width:44px; height:44px; background:transparent; box-shadow:none; color:#ffffff; text-shadow:0 1px 4px rgba(0,0,0,0.8), 0 0 2px rgba(0,0,0,0.8); font-size:2rem; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; z-index:10;">&times;</button>';
     html += '</div>';
   }
 
@@ -595,7 +595,7 @@ function openProductModal(productId) {
     for (var k = 0; k < p.addons.length; k++) {
       var a = p.addons[k];
       var isChecked = _selectedAddons.indexOf(a.addon_id) !== -1;
-      html += '<label class="variant-option ' + (isChecked ? 'active' : '') + '" id="addon-lbl-' + escHtml(a.addon_id) + '" onclick="onToggleAddon(\'' + escHtml(a.addon_id) + '\')" style="flex-direction:row; justify-content:space-between; align-items:center;">';
+      html += '<div class="variant-option ' + (isChecked ? 'active' : '') + '" id="addon-lbl-' + escHtml(a.addon_id) + '" onclick="onToggleAddon(\'' + escHtml(a.addon_id) + '\')" style="flex-direction:row; justify-content:space-between; align-items:center; cursor:pointer;">';
       html += '<div style="display:flex; align-items:center; gap:8px;">';
       html += '<input type="checkbox" id="addon-cb-' + escHtml(a.addon_id) + '" style="pointer-events:none;" ' + (isChecked ? 'checked' : '') + '>';
       html += '<div style="font-weight:600; font-size:0.95rem;">' + escHtml(a.nama_addon) + '</div>';
@@ -603,7 +603,7 @@ function openProductModal(productId) {
       var adPrice = Number(a.harga);
       var adStr = adPrice === 0 ? 'Gratis' : '+' + formatRupiah(adPrice);
       html += '<div style="font-size:0.9rem; color:#777;">' + adStr + '</div>';
-      html += '</label>';
+      html += '</div>';
     }
     html += '</div>';
     html += '</div>';

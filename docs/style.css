@@ -800,6 +800,9 @@ h1, h2, h3, .font-serif {
 #product-modal .modal-sheet {
   display: flex;
   flex-direction: column;
+  position: relative;
+  padding: 0;
+  overflow: hidden;
 }
 
 @keyframes sheetSlideUp {
