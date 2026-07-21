@@ -81,8 +81,11 @@ function tgSend(chatId, text, opts) {
  * Format daftar item order untuk pesan Telegram.
  * Harga/subtotal hanya dibaca dari snapshot OrderItems; tidak ada hitung ulang.
  *
+ * Jika opts.items tersedia, data itu dipakai langsung tanpa membaca sheet.
+ * Jika tidak, item dan add-on dibaca dari sheet berdasarkan orderId.
+ *
  * @param {string} orderId
- * @param {Object=} opts { html, priceStyle }
+ * @param {Object=} opts { html, priceStyle, items }
  * @return {string} tanpa newline di akhir
  */
 function tgFormatOrderItems(orderId, opts) {
@@ -97,23 +100,39 @@ function tgFormatOrderItems(orderId, opts) {
   }
 
   var targetOrderId = String(orderId);
-  var addonsByRef = {};
-  var allAddons = readAll('OrderItemAddons');
-  for (var a = 0; a < allAddons.length; a++) {
-    if (String(allAddons[a].order_id) !== targetOrderId) continue;
-    var addonRef = String(allAddons[a].order_item_ref || '');
-    if (!addonRef) continue;
-    var addonKey = '$' + addonRef;
-    if (!addonsByRef[addonKey]) addonsByRef[addonKey] = [];
-    var addonName = String(allAddons[a].nama_addon_snapshot || '');
-    if (addonName) addonsByRef[addonKey].push(addonName);
+  var itemsToFormat = [];
+
+  if (Array.isArray(opts.items)) {
+    // Mode data langsung: dipakai createOrder agar notifikasi tidak membaca
+    // ulang dua sheet yang datanya baru saja ditulis.
+    itemsToFormat = opts.items;
+  } else {
+    // Mode sheet: dipakai status-change dan command /order.
+    var addonsByRef = {};
+    var allAddons = readAll('OrderItemAddons');
+    for (var a = 0; a < allAddons.length; a++) {
+      if (String(allAddons[a].order_id) !== targetOrderId) continue;
+      var addonRef = String(allAddons[a].order_item_ref || '');
+      if (!addonRef) continue;
+      var addonKey = '$' + addonRef;
+      if (!addonsByRef[addonKey]) addonsByRef[addonKey] = [];
+      var addonName = String(allAddons[a].nama_addon_snapshot || '');
+      if (addonName) addonsByRef[addonKey].push(addonName);
+    }
+
+    var allItems = readAll('OrderItems');
+    for (var r = 0; r < allItems.length; r++) {
+      if (String(allItems[r].order_id) !== targetOrderId) continue;
+      var sheetItem = allItems[r];
+      var sheetItemRef = String(sheetItem.order_item_ref || '');
+      sheetItem.addons = addonsByRef['$' + sheetItemRef] || [];
+      itemsToFormat.push(sheetItem);
+    }
   }
 
   var lines = [];
-  var allItems = readAll('OrderItems');
-  for (var i = 0; i < allItems.length; i++) {
-    var item = allItems[i];
-    if (String(item.order_id) !== targetOrderId) continue;
+  for (var i = 0; i < itemsToFormat.length; i++) {
+    var item = itemsToFormat[i];
 
     var itemLine = '  • ' + safe(item.nama_snapshot) + ' ×' + String(item.qty || '');
     if (priceStyle === 'parentheses') {
@@ -129,8 +148,14 @@ function tgFormatOrderItems(orderId, opts) {
       lines.push('    ' + safe(axisName) + ': ' + safe(variantName));
     }
 
-    var itemRef = String(item.order_item_ref || '');
-    var addonNames = addonsByRef['$' + itemRef] || [];
+    var itemAddons = item.addons || item.addon_snapshots || [];
+    var addonNames = [];
+    for (var n = 0; n < itemAddons.length; n++) {
+      var directAddonName = String(
+        itemAddons[n].nama_addon_snapshot || itemAddons[n].nama_addon || ''
+      );
+      if (directAddonName) addonNames.push(directAddonName);
+    }
     if (addonNames.length > 0) {
       lines.push('    + ' + addonNames.map(safe).join(', '));
     }

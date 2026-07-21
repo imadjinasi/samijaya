@@ -96,14 +96,16 @@ function _generateOrderId(ordersRows) {
  * Kirim ringkasan order sebagai teks. Tanpa tombol approval (Unit 5B).
  *
  * @param {Object} orderObj — object order yang sudah ditulis ke sheet
+ * @param {Object[]} orderItems — snapshot item dari createOrder (in-memory)
  */
-function _notifyAdminNewOrder(orderObj) {
+function _notifyAdminNewOrder(orderObj, orderItems) {
   // Susun ringkasan items
   var itemsText = '';
   try {
     itemsText = tgFormatOrderItems(orderObj.order_id, {
       html: true,
-      priceStyle: 'parentheses'
+      priceStyle: 'parentheses',
+      items: orderItems
     });
   } catch (e) {
     itemsText = '  (gagal baca items)';
@@ -693,6 +695,7 @@ function orderCreateOrder(payload, token) {
     // b. OrderItems — satu baris per item
     for (var i = 0; i < lineItems.length; i++) {
       var itemRef = orderId + '_' + i;
+      lineItems[i].order_item_ref = itemRef;
       appendRowObj('OrderItems', {
         order_item_ref: itemRef,
         order_id:       orderId,
@@ -746,7 +749,14 @@ function orderCreateOrder(payload, token) {
     // ----------------------------------------------------------
     // 11. Notifikasi admin (placeholder)
     // ----------------------------------------------------------
-    _notifyAdminNewOrder(orderObj);
+    try {
+      _notifyAdminNewOrder(orderObj, lineItems);
+    } catch (notifyErr) {
+      log('ERROR', orderId, 'Notif order baru gagal; order tetap sukses', {
+        error: notifyErr.message,
+        stack: notifyErr.stack
+      });
+    }
 
     // ----------------------------------------------------------
     // 12. Return response
