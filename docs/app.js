@@ -35,6 +35,7 @@ var checkoutState = {
 
 var _currentModalProduct = null;
 var _selectedVariant = null;
+var _selectedAddons = [];
 
 // === CATALOG CACHE HELPER ===
 var CATALOG_CACHE_KEY = 'sj_catalog_v1';
@@ -176,11 +177,17 @@ function loadSession() {
 }
 
 // === CART LOGIC ===
-function addToCart(product, variant) {
+function addToCart(product, variant, addons) {
+  addons = addons || [];
   var variantId = variant ? variant.variant_id : '';
   var namaVarian = variant ? variant.nama_varian : '';
   var namaAxis = variant ? variant.nama_axis : '';
-  var harga = variant ? (Number(product.harga) + Number(variant.harga)) : Number(product.harga);
+  
+  var harga = Number(product.harga) || 0;
+  if (variant) harga += (Number(variant.harga) || 0);
+  for (var i = 0; i < addons.length; i++) {
+    harga += (Number(addons[i].harga) || 0);
+  }
 
   var found = null;
   for (var i = 0; i < cart.length; i++) {
@@ -513,6 +520,7 @@ function openProductModal(productId) {
 
   _currentModalProduct = p;
   _selectedVariant = null;
+  _selectedAddons = [];
   if (p.has_variants && p.variants && p.variants.length > 0) {
     _selectedVariant = p.variants[0];
   }
@@ -549,7 +557,15 @@ function openProductModal(productId) {
   html += '<div style="padding: 24px; padding-bottom: 0;">';
   html += '<div style="font-family:\'DM Serif Display\', serif; font-size:1.4rem; color:var(--espresso); margin-bottom:4px; line-height:1.2;">' + escHtml(p.nama) + '</div>';
   
-  var priceToDisplay = p.has_variants && _selectedVariant ? (Number(p.harga) + Number(_selectedVariant.harga)) : p.harga;
+  var priceToDisplay = Number(p.harga) || 0;
+  if (p.has_variants && _selectedVariant) priceToDisplay += (Number(_selectedVariant.harga) || 0);
+  if (p.has_addons && p.addons && _selectedAddons && _selectedAddons.length > 0) {
+    for (var m = 0; m < p.addons.length; m++) {
+      if (_selectedAddons.indexOf(p.addons[m].addon_id) !== -1) {
+        priceToDisplay += Number(p.addons[m].harga) || 0;
+      }
+    }
+  }
   html += '<div id="modal-price" style="font-weight:600; font-size:1.1rem; color:var(--espresso); margin-bottom:16px;">' + formatRupiah(priceToDisplay) + '</div>';
   html += '<div style="font-size:0.9rem; color:rgba(80, 50, 41, 0.8); line-height:1.5; margin-bottom:24px; white-space:pre-wrap;">' + escHtml(p.deskripsi || 'Tidak ada deskripsi.') + '</div>';
 
@@ -566,6 +582,27 @@ function openProductModal(productId) {
       var diffPrice = Number(v.harga);
       var diffStr = diffPrice === 0 ? 'Termasuk' : '+' + formatRupiah(diffPrice);
       html += '<div style="font-size:0.9rem; color:#777;">' + diffStr + '</div>';
+      html += '</label>';
+    }
+    html += '</div>';
+    html += '</div>';
+  }
+
+  if (p.has_addons && p.addons && p.addons.length > 0) {
+    html += '<div style="margin-bottom:24px;">';
+    html += '<div style="font-size:0.85rem; font-weight:600; color:var(--espresso); margin-bottom:8px;">Tambahan</div>';
+    html += '<div style="display:flex; flex-direction:column; gap:8px;">';
+    for (var k = 0; k < p.addons.length; k++) {
+      var a = p.addons[k];
+      var isChecked = _selectedAddons.indexOf(a.addon_id) !== -1;
+      html += '<label class="variant-option ' + (isChecked ? 'active' : '') + '" id="addon-lbl-' + escHtml(a.addon_id) + '" onclick="onToggleAddon(\'' + escHtml(a.addon_id) + '\')" style="flex-direction:row; justify-content:space-between; align-items:center;">';
+      html += '<div style="display:flex; align-items:center; gap:8px;">';
+      html += '<input type="checkbox" id="addon-cb-' + escHtml(a.addon_id) + '" style="pointer-events:none;" ' + (isChecked ? 'checked' : '') + '>';
+      html += '<div style="font-weight:600; font-size:0.95rem;">' + escHtml(a.nama_addon) + '</div>';
+      html += '</div>';
+      var adPrice = Number(a.harga);
+      var adStr = adPrice === 0 ? 'Gratis' : '+' + formatRupiah(adPrice);
+      html += '<div style="font-size:0.9rem; color:#777;">' + adStr + '</div>';
       html += '</label>';
     }
     html += '</div>';
@@ -594,19 +631,57 @@ function onSelectVariant(variantId) {
       break;
     }
   }
-  var priceEl = document.getElementById('modal-price');
-  if (priceEl && _selectedVariant) {
-    var finalPrice = Number(_currentModalProduct.harga) + Number(_selectedVariant.harga);
-    priceEl.textContent = formatRupiah(finalPrice);
-  }
+  recalcModalPrice();
   var labels = document.querySelectorAll('.variant-option');
   labels.forEach(function(lbl) {
-    if (lbl.getAttribute('data-vid') === variantId) {
+    if (lbl.hasAttribute('data-vid')) {
+      if (lbl.getAttribute('data-vid') === variantId) {
+        lbl.classList.add('active');
+      } else {
+        lbl.classList.remove('active');
+      }
+    }
+  });
+}
+
+function onToggleAddon(addonId) {
+  var idx = _selectedAddons.indexOf(addonId);
+  if (idx === -1) {
+    _selectedAddons.push(addonId);
+  } else {
+    _selectedAddons.splice(idx, 1);
+  }
+  var lbl = document.getElementById('addon-lbl-' + addonId);
+  if (lbl) {
+    if (_selectedAddons.indexOf(addonId) !== -1) {
       lbl.classList.add('active');
     } else {
       lbl.classList.remove('active');
     }
-  });
+  }
+  var cb = document.getElementById('addon-cb-' + addonId);
+  if (cb) {
+    cb.checked = (_selectedAddons.indexOf(addonId) !== -1);
+  }
+  recalcModalPrice();
+}
+
+function recalcModalPrice() {
+  if (!_currentModalProduct) return;
+  var base = Number(_currentModalProduct.harga) || 0;
+  var varDelta = _selectedVariant ? (Number(_selectedVariant.harga) || 0) : 0;
+  var addonSum = 0;
+  var addons = _currentModalProduct.addons || [];
+  for (var i = 0; i < addons.length; i++) {
+    if (_selectedAddons.indexOf(addons[i].addon_id) !== -1) {
+      addonSum += Number(addons[i].harga) || 0;
+    }
+  }
+  var total = base + varDelta + addonSum;
+  var priceEl = document.getElementById('modal-price');
+  if (priceEl) {
+    priceEl.textContent = formatRupiah(total);
+  }
 }
 
 function onModalAddToCart() {
@@ -615,7 +690,17 @@ function onModalAddToCart() {
     showToast('Pilih varian terlebih dahulu');
     return;
   }
-  addToCart(_currentModalProduct, _selectedVariant);
+  
+  var selectedAddonsObjects = [];
+  if (_currentModalProduct.has_addons && _currentModalProduct.addons) {
+    for (var i = 0; i < _currentModalProduct.addons.length; i++) {
+      if (_selectedAddons.indexOf(_currentModalProduct.addons[i].addon_id) !== -1) {
+        selectedAddonsObjects.push(_currentModalProduct.addons[i]);
+      }
+    }
+  }
+
+  addToCart(_currentModalProduct, _selectedVariant, selectedAddonsObjects);
   closeProductModal();
 }
 
