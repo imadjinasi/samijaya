@@ -1374,10 +1374,6 @@ h1, h2, h3, .font-serif {
 
 /* ---- sm: 480px ---- */
 @media (min-width: 480px) {
-  .banner-slide {
-    max-height: 240px;
-  }
-
   .feature-item {
     flex: 1 1 25%;
   }
@@ -1497,10 +1493,6 @@ h1, h2, h3, .font-serif {
 
   .product-card .btn-add svg {
     margin-right: 6px;
-  }
-
-  .banner-slide {
-    max-height: 280px;
   }
 
   .modal-sheet {

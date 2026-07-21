@@ -25,8 +25,8 @@ function addressAdd(payload, token) {
     return { ok: false, code: 'BAD_REQUEST', error: 'Koordinat wajib diisi' };
   }
   
-  var lat = Number(payload.latitude);
-  var lng = Number(payload.longitude);
+  var lat = sheetParseDecimal(payload.latitude, { min: -90, max: 90 });
+  var lng = sheetParseDecimal(payload.longitude, { min: -180, max: 180 });
 
   if (label.length < 1 || label.length > 30) {
     return { ok: false, code: 'BAD_REQUEST', error: 'Label alamat harus 1-30 karakter' };
@@ -34,7 +34,7 @@ function addressAdd(payload, token) {
   if (detail.length < 1 || detail.length > 200) {
     return { ok: false, code: 'BAD_REQUEST', error: 'Detail alamat harus 1-200 karakter' };
   }
-  if (isNaN(lat) || isNaN(lng)) {
+  if (lat === null || lng === null) {
     return { ok: false, code: 'BAD_REQUEST', error: 'Koordinat latitude/longitude tidak valid' };
   }
 
@@ -92,7 +92,7 @@ function addressUpdate(payload, token) {
     return { ok: false, code: 'UNAUTHORIZED', error: 'Sesi tidak valid' };
   }
 
-  var addressId = String(payload.address_id || '').trim();
+  var addressId = sheetParseId(payload.address_id, /^ADR_[A-Za-z0-9_-]+$/, 80);
   if (!addressId) {
     return { ok: false, code: 'BAD_REQUEST', error: 'address_id dibutuhkan' };
   }
@@ -119,14 +119,14 @@ function addressUpdate(payload, token) {
   }
   if (payload.latitude !== undefined) {
     if (payload.latitude === '') return { ok: false, code: 'BAD_REQUEST', error: 'Latitude wajib diisi' };
-    var lat = Number(payload.latitude);
-    if (isNaN(lat)) return { ok: false, code: 'BAD_REQUEST', error: 'Latitude tidak valid' };
+    var lat = sheetParseDecimal(payload.latitude, { min: -90, max: 90 });
+    if (lat === null) return { ok: false, code: 'BAD_REQUEST', error: 'Latitude tidak valid' };
     patch.latitude = lat;
   }
   if (payload.longitude !== undefined) {
     if (payload.longitude === '') return { ok: false, code: 'BAD_REQUEST', error: 'Longitude wajib diisi' };
-    var lng = Number(payload.longitude);
-    if (isNaN(lng)) return { ok: false, code: 'BAD_REQUEST', error: 'Longitude tidak valid' };
+    var lng = sheetParseDecimal(payload.longitude, { min: -180, max: 180 });
+    if (lng === null) return { ok: false, code: 'BAD_REQUEST', error: 'Longitude tidak valid' };
     patch.longitude = lng;
   }
 
@@ -175,7 +175,7 @@ function addressDelete(payload, token) {
     return { ok: false, code: 'UNAUTHORIZED', error: 'Sesi tidak valid' };
   }
 
-  var addressId = String(payload.address_id || '').trim();
+  var addressId = sheetParseId(payload.address_id, /^ADR_[A-Za-z0-9_-]+$/, 80);
   if (!addressId) {
     return { ok: false, code: 'BAD_REQUEST', error: 'address_id dibutuhkan' };
   }
@@ -217,7 +217,7 @@ function addressSetDefault(payload, token) {
   if (!session) return { ok: false, code: 'UNAUTHORIZED', error: 'Sesi tidak valid' };
   var memberId = session.member_id;
   
-  var addressId = payload.address_id;
+  var addressId = sheetParseId(payload.address_id, /^ADR_[A-Za-z0-9_-]+$/, 80);
   if (!addressId) return { ok: false, code: 'INVALID', error: 'address_id wajib' };
   
   var lock = LockService.getScriptLock();
@@ -227,7 +227,7 @@ function addressSetDefault(payload, token) {
     
     var sheet = getSheet('MemberAddresses');
     var data = sheet.getDataRange().getValues();
-    var headers = data[0];
+    var headers = getSheetHeaders('MemberAddresses');
     var idCol = headers.indexOf('address_id');
     var memberCol = headers.indexOf('member_id');
     var statusCol = headers.indexOf('status');
@@ -240,10 +240,12 @@ function addressSetDefault(payload, token) {
     
     // Verifikasi alamat milik member ini & aktif
     var targetFound = false;
+    var targetCount = 0;
     for (var r = 1; r < data.length; r++) {
       if (String(data[r][memberCol]) === String(memberId) && String(data[r][statusCol]) === 'aktif') {
         if (String(data[r][idCol]) === String(addressId)) {
           targetFound = true;
+          targetCount++;
         }
       }
     }
@@ -251,12 +253,15 @@ function addressSetDefault(payload, token) {
       lockResult = { ok: false, code: 'NOT_FOUND', error: 'Alamat tidak ditemukan atau bukan milik Anda' };
       return lockResult;
     }
+    if (targetCount > 1) return { ok: false, code: 'DATA_INTEGRITY_ERROR', error: 'Data alamat memerlukan pemeriksaan admin' };
     
     // Loop: set semua alamat member ini is_default=0, kecuali target=1
     for (var r2 = 1; r2 < data.length; r2++) {
       if (String(data[r2][memberCol]) === String(memberId) && String(data[r2][statusCol]) === 'aktif') {
         var newVal = (String(data[r2][idCol]) === String(addressId)) ? 1 : 0;
-        sheet.getRange(r2 + 1, defaultCol + 1).setValue(newVal);
+        if (!updateRowById('MemberAddresses', 'address_id', String(data[r2][idCol]), { is_default: newVal })) {
+          throw new Error('ADDRESS_DEFAULT_UPDATE_FAILED');
+        }
       }
     }
     

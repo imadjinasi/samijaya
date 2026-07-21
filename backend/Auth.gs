@@ -89,9 +89,10 @@ function authRequestOtp(payload) {
   }
 
   var nama = payload.nama || '';
-  var otpMaxPerDay = Number(getSetting('OTP_MAX_PER_DAY')) || 5;
-  var otpResendCooldown = Number(getSetting('OTP_RESEND_COOLDOWN_MINUTES')) || 2;
-  var otpValidMinutes = Number(getSetting('OTP_VALID_MINUTES')) || 30;
+  var otpMaxPerDay = sheetParseInteger(getSetting('OTP_MAX_PER_DAY'), { min: 1, max: 100 });
+  var otpResendCooldown = sheetParseInteger(getSetting('OTP_RESEND_COOLDOWN_MINUTES'), { min: 0, max: 1440 });
+  var otpValidMinutes = sheetParseInteger(getSetting('OTP_VALID_MINUTES'), { min: 1, max: 1440 });
+  if (otpMaxPerDay === null || otpResendCooldown === null || otpValidMinutes === null) return { ok: false, code: 'SETTINGS_INVALID', error: 'Konfigurasi autentikasi tidak valid' };
 
   var otp;
   var isResend = false;
@@ -194,7 +195,8 @@ function authRequestOtp(payload) {
     return lockResult; // resend
   }
 
-  var otpValidMinutesDisplay = Number(getSetting('OTP_VALID_MINUTES')) || 30;
+  var otpValidMinutesDisplay = sheetParseInteger(getSetting('OTP_VALID_MINUTES'), { min: 1, max: 1440 });
+  if (otpValidMinutesDisplay === null) return { ok: false, code: 'SETTINGS_INVALID', error: 'Konfigurasi autentikasi tidak valid' };
   return {
     ok: true,
     data: {
@@ -225,7 +227,8 @@ function authVerifyOtp(payload) {
   }
 
   var nama = payload.nama || '';
-  var sessionValidDays = Number(getSetting('SESSION_VALID_DAYS')) || 7;
+  var sessionValidDays = sheetParseInteger(getSetting('SESSION_VALID_DAYS'), { min: 1, max: 365 });
+  if (sessionValidDays === null) return { ok: false, code: 'SETTINGS_INVALID', error: 'Konfigurasi sesi tidak valid' };
 
   return withLock(function () {
     var sessions = readAll('Sessions');
@@ -252,13 +255,15 @@ function authVerifyOtp(payload) {
     if (String(matchRow.otp_locked_at || '').trim()) {
       return { ok: false, error: 'OTP tidak dapat digunakan. Silakan minta OTP baru.', code: 'OTP_LOCKED' };
     }
-    if (Number(matchRow.otp_used) !== 0 || new Date(matchRow.otp_expires_at).getTime() <= now.getTime()) {
+    if (sheetParseInteger(matchRow.otp_used, { min: 0, max: 1 }) !== 0 || new Date(matchRow.otp_expires_at).getTime() <= now.getTime()) {
       return { ok: false, error: 'Kode OTP tidak valid', code: 'OTP_INVALID' };
     }
 
     var storedOtp = String(matchRow.otp).replace(/^'/, '');
     if (storedOtp !== inputOtp) {
-      var failedAttempts = Math.max(0, Number(matchRow.otp_failed_attempts) || 0) + 1;
+      var priorFailedAttempts = sheetParseInteger(matchRow.otp_failed_attempts, { min: 0, max: 1000 });
+      if (priorFailedAttempts === null && String(matchRow.otp_failed_attempts || '').trim() !== '') throw new Error('SESSION_ATTEMPT_COUNT_INVALID');
+      var failedAttempts = (priorFailedAttempts === null ? 0 : priorFailedAttempts) + 1;
       var attemptPatch = { otp_failed_attempts: failedAttempts };
       if (failedAttempts >= 5) attemptPatch.otp_locked_at = nowJkt();
       if (!updateRowById('Sessions', 'token', matchRow.token, attemptPatch)) {
@@ -355,7 +360,7 @@ function requireSession(token) {
   for (var i = 0; i < sessions.length; i++) {
     var row = sessions[i];
     if (String(row.token) !== String(token)) continue;
-    if (Number(row.otp_used) !== 1) continue;
+    if (sheetParseInteger(row.otp_used, { min: 0, max: 1 }) !== 1) continue;
 
     var sessionExp = new Date(row.session_expires_at).getTime();
     if (isNaN(sessionExp) || sessionExp <= now.getTime()) continue;

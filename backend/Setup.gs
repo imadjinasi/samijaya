@@ -161,12 +161,6 @@ var SHEET_DEFS = [
     ]
   ],
 
-  // --- 14. Banners ---
-  ['Banners',
-    ['banner_id', 'judul', 'foto_file_id', 'link', 'urutan', 'status'],
-    null
-  ],
-
   // --- Campaigns ---
   ['Campaigns',
     ['campaign_id', 'judul', 'deskripsi', 'gambar_file_id', 'gambar_url', 'link_url',

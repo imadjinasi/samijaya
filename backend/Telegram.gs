@@ -1344,7 +1344,7 @@ function handleAdminCommand(chatId, text) {
     if (promoSub === 'on' || promoSub === 'off') {
       if (args.length !== 2) { tgSend(chatId, '⚠️ Format: /promo ' + promoSub + ' &lt;KODE&gt;'); return; }
       var requestedCode = _promoNormalizeCode(args[1]);
-      if (!requestedCode) { tgSend(chatId, '⚠️ Kode promo wajib diisi.'); return; }
+      if (!/^[A-Z0-9_-]{1,40}$/.test(requestedCode)) { tgSend(chatId, '⚠️ Kode promo tidak valid.'); return; }
       var desiredActive = promoSub === 'on';
       var promoWriteResult = withLock(function() {
         var rowsInsideLock = readAll('PromoCodes');
@@ -1474,7 +1474,8 @@ function handleAdminCommand(chatId, text) {
       tgSend(chatId, '⚠️ Format: ' + cmd + ' &lt;slot_id&gt;');
       return;
     }
-    var slotId = args[0];
+    var slotId = sheetParseId(args[0], /^[A-Za-z0-9_-]+$/, 80);
+    if (!slotId) { tgSend(chatId, '⚠️ slot_id tidak valid.'); return; }
     var newStatus = cmd === '/tutupslot' ? 'nonaktif' : 'aktif';
     var slotWriteResult = withLock(function() {
       var slots = readAll('DeliverySlots');
@@ -1518,7 +1519,8 @@ function handleAdminCommand(chatId, text) {
       tgSend(chatId, '⚠️ Format: /produk &lt;id&gt; on|off\nAtau ketik /produk untuk melihat daftar.');
       return;
     }
-    var pid = args[0];
+    var pid = sheetParseId(args[0], /^[A-Za-z0-9_-]+$/, 80);
+    if (!pid) { tgSend(chatId, '⚠️ Product ID tidak valid.'); return; }
     var state = args[1].toLowerCase();
     if (state !== 'on' && state !== 'off') {
       tgSend(chatId, '⚠️ Format: /produk &lt;id&gt; on|off');

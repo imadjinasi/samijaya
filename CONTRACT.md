@@ -146,9 +146,6 @@ Harga 1 item = Products.harga (dasar) + ProductVariants.harga (selisih varian, 0
 - Kode wajib: `OTP, ORDER_DITERIMA, ORDER_DIPROSES, ORDER_SIAP, ORDER_DIANTAR, ORDER_SELESAI, ORDER_BATAL`
 - Placeholder yang boleh dipakai: `{NAMA} {ORDER_ID} {OTP} {POINT} {TOTAL} {CABANG}`
 
-### 14. Banners
-`banner_id | judul | foto_file_id | link | urutan | status`
-
 ### 15. Logs
 `timestamp | tipe | ref_id | pesan | detail_json`
 - `tipe`: `NOTIF | ACTIVITY | ERROR`
@@ -199,7 +196,7 @@ Harga 1 item = Products.harga (dasar) + ProductVariants.harga (selisih varian, 0
 - `requestOtp` — kirim OTP via Telegram admin
 - `verifyOtp` — verifikasi OTP, buat sesi
 - `getMe` — data member + poin + alamat
-- `getCatalog` — banner, kategori, produk, lokasi, slot, holidays, settings publik, dan `campaigns` aktif terurut. Penambahan `campaigns` bersifat backward compatible.
+- `getCatalog` — kategori, produk, lokasi, slot, holidays, settings publik, dan `campaigns` aktif terurut. Penambahan `campaigns` bersifat backward compatible.
 - `getSlotAvailability` — kuota slot per tanggal
 - `createOrder` — buat order (kritis, dalam lock)
 - `getOrderByRequestId` — lookup read-only hasil checkout berdasarkan `client_request_id` milik session
@@ -280,6 +277,37 @@ tersebut tidak dianggap terverifikasi oleh GAS.
 - Verifikasi header baru pada `Orders`, `PointHistory`, dan `Reviews` sesuai schema di atas.
 - Untuk `RECOVERY_REQUIRED`, hentikan perubahan order terkait, cocokkan snapshot dengan saldo/member/ledger/promo, perbaiki hanya berdasarkan bukti audit, lalu retry request target yang sama.
 - Jangan menghapus row ledger, review, order, atau PromoUsage untuk menyelesaikan konflik.
+
+## 4B. Data dan schema safety (Fase 8-B)
+
+### Typed Spreadsheet write boundary
+
+- Seluruh write produksi berbasis object wajib melalui `appendRowObj()`, `appendRowsObj()`, atau `updateRowById()`.
+- String biasa diperlakukan sebagai literal. String yang, setelah whitespace awal, dimulai `=`, `+`, `-`, atau `@` disimpan dengan satu apostrof agar tidak dievaluasi sebagai formula.
+- String yang sudah diawali apostrof tidak di-escape ulang. Data legacy tidak dinormalisasi atau di-backfill otomatis.
+- Number finite, boolean, dan `Date` diteruskan sebagai tipe aslinya. Number non-finite dan object arbitrer ditolak.
+- JSON internal dikenali dari kolom `json` pada schema registry atau marker `sheetJson()`/`sheetSerializedJson()`. JSON divalidasi dengan `JSON.parse()` sebelum write dan isi JSON tidak dimodifikasi.
+- Formula internal hanya boleh ditulis dengan marker `sheetTrustedFormula('=...')`. String formula tanpa marker selalu menjadi literal.
+- ID dan enum tetap harus melewati validator domain; formula safety bukan pengganti validasi tersebut.
+
+### Schema registry
+
+`backend/Schema.gs` mendefinisikan required header, optional/additive header, primary ID, uniqueness, dan kolom JSON untuk sheet produksi. Header dicocokkan berdasarkan nama, bukan posisi. Header kosong, duplicate header, dan missing required header gagal secara tertutup.
+
+`updateRowById()` mensyaratkan tepat satu kecocokan: tidak ditemukan menghasilkan `false`, duplicate ID menghasilkan `DATA_DUPLICATE_PRIMARY_ID`, dan tepat satu row diperbarui. Scan duplicate ID seluruh sheet tidak dilakukan pada setiap read; jalankan fungsi read-only `auditPhase8BSchemaReadOnly()` sebelum deployment.
+
+### Nilai kanonik
+
+- Integer: bentuk desimal integer kanonik, finite, dengan batas domain; empty berbeda dari zero.
+- Decimal: bentuk desimal finite tanpa exponent, dengan batas domain.
+- Boolean: `true/false` atau `1/0`; alias `aktif/nonaktif` dan `ya/tidak` hanya bila parser dipanggil dengan `activeAliases`.
+- Enum: trim lalu normalisasi case sesuai contract dan wajib menjadi anggota allowlist.
+- ID: trim, panjang terbatas, dan regex allowlist per domain.
+- Tanggal sheet: `yyyy-MM-dd` atau timestamp `yyyy-MM-dd HH:mm[:ss]`, dengan validasi kalender agar tanggal rollover ditolak.
+
+Jalur transaksi fail-closed ketika nilai penting malformed. Reader display boleh mempertahankan fallback aman yang telah didokumentasikan dan tidak memengaruhi saldo, harga, status, autentikasi, promo, atau mutation.
+
+Fase 8-B tidak menambah kolom dan tidak memerlukan migration. Setup dan migration lama boleh memakai direct range write hanya untuk header, seed, formula, atau backfill internal yang trusted dan tetap wajib memvalidasi prerequisite masing-masing.
 
 ## 5. Struktur Repo
 

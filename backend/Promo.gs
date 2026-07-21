@@ -19,9 +19,7 @@ function _promoNormalizeCode(code) {
 }
 
 function _promoIsTruthy(value) {
-  var normalized = String(value == null ? '' : value).trim().toLowerCase();
-  return value === true || normalized === 'aktif' || normalized === 'true' ||
-    normalized === '1' || normalized === 'ya';
+  return sheetParseBoolean(value, { activeAliases: true }) === true;
 }
 
 function _promoHasValue(value) {
@@ -41,8 +39,7 @@ function _promoParseCsv(value) {
 
 function _promoNumber(value, defaultValue) {
   if (!_promoHasValue(value)) return defaultValue;
-  var numberValue = Number(value);
-  return isNaN(numberValue) ? null : numberValue;
+  return sheetParseDecimal(value, {});
 }
 
 function _promoTimeString(value) {
@@ -594,9 +591,6 @@ function promoValidateCode(payload, token) {
 
 function _promoAppendUsage(orderObj, promoResult) {
   if (!promoResult || !promoResult.promo_id) return null;
-  var sheet = getSheet('PromoUsage');
-  var lastColumn = sheet.getLastColumn();
-  var headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
   var now = new Date();
   var usage = {
     usage_id: genId('PRU'), promo_id: String(promoResult.promo_id),
@@ -610,9 +604,7 @@ function _promoAppendUsage(orderObj, promoResult) {
     promo_bonus_poin: promoResult.bonus_poin,
     promo_multiplier_poin: promoResult.multiplier_poin
   };
-  var row = [];
-  for (var i = 0; i < headers.length; i++) row.push(usage.hasOwnProperty(headers[i]) ? usage[headers[i]] : '');
-  sheet.appendRow(row);
+  appendRowObj('PromoUsage', usage);
   return usage;
 }
 
@@ -639,26 +631,18 @@ function _promoEnsureUsage(expected) {
 }
 
 function _promoRefundUsageByOrder(orderId, cancelledAt) {
-  var sheet = getSheet('PromoUsage');
-  var data = sheet.getDataRange().getValues();
-  if (data.length <= 1) return false;
-  var headers = data[0];
-  var orderColumn = headers.indexOf('order_id');
-  var statusColumn = headers.indexOf('status');
-  var cancelledColumn = headers.indexOf('cancelled_at');
-  if (orderColumn === -1 || statusColumn === -1 || cancelledColumn === -1) {
-    throw new Error('Header PromoUsage tidak lengkap');
-  }
+  getSheetHeaders('PromoUsage');
+  var rows = readAll('PromoUsage');
   var matches = [];
-  for (var i = 1; i < data.length; i++) if (String(data[i][orderColumn]) === String(orderId)) matches.push(i);
+  for (var i = 0; i < rows.length; i++) if (String(rows[i].order_id) === String(orderId)) matches.push(rows[i]);
   if (matches.length === 0) return { ok: true, existing: true, absent: true };
   if (matches.length > 1) return { ok: false, code: 'PROMO_USAGE_DUPLICATE' };
-  var rowIndex = matches[0];
-  var status = String(data[rowIndex][statusColumn] || '').trim().toUpperCase();
+  var row = matches[0];
+  var status = String(row.status || '').trim().toUpperCase();
   if (status === 'DIBATALKAN') return { ok: true, existing: true };
   if (status !== 'DIGUNAKAN') return { ok: false, code: 'PROMO_USAGE_STATUS_CONFLICT' };
-  data[rowIndex][statusColumn] = 'DIBATALKAN';
-  data[rowIndex][cancelledColumn] = cancelledAt || nowJkt();
-  sheet.getRange(rowIndex + 1, 1, 1, headers.length).setValues([data[rowIndex]]);
+  if (!updateRowById('PromoUsage', 'usage_id', String(row.usage_id), { status: 'DIBATALKAN', cancelled_at: cancelledAt || nowJkt() })) {
+    return { ok: false, code: 'PROMO_USAGE_WRITE_FAILED' };
+  }
   return { ok: true, existing: false };
 }

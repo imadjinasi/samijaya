@@ -125,8 +125,58 @@ function getSheetHeaders(sheetName) {
     seen[header] = true;
     headers[i] = header;
   }
+  if (typeof schemaValidateHeaders === 'function') schemaValidateHeaders(sheetName, headers);
   _sheetHeadersExecutionCache[sheetName] = { lastColumn: lastColumn, headers: headers.slice() };
   return headers;
+}
+
+var _SHEET_VALUE_MARKER = '__samijaya_sheet_value__';
+
+function sheetLiteral(value) { return { __samijaya_sheet_value__: 'LITERAL', value: String(value == null ? '' : value) }; }
+function sheetJson(value) { return { __samijaya_sheet_value__: 'JSON', value: JSON.stringify(value) }; }
+function sheetSerializedJson(value) {
+  var text = String(value == null ? '' : value);
+  JSON.parse(text);
+  return { __samijaya_sheet_value__: 'JSON', value: text };
+}
+function sheetTrustedFormula(formula) {
+  var value = String(formula == null ? '' : formula);
+  if (value.charAt(0) !== '=') throw new Error('TRUSTED_FORMULA_INVALID');
+  return { __samijaya_sheet_value__: 'FORMULA', value: value };
+}
+
+function sheetFormulaSafeLiteral(value) {
+  var text = String(value == null ? '' : value);
+  if (text.charAt(0) === "'") return text;
+  return /^\s*[=+\-@]/.test(text) ? "'" + text : text;
+}
+
+function sheetPrepareValue(value) {
+  if (value && typeof value === 'object' && value[_SHEET_VALUE_MARKER]) {
+    if (value[_SHEET_VALUE_MARKER] === 'FORMULA') return String(value.value);
+    if (value[_SHEET_VALUE_MARKER] === 'JSON') {
+      JSON.parse(String(value.value));
+      return sheetFormulaSafeLiteral(String(value.value));
+    }
+    if (value[_SHEET_VALUE_MARKER] === 'LITERAL') return sheetFormulaSafeLiteral(value.value);
+    throw new Error('SHEET_VALUE_MARKER_INVALID');
+  }
+  if (typeof value === 'string') return sheetFormulaSafeLiteral(value);
+  if (typeof value === 'number') {
+    if (!isFinite(value)) throw new Error('SHEET_NUMBER_NOT_FINITE');
+    return value;
+  }
+  if (typeof value === 'boolean' || value instanceof Date || value === null || value === undefined) return value == null ? '' : value;
+  throw new Error('SHEET_VALUE_TYPE_INVALID');
+}
+
+function sheetPrepareFieldValue(sheetName, header, value) {
+  var spec = typeof schemaGet === 'function' ? schemaGet(sheetName) : null;
+  if (spec && spec.json && spec.json.indexOf(header) !== -1 && value !== '' && value !== null && value !== undefined &&
+      !(value && typeof value === 'object' && value[_SHEET_VALUE_MARKER])) {
+    return sheetPrepareValue(sheetSerializedJson(value));
+  }
+  return sheetPrepareValue(value);
 }
 
 /** Append banyak object dengan satu setValues(). */
@@ -141,7 +191,7 @@ function appendRowsObj(sheetName, objects) {
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('Row object tidak valid.');
     var row = [];
     for (var h = 0; h < headers.length; h++) {
-      row.push(Object.prototype.hasOwnProperty.call(obj, headers[h]) ? obj[headers[h]] : '');
+      row.push(Object.prototype.hasOwnProperty.call(obj, headers[h]) ? sheetPrepareFieldValue(sheetName, headers[h], obj[headers[h]]) : '');
     }
     matrix.push(row);
   }
@@ -162,7 +212,69 @@ function isOrderCommittedRow(order) {
 function transactionSafeText(value, maxLength) {
   var text = String(value == null ? '' : value).replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim();
   if (text.length > maxLength) return null;
-  if (/^[=+\-@]/.test(text)) text = "'" + text;
+  if (text.charAt(0) !== "'" && /^\s*[=+\-@]/.test(text)) text = "'" + text;
+  return text;
+}
+
+function sheetParseInteger(value, options) {
+  options = options || {};
+  if (value === '' || value === null || value === undefined) return options.allowEmpty ? null : null;
+  if (typeof value === 'string' && !/^-?(?:0|[1-9]\d*)$/.test(value.trim())) return null;
+  var parsed = typeof value === 'number' ? value : Number(String(value).trim());
+  if (!Number.isInteger(parsed) || !isFinite(parsed)) return null;
+  if (options.min !== undefined && parsed < options.min) return null;
+  if (options.max !== undefined && parsed > options.max) return null;
+  return parsed;
+}
+
+function sheetParseDecimal(value, options) {
+  options = options || {};
+  if (value === '' || value === null || value === undefined) return options.allowEmpty ? null : null;
+  if (typeof value === 'string' && !/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value.trim())) return null;
+  var parsed = typeof value === 'number' ? value : Number(String(value).trim());
+  if (!isFinite(parsed)) return null;
+  if (options.min !== undefined && parsed < options.min) return null;
+  if (options.max !== undefined && parsed > options.max) return null;
+  return parsed;
+}
+
+function sheetParseBoolean(value, options) {
+  options = options || {};
+  if (value === '' || value === null || value === undefined) return options.allowEmpty ? null : null;
+  if (value === true || value === false) return value;
+  var text = String(value).trim().toLowerCase();
+  if (text === 'true' || text === '1' || (options.activeAliases && (text === 'aktif' || text === 'ya'))) return true;
+  if (text === 'false' || text === '0' || (options.activeAliases && (text === 'nonaktif' || text === 'tidak'))) return false;
+  return null;
+}
+
+function sheetParseEnum(value, allowed, options) {
+  options = options || {};
+  if (value === '' || value === null || value === undefined) return options.allowEmpty ? '' : null;
+  var text = String(value).trim();
+  if (options.uppercase) text = text.toUpperCase();
+  if (options.lowercase) text = text.toLowerCase();
+  return allowed.indexOf(text) === -1 ? null : text;
+}
+
+function sheetParseId(value, pattern, maxLength) {
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  var text = String(value).trim();
+  if (!text || text.length > (maxLength || 80) || !(pattern || /^[A-Za-z0-9_-]+$/).test(text)) return null;
+  return text;
+}
+
+function sheetParseDate(value, options) {
+  options = options || {};
+  if (value === '' || value === null || value === undefined) return options.allowEmpty ? null : null;
+  if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
+  var text = String(value).trim();
+  var match = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (!match) return null;
+  var y = Number(match[1]), m = Number(match[2]), d = Number(match[3]);
+  var probe = new Date(Date.UTC(y, m - 1, d));
+  if (probe.getUTCFullYear() !== y || probe.getUTCMonth() !== m - 1 || probe.getUTCDate() !== d) return null;
+  if (match[4] && (Number(match[4]) > 23 || Number(match[5]) > 59 || Number(match[6] || 0) > 59)) return null;
   return text;
 }
 
@@ -172,10 +284,20 @@ function transactionNormalizeOrderId(value) {
 }
 
 function transactionStrictInteger(value, min, max) {
-  if (typeof value === 'string' && !/^-?\d+$/.test(value.trim())) return null;
-  var number = Number(value);
-  if (!Number.isInteger(number) || number < min || number > max) return null;
-  return number;
+  return sheetParseInteger(value, { min: min, max: max });
+}
+
+function schemaFindDuplicatePrimaryIds(sheetName) {
+  var spec = typeof schemaGet === 'function' ? schemaGet(sheetName) : null;
+  if (!spec || !spec.primary_id || !spec.unique) return [];
+  var rows = readAll(sheetName), seen = {}, duplicates = [];
+  for (var i = 0; i < rows.length; i++) {
+    var id = String(rows[i][spec.primary_id] == null ? '' : rows[i][spec.primary_id]).trim();
+    if (!id) continue;
+    if (seen[id] && duplicates.indexOf(id) === -1) duplicates.push(id);
+    seen[id] = true;
+  }
+  return duplicates;
 }
 
 // ============================================================
@@ -208,13 +330,15 @@ function updateRowById(sheetName, idColumnName, idValue, patchObj) {
   var lastRow = sheet.getLastRow();
   if (lastRow <= 1) return false;
   var idRange = sheet.getRange(2, idColIdx + 1, lastRow - 1, 1);
-  var match = idRange.createTextFinder(String(idValue)).matchEntireCell(true).findNext();
-  if (!match) return false;
-  var rowNumber = match.getRow();
+  var finder = idRange.createTextFinder(String(idValue)).matchEntireCell(true);
+  var matches = typeof finder.findAll === 'function' ? finder.findAll() : (function() { var one = finder.findNext(); return one ? [one] : []; })();
+  if (!matches || matches.length === 0) return false;
+  if (matches.length > 1) throw new Error('DATA_DUPLICATE_PRIMARY_ID:' + sheetName + ':' + idColumnName);
+  var rowNumber = matches[0].getRow();
   var rowRange = sheet.getRange(rowNumber, 1, 1, headers.length);
   var updatedRow = rowRange.getValues()[0];
   for (var j = 0; j < headers.length; j++) {
-    if (Object.prototype.hasOwnProperty.call(patchObj, headers[j])) updatedRow[j] = patchObj[headers[j]];
+    if (Object.prototype.hasOwnProperty.call(patchObj, headers[j])) updatedRow[j] = sheetPrepareFieldValue(sheetName, headers[j], patchObj[headers[j]]);
   }
   rowRange.setValues([updatedRow]);
   return true;

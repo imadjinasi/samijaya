@@ -64,8 +64,12 @@ function _toHHMMOrder(v) {
  * @return {number}      — menit sejak 00:00 (contoh: "07:30" → 450)
  */
 function _toMinutes(hhmm) {
-  var parts = String(hhmm).split(':');
-  return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+  var match = String(hhmm).match(/^(\d{2}):(\d{2})$/);
+  if (!match) return null;
+  var hour = Number(match[1]);
+  var minute = Number(match[2]);
+  if (hour > 23 || minute > 59) return null;
+  return hour === null || minute === null ? null : hour * 60 + minute;
 }
 
 /**
@@ -82,8 +86,9 @@ function _generateOrderId(ordersRows) {
   for (var i = 0; i < ordersRows.length; i++) {
     var oid = String(ordersRows[i].order_id || '');
     if (oid.indexOf(prefix) === 0) {
-      var seq = parseInt(oid.substring(prefix.length), 10);
-      if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+      var seqText = oid.substring(prefix.length);
+      var seq = /^\d+$/.test(seqText) ? Number(seqText) : null;
+      if (seq !== null && seq > maxSeq) maxSeq = seq;
     }
   }
   var nextSeq = String(maxSeq + 1);
@@ -178,7 +183,7 @@ function _orderCanonicalIntent(payload, member) {
       product_id: String(rawItems[i].product_id || '').trim(),
       variant_id: String(rawItems[i].variant_id || '').trim(),
       addon_ids: addonIds,
-      qty: Number(rawItems[i].qty)
+      qty: sheetParseInteger(rawItems[i].qty, { min: 1, max: 100 })
     });
   }
   var addressId = String(payload.address_id || '').trim();
@@ -187,8 +192,8 @@ function _orderCanonicalIntent(payload, member) {
   var addressIntent = addressId ? { address_id: addressId } : {
     address_id: '',
     alamat_snapshot: String(payload.alamat_snapshot || '').trim(),
-    lat: Number(payload.lat),
-    lng: Number(payload.lng)
+    lat: sheetParseDecimal(payload.lat, { min: -90, max: 90 }),
+    lng: sheetParseDecimal(payload.lng, { min: -180, max: 180 })
   };
   return {
     member_id: String(member.member_id), items: items,
@@ -198,7 +203,7 @@ function _orderCanonicalIntent(payload, member) {
     jam_pilih: String(payload.jam_pilih || '').trim(),
     slot_id: String(payload.slot_id || '').trim(),
     metode_bayar: String(payload.metode_bayar || '').trim().toUpperCase(),
-    pakai_poin: payload.pakai_poin === true || String(payload.pakai_poin).toLowerCase() === 'true',
+    pakai_poin: sheetParseBoolean(payload.pakai_poin, { allowEmpty: true }) === true,
     promo_code: _promoNormalizeCode(payload.promo_code),
     nama_penerima: normalizedReceiverName,
     no_hp_penerima: normalizedReceiverPhone,

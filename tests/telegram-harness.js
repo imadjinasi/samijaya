@@ -43,6 +43,10 @@ const context = {
     return fn();
   },
   clearSettingsCache() {},
+  sheetParseId(value, pattern, maxLength) {
+    const text = String(value == null ? '' : value).trim();
+    return text && text.length <= maxLength && pattern.test(text) ? text : null;
+  },
   nowJkt: () => '2026-07-21 18:20:00',
   log() {},
   getSetting(key) {
