@@ -12,6 +12,7 @@ Ringkasan permanen; detail kontrak tetap berada di `CONTRACT.md`.
 | DONE | 8-C | Timeout policy, late-response suppression, geocoding failure safety | `app.js`, `map.js`, frontend failure harness |
 | DONE | 8-C | Fail-safe structured logging, correlation, Telegram response classification | `Util.gs`, `Router.gs`, `Telegram.gs` |
 | DONE | 8-C | Failure UX dan loading/button cleanup pada flow utama | `app.js`, frontend failure harness |
+| DONE | 8-D | Data Handbook deklaratif, idempotent managed rows/header notes, dan coverage audit | `DataHandbook.gs`, `data-handbook-harness.js` |
 | OPEN | UI minor | Sebagian screen legacy masih memakai inline style/`alert()` dan copy generik | Tidak diubah agar tidak menjadi redesign |
 | OPEN | UI minor | Tombol delete/default address belum mempunyai indikator loading per-row | Retry manual tetap tersedia |
 | OPEN | Data legacy | Mutation manual Spreadsheet bergantung pada TTL atau `/clearcache` | Monitor setelah deployment |

@@ -40,3 +40,27 @@ Gunakan workbook copy, deployment staging, serta bot staging/mock. Jangan mengub
 Setelah rollback ulangi schema, health, smoke subset, reconciliation, dan log review. Data restore adalah pilihan terakhir.
 
 Evidence record: requirement, status, safe reference, owner, timestamp WIB, release version, rollback result. Redaksi screenshot secara manual.
+
+## Data Handbook
+
+Sheet `Handbook` adalah panduan operator ke-22 dan tidak termasuk 21 sheet bisnis. Header tabel tetap di row pertama. Gunakan filter `sheet_name`, `input_mode`, `required`, atau `sensitive` untuk menemukan panduan; warna mode hanya bantuan visual.
+
+Arti mode:
+
+- `MANUAL`: operator boleh mengisi sesuai format dan relasi yang dijelaskan.
+- `SYSTEM`: dihasilkan sistem; gunakan frontend/Telegram yang disebutkan bila tersedia.
+- `MIXED`: dapat berubah lewat operasi manual dan sistem; perhatikan dampak cache dan transaksi baru.
+- `FORMULA`: hanya formula yang dikelola sistem/migration.
+- `DO_NOT_EDIT`: jangan koreksi manual; ikuti reconciliation/runbook bila ada konflik.
+
+Urutan aman untuk workbook existing:
+
+1. Buat backup Spreadsheet dan pastikan source release sudah diverifikasi.
+2. Jalankan deployment schema/readiness audit yang relevan. Jangan memperbaiki row transaksi secara manual.
+3. Jalankan `migrateDataHandbook_8_D()` dari editor Apps Script. Fungsi ini hanya menyinkronkan Handbook dan managed header note; tidak menjalankan migration schema lain.
+4. Periksa hasil log `row_conflicts` dan `note_conflicts`. Pertahankan custom row/note sampai pemiliknya memutuskan tindak lanjut.
+5. Jalankan `auditDataHandbookCoverageReadOnly()`. Audit bersih harus tidak memiliki missing header/row, duplicate, stale row, note conflict, invalid mode, atau missing sensitive classification. `custom_row` boleh tetap ada.
+6. Khusus `MemberAddresses.alamat_snapshot`, audit dapat melaporkan missing header pada workbook lama. Handbook tidak menambahkannya; lakukan migration schema terpisah hanya setelah backup dan approval khusus.
+7. Setelah semua gate lokal dan staging lulus, barulah lakukan `clasp push`/fixed-ID deployment sesuai approval terpisah.
+
+Jangan menaruh secret atau nilai produksi dalam Handbook. Perbarui `DataHandbook.gs` ketika header, parser, writer, default efektif, enum, sensitivitas, atau cara operasional berubah; jalankan ulang migration dan audit setelah perubahan source disetujui.

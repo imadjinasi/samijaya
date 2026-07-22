@@ -355,6 +355,20 @@ Fase 8-B tidak menambah kolom dan tidak memerlukan migration. Setup dan migratio
 - Geocoding membedakan not-found dari network/timeout, mempertahankan alamat valid sebelumnya, serta mengabaikan hasil lama setelah lokasi baru atau navigasi.
 - `UrlFetchApp.fetch()` tidak dapat dibatalkan setelah dimulai. Telegram deadline hanya budget sebelum network call, bukan hard network timeout. HTTP, malformed JSON, API error, dan network failure diklasifikasikan; notifikasi setelah commit tetap best-effort tanpa retry otomatis.
 
+## 4D. Data Handbook dan header notes
+
+- `Handbook` adalah sheet dokumentasi operasional ke-22, bukan sheet data bisnis dan tidak mendokumentasikan dirinya sendiri.
+- Registry deklaratif berada di `backend/DataHandbook.gs` dan mencakup seluruh header 21 sheet bisnis. Setiap baris menjelaskan sumber input, kewajiban, tipe, nilai yang diperbolehkan, default efektif, contoh, sensitivitas, relasi, dan kebijakan edit.
+- Mode input: `MANUAL` diisi operator; `SYSTEM` dihasilkan sistem; `MIXED` dapat berubah melalui operator dan sistem; `FORMULA` khusus formula yang dikelola; `DO_NOT_EDIT` tidak boleh diedit manual.
+- Header Handbook tetap pada row pertama, dibekukan, diberi filter, wrap, lebar kolom, dan warna ringan berdasarkan mode. Tidak ada merged cell, external formula, hidden data, atau hard-coded sheet gid.
+- Jalankan `migrateDataHandbook_8_D()` secara manual setelah backup untuk membuat atau menyinkronkan Handbook dan managed header note. Migration tidak menambah/mengubah header atau value pada 21 sheet bisnis dan tidak membaca row transaksi.
+- Jalankan `auditDataHandbookCoverageReadOnly()` untuk memeriksa missing business header, missing managed row, duplicate key, stale/unknown row, custom row, custom note conflict, invalid input mode, dan sensitive field yang belum ditandai.
+- Managed row memakai key `sheet_name + column_name`. Duplicate key adalah conflict dan tidak dipilih atau dihapus otomatis. Row custom di luar key managed dipertahankan.
+- Managed header note memakai marker `[Samijaya Handbook]`. Note kosong atau note bermarker boleh diperbarui; note custom tanpa marker dipertahankan dan dilaporkan.
+- Handbook tidak boleh memuat nilai aktual Settings, secret, OTP, token sesi, PII member, data order, atau data produksi lain. Seluruh nilai dokumentasi melewati formula-safe write boundary.
+- Perbarui registry handbook setiap kali sheet/header, parser, writer, allowed value, default efektif, sensitivitas, atau jalur operasional berubah.
+- `MemberAddresses.alamat_snapshot` tersedia untuk instalasi baru melalui Setup. Migration handbook tidak menambah header tersebut pada workbook existing; audit melaporkan bila header aktual belum tersedia.
+
 ## 5. Struktur Repo
 
 ```

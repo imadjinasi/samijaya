@@ -2,7 +2,7 @@
  * Setup.gs — Samijaya MVP
  *
  * Dua fungsi:
- *   1. setupDatabase()  — buat 15 sheet + header + data default
+ *   1. setupDatabase()  — buat 21 sheet bisnis + Handbook + data default
  *   2. hashPassword(str) — SHA-256 hex string
  *
  * Jalankan hashPassword('passwordku') dari editor,
@@ -48,7 +48,7 @@ var SHEET_DEFS = [
 
   // --- 3. MemberAddresses ---
   ['MemberAddresses',
-    ['address_id', 'member_id', 'label', 'detail', 'latitude', 'longitude', 'created_at', 'status', 'is_default'],
+    ['address_id', 'member_id', 'label', 'detail', 'alamat_snapshot', 'latitude', 'longitude', 'created_at', 'status', 'is_default'],
     null
   ],
 
@@ -180,6 +180,12 @@ var SHEET_DEFS = [
     null
   ],
 
+  // --- ProductVariants ---
+  ['ProductVariants',
+    ['variant_id', 'product_id', 'nama_axis', 'nama_varian', 'harga', 'urutan', 'aktif', 'created_at', 'updated_at'],
+    null
+  ],
+
   // --- 17. OrderItemAddons ---
   ['OrderItemAddons',
     ['id', 'order_id', 'order_item_ref', 'addon_id', 'nama_addon_snapshot', 'harga_snapshot', 'created_at'],
@@ -286,6 +292,15 @@ function setupDatabase() {
   Logger.log('========================================');
   Logger.log('Selesai! Sheet dibuat: ' + created + ', sudah ada: ' + existed +
              ', total: ' + (created + existed) + '/' + SHEET_DEFS.length + '.');
+
+  // Hanya isi Handbook bila seluruh sheet bisnis baru dibuat dalam eksekusi ini.
+  // Workbook existing harus memakai migrateDataHandbook_8_D() secara eksplisit.
+  if (created === SHEET_DEFS.length) {
+    var handbookResult = setupDataHandbookForNewInstall_(ss);
+    Logger.log('Handbook siap. Total sheet setelah setup: 22. ' + JSON.stringify(handbookResult));
+  } else {
+    Logger.log('Handbook tidak disentuh karena ini bukan instalasi baru yang kosong.');
+  }
 }
 
 // ============================================================
