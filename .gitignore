@@ -5,3 +5,6 @@ backend/.clasp.json
 .DS_Store
 .env
 SETUP-PRIVATE.md
+inspect_workbook.mjs
+.codex-spreadsheet-review/
+outputs/

@@ -90,6 +90,8 @@ assert(!JSON.stringify(propertyResult).includes('secret-sentinel')); // values n
 
 // Static and dynamic read-only guarantees.
 const source=fs.readFileSync('backend/Phase8DReadinessAudit.gs','utf8');
+assert.match(source,/function runPhase8DLaunchSchemaAudit\(\)/);
+assert.match(source,/function runPhase8DReadinessAudit\(\)/);
 assert.doesNotMatch(source,/\b(?:appendRowObj|appendRowsObj|updateRowById|setProperty|deleteProperty|clearApplicationDataCaches|invalidateCatalogAfterMutation|tgSend|UrlFetchApp)\s*\(/);
 assert.strictEqual(propertyWrites,0); assert.strictEqual(cacheCalls,0); assert.strictEqual(networkCalls,0); assert.strictEqual(telegramCalls,0);
 

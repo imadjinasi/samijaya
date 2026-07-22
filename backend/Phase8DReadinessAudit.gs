@@ -141,3 +141,19 @@ function auditPhase8DReadinessReadOnly() {
   for(var key in report.sections)if(Object.prototype.hasOwnProperty.call(report.sections,key)){var s=report.sections[key]; if(s.status!=='COMPLETED')report.ok=false; for(var i=0;i<s.findings.length;i++){var finding=s.findings[i]; if(!finding)continue; if(finding.status==='UNVERIFIED')report.ok=false; if((finding.severity==='CRITICAL'||finding.severity==='ERROR')&&Number(finding.count||0)>0)report.ok=false;}}
   report.status=report.ok?'VERIFIED':'REVERIFY REQUIRED'; return report;
 }
+
+/** Editor entry point: prints the read-only launch schema report to Execution log. */
+function runPhase8DLaunchSchemaAudit() {
+  var report = auditPhase8DLaunchSchemaReadOnly();
+  console.log('LAUNCH SCHEMA SUMMARY: ' + JSON.stringify({ ok:report.ok, status:report.status, reference_id:report.reference_id, banners_required:report.banners_required }));
+  for (var i = 0; i < report.groups.length; i++) console.log('SCHEMA GROUP ' + report.groups[i].code + ': ' + JSON.stringify(report.groups[i]));
+  return report;
+}
+
+/** Editor entry point: prints the read-only readiness report to Execution log. */
+function runPhase8DReadinessAudit() {
+  var report = auditPhase8DReadinessReadOnly();
+  console.log('READINESS SUMMARY: ' + JSON.stringify({ ok:report.ok, status:report.status, reference_id:report.reference_id, metrics:report.metrics || {} }));
+  for (var key in report.sections) if (Object.prototype.hasOwnProperty.call(report.sections,key)) console.log('READINESS SECTION ' + key + ': ' + JSON.stringify(report.sections[key]));
+  return report;
+}
