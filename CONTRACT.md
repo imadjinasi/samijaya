@@ -195,6 +195,7 @@ Harga 1 item = Products.harga (dasar) + ProductVariants.harga (selisih varian, 0
 - `ping` — health check
 - `requestOtp` — kirim OTP via Telegram admin
 - `verifyOtp` — verifikasi OTP, buat sesi
+- `updateProfile` — update profil member yang sedang login
 - `getMe` — data member + poin + alamat
 - `getCatalog` — kategori, produk, lokasi, slot, holidays, settings publik, dan `campaigns` aktif terurut. Penambahan `campaigns` bersifat backward compatible.
 - `getSlotAvailability` — kuota slot per tanggal
@@ -205,7 +206,13 @@ Harga 1 item = Products.harga (dasar) + ProductVariants.harga (selisih varian, 0
 - `orderMarkSeen` — tandai update status order member sebagai sudah dilihat
 - `getMyPoints` — riwayat poin member
 - `addAddress` — tambah alamat baru member
+- `updateAddress` — update alamat milik member
+- `deleteAddress` — soft-delete alamat milik member
 - `addressSetDefault` — set 1 alamat jadi default (payload: `{address_id}`, enforce 1 default per member)
+- `submitReview` — buat atau edit ulasan kanonik order selesai
+- `getMyReviewable` — daftar order member yang dapat diulas
+- `deleteMyReview` — soft-delete ulasan milik member
+- `getPublicReviews` — daftar ulasan aktif yang lolos validasi relasi
 
 ### 3B. Idempotency Order (Fase 8-A2)
 

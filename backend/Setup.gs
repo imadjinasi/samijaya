@@ -42,7 +42,7 @@ var SHEET_DEFS = [
 
   // --- 2. Members ---
   ['Members',
-    ['member_id', 'nama', 'no_hp', 'tgl_lahir', 'email', 'total_poin', 'total_belanja', 'created_at', 'status', 'last_seen_orders_at'],
+    ['member_id', 'nama', 'no_hp', 'tgl_lahir', 'email', 'jenis_kelamin', 'total_poin', 'total_belanja', 'created_at', 'status', 'last_seen_orders_at'],
     null
   ],
 

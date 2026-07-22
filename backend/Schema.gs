@@ -5,7 +5,7 @@
  */
 var SHEET_SCHEMA_REGISTRY = {
   Settings: { required: ['key','value'], optional: ['keterangan'], primary_id: 'key', unique: true },
-  Members: { required: ['member_id','nama','no_hp','total_poin','total_belanja','created_at','status'], optional: ['tgl_lahir','email','last_seen_orders_at'], primary_id: 'member_id', unique: true },
+  Members: { required: ['member_id','nama','no_hp','total_poin','total_belanja','created_at','status'], optional: ['tgl_lahir','email','jenis_kelamin','last_seen_orders_at'], primary_id: 'member_id', unique: true },
   Sessions: { required: ['token','no_hp','member_id','otp','otp_expires_at','otp_used','session_expires_at','created_at'], optional: ['otp_failed_attempts','otp_locked_at'], primary_id: 'token', unique: true },
   MemberAddresses: { required: ['address_id','member_id','label','detail','latitude','longitude','created_at','status','is_default'], optional: ['alamat_snapshot'], primary_id: 'address_id', unique: true },
   Products: { required: ['product_id','nama','harga','kategori_id','tersedia','status'], optional: ['foto_file_id','deskripsi','badge_promo','urutan'], primary_id: 'product_id', unique: true },
