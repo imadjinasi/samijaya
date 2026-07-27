@@ -615,7 +615,8 @@ function orderCreateOrder(payload, token) {
         variant_id:     varIdSnapshot,
         variant_nama_snapshot: varNamaSnapshot,
         nama_axis_snapshot: axisNamaSnapshot,
-        addon_snapshots: addonSnapshots
+        addon_snapshots: addonSnapshots,
+        addons:         addonSnapshots
       });
     }
 
