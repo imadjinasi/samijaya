@@ -83,6 +83,7 @@ async function run() {
   assert(mapSource.includes('generation !== _mapRequestGeneration'), 'map navigation stale guard missing');
   assert(source.includes('previousAlamat') && source.includes('alamat || previousAlamat'), 'geocoding failure erases previous address');
   assert(source.includes('startCampaignQueue') && source.includes('copyCampaignCode'), 'campaign regression');
+  assert(source.includes("resContainer.classList.remove('co-hidden')") && source.includes("getElementById('co-search-results').classList.add('co-hidden')"), 'search results display regression (co-hidden)');
   console.log('frontend-failure-harness: all assertions passed');
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

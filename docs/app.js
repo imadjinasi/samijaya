@@ -2323,7 +2323,7 @@ async function onSearchAddressInput(e) {
   var val = e.target.value.trim();
   var resContainer = document.getElementById('co-search-results');
   if (!val) {
-    resContainer.classList.add('hidden');
+    resContainer.classList.add('co-hidden');
     return;
   }
   
@@ -2339,9 +2339,9 @@ async function onSearchAddressInput(e) {
         html += '<div class="search-result-item" onclick="onSelectSearchResult(' + r.lat + ', ' + r.lng + ', \'' + escHtml(r.label).replace(/'/g, "\\'") + '\')">' + escHtml(r.label) + '</div>';
       }
       resContainer.innerHTML = html;
-      resContainer.classList.remove('hidden');
+      resContainer.classList.remove('co-hidden');
     } else {
-      resContainer.classList.add('hidden');
+      resContainer.classList.add('co-hidden');
       if (results.error_category === 'NETWORK' || results.error_category === 'TIMEOUT') showToast('Jaringan pencarian lokasi bermasalah. Coba lagi.');
       else if (results.error_category === 'NOT_FOUND') showToast('Lokasi tidak ditemukan. Coba kata kunci lain.');
     }
@@ -2349,7 +2349,7 @@ async function onSearchAddressInput(e) {
 }
 
 function onSelectSearchResult(lat, lng, label) {
-  document.getElementById('co-search-results').classList.add('hidden');
+  document.getElementById('co-search-results').classList.add('co-hidden');
   document.getElementById('co-search-address').value = label;
   
   if (typeof initDeliveryMap === 'function') {
