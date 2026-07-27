@@ -143,9 +143,12 @@ function _promoValidateConfig(promo) {
   var productPresent = _promoHasValue(promo.diskon_produk_ids) ||
     _promoHasValue(promo.diskon_produk_tipe) || _promoHasValue(promo.diskon_produk_nilai) ||
     _promoHasValue(promo.diskon_produk_max);
+  var addonPresent = _promoHasValue(promo.diskon_addon_ids) ||
+    _promoHasValue(promo.diskon_addon_tipe) || _promoHasValue(promo.diskon_addon_nilai) ||
+    _promoHasValue(promo.diskon_addon_max);
 
-  if (subtotalPresent && productPresent) {
-    return _promoError('PROMO_CONFIG_INVALID', 'Diskon subtotal dan diskon produk tidak boleh aktif bersamaan');
+  if (subtotalPresent && (productPresent || addonPresent)) {
+    return _promoError('PROMO_CONFIG_INVALID', 'Diskon subtotal tidak boleh aktif bersamaan dengan diskon produk atau add-on');
   }
 
   var priceEffects = [
@@ -165,6 +168,21 @@ function _promoValidateConfig(promo) {
   }
   if (productPresent && _promoParseCsv(promo.diskon_produk_ids).length === 0) {
     return _promoError('PROMO_CONFIG_INVALID', 'Target diskon produk wajib diisi');
+  }
+
+  if (addonPresent) {
+    var addonType = String(promo.diskon_addon_tipe || '').trim().toUpperCase();
+    var addonValue = _promoNumber(promo.diskon_addon_nilai, null);
+    var addonCap = _promoNumber(promo.diskon_addon_max, 0);
+    if (['GRATIS', 'PERSEN', 'NOMINAL'].indexOf(addonType) === -1 || addonCap === null || addonCap < 0) {
+      return _promoError('PROMO_CONFIG_INVALID', 'Konfigurasi diskon add-on tidak valid');
+    }
+    if (addonType !== 'GRATIS' && (addonValue === null || addonValue <= 0 || (addonType === 'PERSEN' && addonValue > 100))) {
+      return _promoError('PROMO_CONFIG_INVALID', 'Nilai diskon add-on tidak valid');
+    }
+    if (_promoParseCsv(promo.diskon_addon_ids).length === 0) {
+      return _promoError('PROMO_CONFIG_INVALID', 'Target diskon add-on wajib diisi');
+    }
   }
 
   var shippingPresent = _promoHasValue(promo.diskon_ongkir_tipe) ||
@@ -206,8 +224,11 @@ function _promoValidateConfig(promo) {
       subtotal_effect: subtotalPresent,
       product_effect: productPresent,
       shipping_effect: shippingPresent,
+      addon_effect: addonPresent,
       bonus_poin: bonus,
-      multiplier_poin: multiplier
+      multiplier_poin: multiplier,
+      product_kelipatan: _promoIsTruthy(promo.diskon_produk_kelipatan),
+      addon_kelipatan: _promoIsTruthy(promo.diskon_addon_kelipatan)
     }
   };
 }
@@ -266,22 +287,27 @@ function _promoValidateConditions(promo, config, context) {
 
   var requiredProducts = _promoParseCsv(promo.required_product_ids);
   var requiredCategories = _promoParseCsv(promo.required_kategori_ids);
-  if (requiredProducts.length > 0 || requiredCategories.length > 0) {
+  var requiredAddons = _promoParseCsv(promo.required_addon_ids);
+  if (requiredProducts.length > 0 || requiredCategories.length > 0 || requiredAddons.length > 0) {
     var productSet = {};
     var categorySet = {};
+    var addonSet = {};
     for (var i = 0; i < context.line_items.length; i++) {
       productSet[String(context.line_items[i].product_id)] = true;
       categorySet[String(context.line_items[i].kategori_id)] = true;
+      var itemAddons = context.line_items[i].addons || [];
+      for (var a = 0; a < itemAddons.length; a++) {
+        addonSet[String(itemAddons[a].addon_id)] = true;
+      }
     }
     var matched = 0;
-    var requiredTotal = requiredProducts.length + requiredCategories.length;
+    var requiredTotal = requiredProducts.length + requiredCategories.length + requiredAddons.length;
     for (var p = 0; p < requiredProducts.length; p++) if (productSet[requiredProducts[p]]) matched++;
     for (var c = 0; c < requiredCategories.length; c++) if (categorySet[requiredCategories[c]]) matched++;
+    for (var a2 = 0; a2 < requiredAddons.length; a2++) if (addonSet[requiredAddons[a2]]) matched++;
     var requirementMet = config.match_mode === 'ALL' ? matched === requiredTotal : matched > 0;
     if (!requirementMet) {
-      var requiredCode = requiredProducts.length > 0 && requiredCategories.length === 0
-        ? 'PROMO_PRODUCT_REQUIRED' : 'PROMO_CATEGORY_REQUIRED';
-      return _promoError(requiredCode, 'Produk atau kategori yang disyaratkan belum ada di order');
+      return _promoError('PROMO_REQUIREMENT_NOT_MET', 'Produk, kategori, atau add-on yang disyaratkan belum ada di order');
     }
   }
 
@@ -356,20 +382,74 @@ function _promoCalculateDiscount(promo, config, context) {
       _promoNumber(promo.diskon_subtotal_max, 0),
       context.subtotal
     );
-  } else if (config.product_effect) {
-    var targetIds = _promoParseCsv(promo.diskon_produk_ids);
-    var eligibleSubtotal = 0;
-    for (var i = 0; i < context.line_items.length; i++) {
-      if (targetIds.indexOf(String(context.line_items[i].product_id)) !== -1) {
-        eligibleSubtotal += Number(context.line_items[i].subtotal) || 0;
+  } else {
+    if (config.product_effect) {
+      var targetIds = _promoParseCsv(promo.diskon_produk_ids);
+      var eligibleSubtotal = 0;
+      var totalProductNominal = 0;
+      var productType = String(promo.diskon_produk_tipe).trim().toUpperCase();
+      var productValue = Number(promo.diskon_produk_nilai);
+      
+      for (var i = 0; i < context.line_items.length; i++) {
+        var item = context.line_items[i];
+        if (targetIds.indexOf(String(item.product_id)) !== -1) {
+          eligibleSubtotal += Number(item.subtotal) || 0;
+          if (productType === 'NOMINAL' && config.product_kelipatan) {
+            totalProductNominal += productValue * (Number(item.qty) || 1);
+          }
+        }
+      }
+      
+      if (productType === 'NOMINAL' && config.product_kelipatan) {
+         var maxCap = _promoNumber(promo.diskon_produk_max, 0);
+         discountProduct = totalProductNominal;
+         if (maxCap > 0) discountProduct = Math.min(discountProduct, maxCap);
+         discountProduct = Math.max(0, Math.min(discountProduct, eligibleSubtotal));
+      } else {
+         discountProduct = _promoCalculateCappedDiscount(
+           productType,
+           productValue,
+           _promoNumber(promo.diskon_produk_max, 0),
+           eligibleSubtotal
+         );
       }
     }
-    discountProduct = _promoCalculateCappedDiscount(
-      String(promo.diskon_produk_tipe).trim().toUpperCase(),
-      Number(promo.diskon_produk_nilai),
-      _promoNumber(promo.diskon_produk_max, 0),
-      eligibleSubtotal
-    );
+    
+    if (config.addon_effect) {
+      var addonIds = _promoParseCsv(promo.diskon_addon_ids);
+      var addonType = String(promo.diskon_addon_tipe).trim().toUpperCase();
+      var addonValue = Number(promo.diskon_addon_nilai) || 0;
+      var addonMax = _promoNumber(promo.diskon_addon_max, 0);
+      var totalAddonDiscount = 0;
+      
+      for (var j = 0; j < context.line_items.length; j++) {
+        var aItem = context.line_items[j];
+        var itemQty = Number(aItem.qty) || 1;
+        var aItemAddons = aItem.addons || [];
+        for (var k = 0; k < aItemAddons.length; k++) {
+           var currentAddon = aItemAddons[k];
+           if (addonIds.indexOf(String(currentAddon.addon_id)) !== -1) {
+             var discountPerAddon = 0;
+             var aPrice = Number(currentAddon.harga) || 0;
+             if (addonType === 'GRATIS') {
+               discountPerAddon = aPrice;
+             } else if (addonType === 'PERSEN') {
+               discountPerAddon = Math.floor(aPrice * addonValue / 100);
+               if (addonMax > 0) discountPerAddon = Math.min(discountPerAddon, addonMax);
+             } else {
+               discountPerAddon = Math.min(addonValue, aPrice);
+             }
+             
+             var timesToApply = config.addon_kelipatan ? itemQty : 1;
+             var addonDiscountForRow = discountPerAddon * timesToApply;
+             addonDiscountForRow = Math.min(addonDiscountForRow, aPrice * itemQty);
+             
+             totalAddonDiscount += addonDiscountForRow;
+           }
+        }
+      }
+      discountProduct += totalAddonDiscount;
+    }
   }
 
   if (config.shipping_effect) {
@@ -515,18 +595,21 @@ function _promoBuildPreviewContext(payload, member) {
     }
 
     var addonIds = item.addon_ids || [];
+    var lineAddons = [];
     if (!Array.isArray(addonIds)) return _promoError('BAD_REQUEST', 'Format add-on tidak valid');
     for (var ai = 0; ai < addonIds.length; ai++) {
       var addon = addonMap[String(addonIds[ai])];
       if (!addon) return _promoError('ADDON_NOT_FOUND', 'Add-on tidak ditemukan');
       if (!_promoIsTruthy(addon.aktif)) return _promoError('ADDON_INACTIVE', 'Add-on tidak tersedia');
       if (String(addon.product_id) !== productId) return _promoError('ADDON_MISMATCH', 'Add-on tidak sesuai produk');
-      unitPrice += Number(addon.harga) || 0;
+      var addonPrice = Number(addon.harga) || 0;
+      unitPrice += addonPrice;
+      lineAddons.push({ addon_id: String(addon.addon_id), harga: addonPrice });
     }
 
     var lineSubtotal = unitPrice * qty;
     subtotal += lineSubtotal;
-    lineItems.push({ product_id: productId, kategori_id: String(product.kategori_id || ''), subtotal: lineSubtotal });
+    lineItems.push({ product_id: productId, kategori_id: String(product.kategori_id || ''), subtotal: lineSubtotal, qty: qty, addons: lineAddons });
   }
 
   var method = String(payload.metode_kirim || '').trim().toUpperCase();
