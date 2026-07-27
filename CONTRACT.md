@@ -63,7 +63,7 @@ Key wajib (nilai default dalam kurung):
 `order_id | member_id | nama | no_hp | tgl_antar | metode_kirim | lokasi_pickup_id | address_id | alamat_snapshot | lat | lng | jarak_km | ongkir | slot_id | subtotal | poin_dipakai | total | metode_bayar | status | catatan_customer | catatan_admin | created_at | updated_at | timeline_json | nama_penerima | no_hp_penerima | status_updated_at | promo_id | promo_code | promo_nama | ongkir_sebelum_promo | promo_diskon_subtotal | promo_diskon_produk | promo_diskon_ongkir | promo_diskon_total | promo_bonus_poin | promo_multiplier_poin | poin_earn_dasar | poin_earn_final | promo_snapshot_json | client_request_id | request_fingerprint | commit_status | commit_stage | commit_error_code | commit_snapshot_json | committed_at | transaction_status | transaction_stage | transaction_error_code | transaction_snapshot_json | cancelled_at | cancelled_by | cancel_reason`
 
 - `metode_kirim`: `AMBIL | DIANTAR | OJOL`
-- `metode_bayar`: `COD | TRANSFER`
+- `metode_bayar`: `COD | TRANSFER | QRIS`
 - `nama_penerima`: string; nama orang yang akan menerima pesanan. Kalau customer tidak specify, server isi dengan snapshot nama pemesan.
 - `no_hp_penerima`: string; nomor HP penerima. Aturan validasi: hanya digit setelah trim, panjang 10-14, awalan 08/628/62 dgn digit ke-3 = 8. Kalau customer tidak specify, server isi dengan snapshot no_hp pemesan.
 - `subtotal`: subtotal item sebelum promo dan tanpa ongkir.

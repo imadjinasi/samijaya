@@ -1919,7 +1919,8 @@ function renderCheckoutScreen() {
   html += '<div class="co-section-title"><span class="co-step">4</span>Pembayaran</div>';
   html += '<div class="co-pill-group" id="co-payment-pills">';
   html += '<button class="co-pill" data-pay="COD" onclick="selectPayment(\'COD\')">💵 COD</button>';
-  html += '<button class="co-pill" data-pay="TRANSFER" onclick="selectPayment(\'TRANSFER\')">🏦 Transfer</button>';
+  html += '<button class="co-pill" data-pay="TRANSFER" onclick="selectPayment(\'TRANSFER\')">🏦 Transfer Bank</button>';
+  html += '<button class="co-pill" data-pay="QRIS" onclick="selectPayment(\'QRIS\')">📱 QRIS</button>';
   html += '</div>';
   html += '<div id="co-payment-detail"></div>';
   html += '</div>';
@@ -2501,7 +2502,7 @@ function renderPaymentDetail(method) {
   var container = document.getElementById('co-payment-detail');
   if (!container) return;
 
-  if (method !== 'TRANSFER') {
+  if (method !== 'TRANSFER' && method !== 'QRIS') {
     container.innerHTML = '';
     return;
   }
@@ -2509,29 +2510,32 @@ function renderPaymentDetail(method) {
   var settings = (catalog && catalog.settings) ? catalog.settings : {};
   var html = '<div class="co-payment-detail"><div class="co-transfer-info">';
 
-  // QRIS
   var qrisId = String(settings.QRIS_FILE_ID || '').trim();
-  if (qrisId) {
-    html += '<div class="co-qris-wrap">';
-    html += '<img src="https://drive.google.com/thumbnail?id=' + escHtml(qrisId) + '&sz=w400" alt="QRIS" loading="lazy">';
-    html += '<div class="co-qris-label">Scan QRIS</div>';
-    html += '</div>';
-  }
-
-  // Bank info
   var bank = String(settings.REKENING_BANK || '').trim();
   var nomor = String(settings.REKENING_NOMOR || '').trim();
   var nama = String(settings.REKENING_NAMA || '').trim();
-  if (bank || nomor || nama) {
-    html += '<div class="co-bank-info">';
-    if (bank) html += '<strong>' + escHtml(bank) + '</strong><br>';
-    if (nomor) html += 'No. Rek: ' + escHtml(nomor) + '<br>';
-    if (nama) html += 'a.n. ' + escHtml(nama);
-    html += '</div>';
-  }
 
-  if (!qrisId && !bank && !nomor && !nama) {
-    html += '<div class="co-shipping-note" style="opacity:1">Info rekening belum tersedia. Hubungi toko.</div>';
+  if (method === 'QRIS') {
+    if (qrisId) {
+      html += '<div class="co-qris-wrap">';
+      html += '<a href="https://drive.google.com/thumbnail?id=' + escHtml(qrisId) + '&sz=w400" target="_blank" rel="noopener">';
+      html += '<img src="https://drive.google.com/thumbnail?id=' + escHtml(qrisId) + '&sz=w400" alt="QRIS" loading="lazy">';
+      html += '</a>';
+      html += '<div class="co-qris-label">Scan QRIS</div>';
+      html += '</div>';
+    } else {
+      html += '<div class="co-shipping-note" style="opacity:1">Info QRIS belum tersedia. Hubungi toko.</div>';
+    }
+  } else if (method === 'TRANSFER') {
+    if (bank || nomor || nama) {
+      html += '<div class="co-bank-info">';
+      if (bank) html += '<strong>' + escHtml(bank) + '</strong><br>';
+      if (nomor) html += 'No. Rek: ' + escHtml(nomor) + '<br>';
+      if (nama) html += 'a.n. ' + escHtml(nama);
+      html += '</div>';
+    } else {
+      html += '<div class="co-shipping-note" style="opacity:1">Info rekening belum tersedia. Hubungi toko.</div>';
+    }
   }
 
   html += '</div></div>';
@@ -3270,25 +3274,32 @@ function renderSuccessScreen(data) {
   html += '<div class="success-status-badge">⏳ Menunggu konfirmasi Samijaya</div>';
 
   // === PEMBAYARAN ===
-  if (metodeBayar === 'TRANSFER' && bayar) {
+  if (metodeBayar === 'QRIS' && bayar) {
     html += '<div class="success-payment-box">';
     html += '<div class="success-payment-title">Selesaikan Pembayaran</div>';
 
-    // QRIS
     if (bayar.qris_file_id) {
       html += '<div class="success-qris-wrap">';
+      html += '<a href="https://drive.google.com/thumbnail?id=' + escHtml(bayar.qris_file_id) + '&sz=w400" target="_blank" rel="noopener">';
       html += '<img src="https://drive.google.com/thumbnail?id=' + escHtml(bayar.qris_file_id) + '&sz=w400" alt="QRIS Samijaya" loading="lazy" class="success-qris-img">';
+      html += '</a>';
       html += '<div class="success-qris-label">Scan QRIS di atas</div>';
       html += '</div>';
     }
 
-    // Rekening
+    var waPesanQris = encodeURIComponent('Halo Samijaya, saya sudah melakukan pembayaran QRIS untuk pesanan ' + orderId + '. Berikut bukti pembayarannya:');
+    html += '<a class="btn-success-primary" href="https://wa.me/' + escHtml(waToko) + '?text=' + waPesanQris + '" target="_blank" rel="noopener">📲 Kirim Bukti Pembayaran</a>';
+    html += '</div>';
+  } else if (metodeBayar === 'TRANSFER' && bayar) {
+    html += '<div class="success-payment-box">';
+    html += '<div class="success-payment-title">Selesaikan Pembayaran</div>';
+
     var bank = String(bayar.rekening_bank || '').trim();
     var nomor = String(bayar.rekening_nomor || '').trim();
     var nama = String(bayar.rekening_nama || '').trim();
     if (bank || nomor || nama) {
       html += '<div class="success-rekening-box">';
-      html += '<div class="success-rekening-label">atau Transfer ke Rekening</div>';
+      html += '<div class="success-rekening-label">Transfer ke Rekening</div>';
       if (bank) html += '<div class="success-rek-row"><span class="rek-bank">' + escHtml(bank) + '</span></div>';
       if (nomor) {
         html += '<div class="success-rek-row rek-nomor-row">';
@@ -3300,7 +3311,6 @@ function renderSuccessScreen(data) {
       html += '</div>';
     }
 
-    // Tombol utama: kirim bukti via WA
     var waPesan = encodeURIComponent('Halo Samijaya, saya sudah transfer untuk pesanan ' + orderId + '. Berikut bukti transfernya:');
     html += '<a class="btn-success-primary" href="https://wa.me/' + escHtml(waToko) + '?text=' + waPesan + '" target="_blank" rel="noopener">📲 Kirim Bukti Transfer via WhatsApp</a>';
     html += '</div>';

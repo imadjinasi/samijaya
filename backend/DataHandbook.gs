@@ -148,7 +148,7 @@ function dataHandbookColumnMeta_(sheetName, columnName) {
   if (/^(aktif|tersedia|is_default|otp_used)$/.test(columnName)) allowed='true | false | 1 | 0; alias aktif/nonaktif atau ya/tidak hanya pada reader yang mendukung';
   if (columnName === 'status') allowed = sheetName === 'Orders' ? 'MENUNGGU | DIPROSES | SIAP | DIANTAR | SELESAI | BATAL' : (sheetName === 'Reviews' ? 'aktif | hidden | dihapus' : 'aktif | nonaktif');
   if (columnName === 'metode_kirim') allowed='AMBIL | DIANTAR | OJOL';
-  if (columnName === 'metode_bayar') allowed='COD | TRANSFER';
+  if (columnName === 'metode_bayar') allowed='COD | TRANSFER | QRIS';
   if (sheetName === 'PointHistory' && columnName === 'tipe') allowed='TAMBAH | PAKAI | KOREKSI';
   if (sheetName === 'PromoUsage' && columnName === 'status') allowed='DIGUNAKAN | DIBATALKAN';
   var description=DATA_HANDBOOK_COLUMN_DESCRIPTIONS[columnName] || ('Data '+columnName.replace(/_/g,' ')+' untuk '+sheetName+'.');

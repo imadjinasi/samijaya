@@ -431,7 +431,7 @@ function orderGetSlotAvailability(payload) {
  *   lng,               // wajib untuk DIANTAR
  *   slot_id,           // wajib untuk DIANTAR
  *   tgl_antar,         // wajib untuk DIANTAR "YYYY-MM-DD"
- *   metode_bayar,      // "COD" | "TRANSFER"
+ *   metode_bayar,      // "COD" | "TRANSFER" | "QRIS"
  *   pakai_poin,        // boolean
  *   promo_code,        // opsional; backend validasi & hitung ulang
  *   items: [{ product_id, qty }],
@@ -1063,7 +1063,7 @@ function orderCreateOrder(payload, token) {
     }
     var metodeBayar = String(payload.metode_bayar || '');
     var bayar       = null;
-    if (metodeBayar === 'TRANSFER') {
+    if (metodeBayar === 'TRANSFER' || metodeBayar === 'QRIS') {
       bayar = {
         qris_file_id:   getSetting('QRIS_FILE_ID'),
         rekening_bank:  getSetting('REKENING_BANK'),
