@@ -128,7 +128,7 @@ function clearCatalogCache() {
 }
 
 // === API HELPER ===
-var API_TIMEOUTS = { read: 12000, validation: 15000, mutation: 20000, createOrder: 30000, orderLookup: 15000 };
+var API_TIMEOUTS = { read: 60000, validation: 60000, mutation: 20000, createOrder: 30000, orderLookup: 15000 };
 var API_ACTION_CLASS = {
   requestOtp:'validation', verifyOtp:'validation', validatePromo:'validation',
   updateProfile:'mutation', addAddress:'mutation', updateAddress:'mutation', deleteAddress:'mutation',
@@ -1277,10 +1277,13 @@ function renderCartBottomBar() {
 
   if (count === 0) {
     bar.classList.add('hidden');
+    bar.setAttribute('aria-hidden', 'true');
+    bar.innerHTML = '';
     return;
   }
 
   bar.classList.remove('hidden');
+  bar.removeAttribute('aria-hidden');
   bar.innerHTML =
     '<div class="cart-bar-info">' +
       '<div>' + count + ' item • ' + formatRupiah(total) + '</div>' +
@@ -1835,6 +1838,9 @@ function renderCheckoutScreen() {
   html += '<div class="checkout-header-title">Checkout</div>';
   html += '</div>';
 
+  html += '<div class="checkout-layout">';
+  html += '<div class="checkout-form-column">';
+
   // === 1. ORDER SUMMARY ===
   html += '<div class="co-section" id="checkout-order-summary">';
   html += '<div class="co-section-title"><span class="co-step">1</span>Ringkasan Pesanan</div>';
@@ -1966,6 +1972,8 @@ function renderCheckoutScreen() {
   html += '</div>';
 
   // === 8. RINGKASAN BIAYA ===
+  html += '</div>'; // checkout-form-column
+  html += '<aside class="checkout-summary-column">';
   html += '<div class="co-cost-summary" id="checkout-cost-summary">';
   
   html += '<div class="co-cost-header" onclick="toggleCostDetails()">';
@@ -1981,6 +1989,9 @@ function renderCheckoutScreen() {
   html += '<div class="co-submit-note" id="co-submit-note">Lengkapi semua pilihan untuk melanjutkan.</div>';
   html += '<div class="co-validation-msg" id="co-validation-msg"></div>';
   html += '</div>';
+
+  html += '</aside>'; // checkout-summary-column
+  html += '</div>'; // checkout-layout
 
   html += '</div>'; // checkout-inner
 

@@ -32,16 +32,40 @@ const context = {
 };
 vm.createContext(context);
 for (const statement of [
-  "var API_TIMEOUTS = { read: 12000, validation: 15000, mutation: 20000, createOrder: 30000, orderLookup: 15000 };",
+  "var API_TIMEOUTS = { read: 60000, validation: 60000, mutation: 20000, createOrder: 30000, orderLookup: 15000 };",
   "var API_ACTION_CLASS = { requestOtp:'validation', verifyOtp:'validation', validatePromo:'validation', updateProfile:'mutation', addAddress:'mutation', updateAddress:'mutation', deleteAddress:'mutation', addressSetDefault:'mutation', submitReview:'mutation', deleteMyReview:'mutation', orderMarkSeen:'mutation', createOrder:'createOrder', getOrderByRequestId:'orderLookup' };",
   ...['isValidCatalogData','clearCatalogCache','getCatalogCache','setCatalogCache','ApiRequestError','apiTimeoutFor','classifyApiEnvelope','handleSessionExpired','api','apiFailureMessage'].map(functionSource)
 ]) vm.runInContext(statement, context);
 
-assert.strictEqual(context.apiTimeoutFor('getCatalog', {}), 12000);
-assert.strictEqual(context.apiTimeoutFor('validatePromo', {}), 15000);
+assert.strictEqual(context.apiTimeoutFor('getCatalog', {}), 60000);
+assert.strictEqual(context.apiTimeoutFor('verifyOtp', {}), 60000);
+assert.strictEqual(context.apiTimeoutFor('validatePromo', {}), 60000);
 assert.strictEqual(context.apiTimeoutFor('updateProfile', {}), 20000);
 assert.strictEqual(context.apiTimeoutFor('createOrder', {}), 30000);
 assert.strictEqual(context.apiTimeoutFor('getOrderByRequestId', {}), 15000);
+
+const cartBar = {
+  innerHTML: '<div>1 item • Rp35.000</div>',
+  attributes: {},
+  classList: {
+    values: new Set(),
+    add(value) { this.values.add(value); },
+    remove(value) { this.values.delete(value); }
+  },
+  setAttribute(name, value) { this.attributes[name] = String(value); },
+  removeAttribute(name) { delete this.attributes[name]; }
+};
+const cartBarContext = {
+  cart: [], catalog: { products: [] },
+  document: { getElementById:id => id === 'cart-bottom-bar' ? cartBar : null },
+  getCartCount: () => 0, getCartTotal: () => 0, formatRupiah:value => `Rp${value}`
+};
+vm.createContext(cartBarContext);
+vm.runInContext(functionSource('renderCartBottomBar'), cartBarContext);
+cartBarContext.renderCartBottomBar();
+assert.strictEqual(cartBar.innerHTML, '', 'empty cart leaves stale bottom-bar content');
+assert(cartBar.classList.values.has('hidden'), 'empty cart bar is not hidden');
+assert.strictEqual(cartBar.attributes['aria-hidden'], 'true', 'empty cart bar remains exposed to accessibility tree');
 
 const validCatalog = { categories:[], products:[], pickupLocations:[], deliverySlots:[], holidays:[], settings:{}, campaigns:[], catalog_revision:'r1' };
 storage.set('s:sj_catalog_v2', '{bad json');
@@ -110,6 +134,10 @@ async function run() {
   assert(source.includes('startCampaignQueue') && source.includes('copyCampaignCode'), 'campaign regression');
   assert(source.includes("resContainer.classList.remove('co-hidden')") && source.includes("getElementById('co-search-results').classList.add('co-hidden')"), 'search results display regression (co-hidden)');
   for (const label of ['aria-label="Kurangi jumlah ', 'aria-label="Tambah jumlah ', ' dari keranjang"']) assert(source.includes(label), `cart accessibility label missing: ${label}`);
+  assert(source.includes('checkout-layout') && source.includes('checkout-summary-column'), 'desktop checkout layout wrappers missing');
+  const styleSource = fs.readFileSync('docs/style.css', 'utf8');
+  assert(styleSource.includes('grid-template-columns: minmax(0, 1fr) minmax(320px, 380px)'), 'desktop checkout grid missing');
+  assert(styleSource.includes('#cart-modal .modal-sheet') && styleSource.includes('width: min(420px, 100%)'), 'desktop cart drawer missing');
   console.log('frontend-failure-harness: all assertions passed');
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

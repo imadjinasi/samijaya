@@ -340,7 +340,7 @@ Fase 8-B tidak menambah kolom dan tidak memerlukan migration. Setup dan migratio
 
 ### Timeout dan error transport frontend
 
-- Read ringan: 12 detik; validation/preview: 15 detik; mutation non-order: 20 detik; `createOrder`: 30 detik; `getOrderByRequestId`: 15 detik; geocoding/search: 9 detik.
+- Read dan validation/preview frontend: 60 detik untuk mengakomodasi cold start Apps Script; mutation non-order: 20 detik; `createOrder`: 30 detik; `getOrderByRequestId`: 15 detik; geocoding/search: 9 detik.
 - Helper request memeriksa HTTP status, JSON valid, dan envelope API. Kategori konsisten: timeout, network, session, validation, stale, busy, unknown transaction, recovery, dan server/internal.
 - Mutation tidak di-retry otomatis. Timeout create order tetap menghasilkan state lokal `UNKNOWN`; safe resend tetap melakukan lookup dahulu.
 - Browser tanpa `AbortController` memakai timeout settled guard dan request sequence. Network yang sudah berjalan mungkin tidak dapat dibatalkan, tetapi late response tidak boleh memutasi UI dan timer selalu dibersihkan setelah settle.
