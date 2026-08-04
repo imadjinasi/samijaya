@@ -74,7 +74,7 @@ function readAll(sheetName) {
   // Hanya header, tidak ada baris data
   if (data.length === 1) return [];
 
-  var stringFields = ['no_hp', 'otp', 'value', 'nama_snapshot', 'catatan_customer', 'catatan_admin', 'alamat_snapshot', 'chat_id', 'lat', 'lng', 'nama_penerima', 'no_hp_penerima', 'variant_id', 'variant_nama_snapshot', 'nama_axis_snapshot', 'nama_varian', 'nama_axis', 'nama_addon', 'nama_addon_snapshot', 'order_item_ref', 'addon_id', 'promo_id', 'promo_code', 'kode', 'usage_id', 'hari_berlaku', 'jam_mulai', 'jam_berakhir', 'metode_kirim', 'required_product_ids', 'required_kategori_ids', 'required_match_mode', 'whitelist_member_ids', 'diskon_subtotal_tipe', 'diskon_produk_ids', 'diskon_produk_tipe', 'diskon_ongkir_tipe', 'used_date', 'promo_snapshot_json'];
+  var stringFields = ['no_hp', 'otp', 'value', 'nama_snapshot', 'catatan_customer', 'catatan_admin', 'alamat_snapshot', 'chat_id', 'lat', 'lng', 'nama_penerima', 'no_hp_penerima', 'variant_id', 'variant_nama_snapshot', 'nama_axis_snapshot', 'nama_varian', 'nama_axis', 'nama_addon', 'nama_addon_snapshot', 'order_item_ref', 'addon_id', 'promo_id', 'promo_code', 'kode', 'usage_id', 'hari_berlaku', 'jam_mulai', 'jam_berakhir', 'metode_kirim', 'required_product_ids', 'required_kategori_ids', 'required_addon_ids', 'required_match_mode', 'whitelist_member_ids', 'diskon_subtotal_tipe', 'diskon_produk_ids', 'diskon_produk_tipe', 'diskon_addon_ids', 'diskon_addon_tipe', 'diskon_ongkir_tipe', 'used_date', 'promo_snapshot_json'];
 
   var result = [];
   for (var i = 1; i < data.length; i++) {
@@ -360,11 +360,13 @@ var _SETTING_CACHE_TTL = 300; // 5 menit
 var _SETTING_NULL_SENTINEL = '__NULL__';
 
 function getSetting(key) {
-  var cache = CacheService.getScriptCache();
   var cacheKey = _SETTING_CACHE_PREFIX + key;
 
-  // Cek cache dulu
-  var cached = cache.get(cacheKey);
+  // Cek cache dulu; kegagalan cache harus jatuh kembali ke source sheet.
+  var cacheRead = cacheReadBestEffort(cacheKey, {
+    operation: 'getSetting', event_code: 'SETTING_CACHE_READ_FAILED'
+  });
+  var cached = cacheRead.value;
   if (cached !== null) {
     return cached === _SETTING_NULL_SENTINEL ? null : cached;
   }
@@ -374,13 +376,17 @@ function getSetting(key) {
   for (var i = 0; i < rows.length; i++) {
     if (rows[i]['key'] === key) {
       var value = String(rows[i]['value']);
-      cache.put(cacheKey, value, _SETTING_CACHE_TTL);
+      cacheWriteBestEffort(cacheKey, value, _SETTING_CACHE_TTL, {
+        operation: 'getSetting', event_code: 'SETTING_CACHE_WRITE_FAILED'
+      });
       return value;
     }
   }
 
   // Key tidak ada di sheet → cache sentinel supaya tidak baca sheet terus
-  cache.put(cacheKey, _SETTING_NULL_SENTINEL, _SETTING_CACHE_TTL);
+  cacheWriteBestEffort(cacheKey, _SETTING_NULL_SENTINEL, _SETTING_CACHE_TTL, {
+    operation: 'getSetting', event_code: 'SETTING_CACHE_WRITE_FAILED'
+  });
   return null;
 }
 
@@ -404,6 +410,35 @@ var _APP_CACHE_REGISTRY = {
   setting: { prefix: 'setting_', ttl: 300 }
 };
 var _CATALOG_REVISION_PROPERTY = 'CATALOG_CACHE_REVISION';
+
+function cacheReadBestEffort(cacheKey, metadata) {
+  try {
+    return { ok: true, value: CacheService.getScriptCache().get(String(cacheKey)) };
+  } catch (_) {
+    try {
+      safeLog('ERROR', metadata && metadata.event_code || 'CACHE_READ_FAILED', '', {
+        operation: metadata && metadata.operation || 'cacheReadBestEffort',
+        stage: 'cache_read', error_code: 'CACHE_UNAVAILABLE', retryable: true
+      });
+    } catch (_) {}
+    return { ok: false, value: null };
+  }
+}
+
+function cacheWriteBestEffort(cacheKey, value, ttlSeconds, metadata) {
+  try {
+    CacheService.getScriptCache().put(String(cacheKey), String(value), Number(ttlSeconds));
+    return true;
+  } catch (_) {
+    try {
+      safeLog('ERROR', metadata && metadata.event_code || 'CACHE_WRITE_FAILED', '', {
+        operation: metadata && metadata.operation || 'cacheWriteBestEffort',
+        stage: 'cache_write', error_code: 'CACHE_UNAVAILABLE', retryable: true
+      });
+    } catch (_) {}
+    return false;
+  }
+}
 
 function cacheInvalidateKey(cacheKey, metadata) {
   try {

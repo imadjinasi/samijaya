@@ -30,7 +30,7 @@ var DATA_HANDBOOK_BUSINESS_SHEETS = [
   { name:'OrderItemAddons', purpose:'Snapshot add-on pada tiap item order.', headers:['id','order_id','order_item_ref','addon_id','nama_addon_snapshot','harga_snapshot','created_at'] },
   { name:'PointHistory', purpose:'Ledger perubahan poin yang immutable dan direkonsiliasi sistem.', headers:['id','member_id','order_id','tipe','jumlah','saldo_akhir','keterangan','created_at','event_code','saldo_sebelum','event_status','event_snapshot_json'] },
   { name:'Reviews', purpose:'Ulasan order dan state moderasinya.', headers:['review_id','order_id','member_id','rating','ulasan','status','created_at','request_fingerprint','updated_at'] },
-  { name:'PromoCodes', purpose:'Aturan eligibility, limit, diskon, dan reward kode promo.', headers:['promo_id','kode','nama','deskripsi','catatan_customer','aktif','mulai_at','berakhir_at','hari_berlaku','jam_mulai','jam_berakhir','min_subtotal','max_subtotal','metode_kirim','required_product_ids','required_kategori_ids','required_match_mode','member_baru_only','whitelist_member_ids','bisa_dengan_poin','limit_total','limit_per_member','limit_harian','diskon_subtotal_tipe','diskon_subtotal_nilai','diskon_subtotal_max','diskon_produk_ids','diskon_produk_tipe','diskon_produk_nilai','diskon_produk_max','diskon_ongkir_tipe','diskon_ongkir_nilai','diskon_ongkir_max','bonus_poin','multiplier_poin','created_at','updated_at'] },
+  { name:'PromoCodes', purpose:'Aturan eligibility, limit, diskon, dan reward kode promo.', headers:['promo_id','kode','nama','deskripsi','catatan_customer','aktif','mulai_at','berakhir_at','hari_berlaku','jam_mulai','jam_berakhir','min_subtotal','max_subtotal','metode_kirim','required_product_ids','required_kategori_ids','required_match_mode','member_baru_only','whitelist_member_ids','bisa_dengan_poin','limit_total','limit_per_member','limit_harian','diskon_subtotal_tipe','diskon_subtotal_nilai','diskon_subtotal_max','diskon_produk_ids','diskon_produk_tipe','diskon_produk_nilai','diskon_produk_max','diskon_ongkir_tipe','diskon_ongkir_nilai','diskon_ongkir_max','bonus_poin','multiplier_poin','created_at','updated_at','diskon_produk_kelipatan','required_addon_ids','diskon_addon_ids','diskon_addon_tipe','diskon_addon_nilai','diskon_addon_max','diskon_addon_kelipatan'] },
   { name:'PromoUsage', purpose:'Pemakaian promo per order untuk limit dan pembatalan.', headers:['usage_id','promo_id','promo_code','order_id','member_id','status','used_at','used_date','cancelled_at','promo_diskon_subtotal','promo_diskon_produk','promo_diskon_ongkir','promo_diskon_total','promo_bonus_poin','promo_multiplier_poin'] },
   { name:'MessageTemplates', purpose:'Template pesan operasional beserta placeholder yang diizinkan.', headers:['kode','isi','keterangan'] },
   { name:'Campaigns', purpose:'Konten popup campaign yang ditampilkan pada katalog.', headers:['campaign_id','judul','deskripsi','gambar_file_id','gambar_url','link_url','kode_promo','tanggal_mulai','tanggal_selesai','urutan','status'] },
@@ -53,7 +53,7 @@ var DATA_HANDBOOK_OPTIONAL_COLUMNS = {
   Holidays:['keterangan'], Orders:['lokasi_pickup_id','address_id','alamat_snapshot','lat','lng','jarak_km','ongkir','slot_id','catatan_customer','catatan_admin','timeline_json','nama_penerima','no_hp_penerima','status_updated_at','promo_id','promo_code','promo_nama','ongkir_sebelum_promo','promo_diskon_subtotal','promo_diskon_produk','promo_diskon_ongkir','promo_diskon_total','promo_bonus_poin','promo_multiplier_poin','poin_earn_dasar','poin_earn_final','promo_snapshot_json','client_request_id','request_fingerprint','commit_status','commit_stage','commit_error_code','commit_snapshot_json','committed_at','transaction_status','transaction_stage','transaction_error_code','transaction_snapshot_json','cancelled_at','cancelled_by','cancel_reason'],
   OrderItems:['variant_id','variant_nama_snapshot','nama_axis_snapshot','order_item_ref'], OrderItemAddons:['created_at'],
   PointHistory:['event_code','saldo_sebelum','event_status','event_snapshot_json'], Reviews:['request_fingerprint','updated_at'],
-  PromoCodes:['deskripsi','catatan_customer','mulai_at','berakhir_at','hari_berlaku','jam_mulai','jam_berakhir','max_subtotal','required_product_ids','required_kategori_ids','required_match_mode','member_baru_only','whitelist_member_ids','bisa_dengan_poin','diskon_subtotal_tipe','diskon_subtotal_nilai','diskon_subtotal_max','diskon_produk_ids','diskon_produk_tipe','diskon_produk_nilai','diskon_produk_max','diskon_ongkir_tipe','diskon_ongkir_nilai','diskon_ongkir_max','bonus_poin','multiplier_poin','created_at','updated_at'],
+  PromoCodes:['deskripsi','catatan_customer','mulai_at','berakhir_at','hari_berlaku','jam_mulai','jam_berakhir','max_subtotal','required_product_ids','required_kategori_ids','required_match_mode','member_baru_only','whitelist_member_ids','bisa_dengan_poin','diskon_subtotal_tipe','diskon_subtotal_nilai','diskon_subtotal_max','diskon_produk_ids','diskon_produk_tipe','diskon_produk_nilai','diskon_produk_max','diskon_ongkir_tipe','diskon_ongkir_nilai','diskon_ongkir_max','bonus_poin','multiplier_poin','created_at','updated_at','diskon_produk_kelipatan','required_addon_ids','diskon_addon_ids','diskon_addon_tipe','diskon_addon_nilai','diskon_addon_max','diskon_addon_kelipatan'],
   PromoUsage:['used_date','cancelled_at','promo_diskon_subtotal','promo_diskon_produk','promo_diskon_ongkir','promo_diskon_total','promo_bonus_poin','promo_multiplier_poin'],
   MessageTemplates:['keterangan'], Campaigns:['deskripsi','gambar_file_id','gambar_url','link_url','kode_promo','tanggal_mulai','tanggal_selesai','urutan']
 };
@@ -104,7 +104,7 @@ var DATA_HANDBOOK_PROMO_META = {
   metode_kirim:['MANUAL',true,'csv enum','AMBIL, DIANTAR, OJOL','semua metode','AMBIL,DIANTAR','Metode kirim yang diperbolehkan, dipisahkan koma.','HATI_HATI_SETELAH_DIPAKAI','','Kosong berarti semua metode; elemen di-trim dan dibandingkan uppercase.'],
   required_product_ids:['MANUAL',false,'csv id','ID Products dipisahkan koma.','tanpa syarat produk','PRD_A,PRD_B','Produk yang harus ada dalam order sesuai match mode.','HATI_HATI_SETELAH_DIPAKAI','Products.product_id','Kosong berarti tidak ada syarat produk; duplikat diabaikan.'],
   required_kategori_ids:['MANUAL',false,'csv id','ID Categories dipisahkan koma.','tanpa syarat kategori','CAT_COFFEE','Kategori yang harus ada dalam order sesuai match mode.','HATI_HATI_SETELAH_DIPAKAI','Categories.kategori_id','Kosong berarti tidak ada syarat kategori; daftar produk dan kategori dihitung bersama.'],
-  required_match_mode:['MANUAL',false,'enum','ANY | ALL','ANY','ANY','ANY cukup satu target cocok; ALL mewajibkan semua ID produk dan kategori cocok.','HATI_HATI_SETELAH_DIPAKAI','PromoCodes.required_product_ids','Kosong efektif ANY.'],
+  required_match_mode:['MANUAL',false,'enum','ANY | ALL','ANY','ANY','ANY cukup satu target cocok; ALL mewajibkan semua ID produk, kategori, dan add-on cocok.','HATI_HATI_SETELAH_DIPAKAI','PromoCodes.required_product_ids','Kosong efektif ANY.'],
   member_baru_only:['MANUAL',false,'boolean','true | false | 1 | 0 | aktif | nonaktif | ya | tidak','false','true','Jika aktif, member tidak boleh pernah memiliki order committed SELESAI.','HATI_HATI_SETELAH_DIPAKAI','Orders.status','Kosong efektif false.'],
   whitelist_member_ids:['MANUAL',false,'csv id','ID Members dipisahkan koma.','semua member','MEM_A,MEM_B','Membatasi promo pada member tertentu.','HATI_HATI_SETELAH_DIPAKAI','Members.member_id','Kosong berarti semua member; elemen di-trim dan duplikat diabaikan.'],
   bisa_dengan_poin:['MANUAL',false,'boolean','true | false | 1 | 0 | aktif | nonaktif | ya | tidak','false','true','Mengizinkan redeem poin bersama promo.','HATI_HATI_SETELAH_DIPAKAI','Orders.poin_dipakai','Kosong efektif false; false menolak checkout yang meminta penggunaan poin.'],
@@ -124,7 +124,14 @@ var DATA_HANDBOOK_PROMO_META = {
   bonus_poin:['MANUAL',false,'integer >= 0','Bilangan bulat.','0','10','Poin tetap yang ditambahkan setelah multiplier.','HATI_HATI_SETELAH_DIPAKAI','Orders.promo_bonus_poin','Kosong efektif 0; bonus tidak ikut dikalikan.'],
   multiplier_poin:['MANUAL',false,'angka > 0','Angka desimal positif.','1','2','Pengali poin dasar sebelum bonus ditambahkan.','HATI_HATI_SETELAH_DIPAKAI','Orders.promo_multiplier_poin','Kosong efektif 1. Poin final=floor(poin dasar x multiplier)+bonus.'],
   created_at:['MANUAL',false,'timestamp','YYYY-MM-DD HH:mm:ss (WIB).','kosong','2026-08-01 09:00:00','Waktu pencatatan konfigurasi promo.','HATI_HATI_SETELAH_DIPAKAI','','Tidak dipakai untuk menentukan periode berlaku.'],
-  updated_at:['MIXED',false,'timestamp','YYYY-MM-DD HH:mm:ss (WIB).','kosong','2026-08-02 10:00:00','Waktu perubahan konfigurasi; Telegram memperbarui saat status promo berubah.','JANGAN_EDIT_MANUAL','','Metadata audit, bukan periode berlaku.']
+  updated_at:['MIXED',false,'timestamp','YYYY-MM-DD HH:mm:ss (WIB).','kosong','2026-08-02 10:00:00','Waktu perubahan konfigurasi; Telegram memperbarui saat status promo berubah.','JANGAN_EDIT_MANUAL','','Metadata audit, bukan periode berlaku.'],
+  diskon_produk_kelipatan:['MANUAL',false,'boolean','true | false | 1 | 0 | aktif | nonaktif | ya | tidak','false','TRUE','Jika true, diskon produk NOMINAL diterapkan sebanyak qty produk target.','HATI_HATI_SETELAH_DIPAKAI','PromoCodes.diskon_produk_tipe','Tidak mengubah diskon PERSEN karena diskon persen sudah mengikuti subtotal seluruh qty.'],
+  required_addon_ids:['MANUAL',false,'csv ID','ID harus cocok dengan ProductAddons.addon_id.','tanpa syarat add-on','addon-extra-shot','Daftar add-on yang menjadi syarat eligibility promo.','HATI_HATI_SETELAH_DIPAKAI','ProductAddons.addon_id','Digabung dengan syarat produk/kategori menurut required_match_mode.'],
+  diskon_addon_ids:['MANUAL',false,'csv ID','ID harus cocok dengan ProductAddons.addon_id.','tidak aktif','addon-extra-shot','Daftar add-on target yang menerima diskon.','HATI_HATI_SETELAH_DIPAKAI','ProductAddons.addon_id','Wajib diisi bila kelompok diskon_addon_* aktif.'],
+  diskon_addon_tipe:['MANUAL',false,'enum','GRATIS | PERSEN | NOMINAL','tidak aktif','NOMINAL','Jenis diskon untuk add-on target.','HATI_HATI_SETELAH_DIPAKAI','PromoCodes.diskon_addon_ids','Dilarang diaktifkan bersama diskon subtotal; boleh digabung dengan diskon produk.'],
+  diskon_addon_nilai:['MANUAL',false,'angka > 0','PERSEN maksimal 100; NOMINAL rupiah; kosong untuk GRATIS.','tidak aktif','3000','Besar diskon add-on target per penerapan.','HATI_HATI_SETELAH_DIPAKAI','PromoCodes.diskon_addon_tipe','Wajib positif untuk PERSEN/NOMINAL.'],
+  diskon_addon_max:['MANUAL',false,'angka >= 0','Nominal rupiah.','0','5000','Cap nominal diskon PERSEN per unit add-on sebelum kelipatan.','HATI_HATI_SETELAH_DIPAKAI','PromoCodes.diskon_addon_tipe','Kosong atau 0 berarti tanpa cap; tidak dipakai untuk GRATIS/NOMINAL.'],
+  diskon_addon_kelipatan:['MANUAL',false,'boolean','true | false | 1 | 0 | aktif | nonaktif | ya | tidak','false','TRUE','Jika true, diskon add-on diterapkan sebanyak qty produk induk.','HATI_HATI_SETELAH_DIPAKAI','PromoCodes.diskon_addon_tipe','Jika false, diskon add-on hanya satu kali per baris item.']
 };
 
 function dataHandbookSheetMap_() {
@@ -214,7 +221,7 @@ function dataHandbookApplyLayout_(sheet, rowCount) {
 function dataHandbookSync_(ss, installNotes) {
   var report={created:false,inserted:0,updated:0,custom_rows:0,row_conflicts:[],note_conflicts:[],notes_written:0};
   var rows=dataHandbookBuildRows_();
-  if (rows.length!==243) throw new Error('HANDBOOK_MANAGED_ROW_COUNT_INVALID:'+rows.length);
+  if (rows.length!==250) throw new Error('HANDBOOK_MANAGED_ROW_COUNT_INVALID:'+rows.length);
   var sheet=ss.getSheetByName('Handbook');
   if (!sheet) { sheet=ss.insertSheet('Handbook'); sheet.getRange(1,1,1,DATA_HANDBOOK_HEADERS.length).setValues([DATA_HANDBOOK_HEADERS]); report.created=true; }
   dataHandbookValidateHeader_(sheet);
@@ -272,7 +279,7 @@ function auditDataHandbookCoverageReadOnly() {
   var ssId=PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
   if (!ssId) throw new Error('SPREADSHEET_ID belum diset');
   var ss=SpreadsheetApp.openById(ssId), expected=dataHandbookBuildRows_(), expectedMap={}, sheetMap=dataHandbookSheetMap_();
-  var report={ok:true,summary:{business_sheets:21,managed_rows:expected.length},missing_business_header:[],missing_handbook_row:[],duplicate_handbook_key:[],stale_unknown_handbook_row:[],custom_row:[],custom_header_note_conflict:[],invalid_input_mode:[],missing_sensitive_classification:[]};
+  var report={ok:true,summary:{business_sheets:21,managed_rows:expected.length},missing_business_header:[],unregistered_business_header:[],missing_handbook_row:[],duplicate_handbook_key:[],stale_unknown_handbook_row:[],custom_row:[],custom_header_note_conflict:[],invalid_input_mode:[],missing_sensitive_classification:[]};
   for (var i=0;i<expected.length;i++) expectedMap[expected[i].sheet_name+'\u0000'+expected[i].column_name]=expected[i];
   for (var s=0;s<DATA_HANDBOOK_BUSINESS_SHEETS.length;s++) {
     var spec=DATA_HANDBOOK_BUSINESS_SHEETS[s], business=ss.getSheetByName(spec.name);
@@ -280,7 +287,10 @@ function auditDataHandbookCoverageReadOnly() {
     var last=business.getLastColumn(), actual=last?business.getRange(1,1,1,last).getValues()[0].map(function(v){return String(v).trim();}):[];
     var notes=last?business.getRange(1,1,1,last).getNotes()[0]:[];
     for (var eh=0;eh<spec.headers.length;eh++) if (actual.indexOf(spec.headers[eh])===-1) report.missing_business_header.push(spec.name+'.'+spec.headers[eh]);
-    for (var ah=0;ah<actual.length;ah++) if (expectedMap[spec.name+'\u0000'+actual[ah]] && notes[ah] && String(notes[ah]).indexOf(DATA_HANDBOOK_NOTE_MARKER)===-1) report.custom_header_note_conflict.push(spec.name+'.'+actual[ah]);
+    for (var ah=0;ah<actual.length;ah++) {
+      if (actual[ah] && !expectedMap[spec.name+'\u0000'+actual[ah]]) report.unregistered_business_header.push(spec.name+'.'+actual[ah]);
+      if (expectedMap[spec.name+'\u0000'+actual[ah]] && notes[ah] && String(notes[ah]).indexOf(DATA_HANDBOOK_NOTE_MARKER)===-1) report.custom_header_note_conflict.push(spec.name+'.'+actual[ah]);
+    }
   }
   var handbook=ss.getSheetByName('Handbook');
   if (!handbook) { for (var e=0;e<expected.length;e++) report.missing_handbook_row.push(expected[e].sheet_name+'.'+expected[e].column_name); }
@@ -297,7 +307,7 @@ function auditDataHandbookCoverageReadOnly() {
     for (var key in seen) if (seen[key]>1) report.duplicate_handbook_key.push(key.replace('\u0000','.'));
     for (var expectedKey in expectedMap) if (!seen[expectedKey]) report.missing_handbook_row.push(expectedKey.replace('\u0000','.'));
   }
-  report.ok=report.missing_business_header.length===0 && report.missing_handbook_row.length===0 && report.duplicate_handbook_key.length===0 && report.stale_unknown_handbook_row.length===0 && report.custom_header_note_conflict.length===0 && report.invalid_input_mode.length===0 && report.missing_sensitive_classification.length===0;
+  report.ok=report.missing_business_header.length===0 && report.unregistered_business_header.length===0 && report.missing_handbook_row.length===0 && report.duplicate_handbook_key.length===0 && report.stale_unknown_handbook_row.length===0 && report.custom_header_note_conflict.length===0 && report.invalid_input_mode.length===0 && report.missing_sensitive_classification.length===0;
   Logger.log(JSON.stringify(report));
   return report;
 }

@@ -195,7 +195,7 @@ function reviewDeleteMine(payload, token) {
 
     if (!order) return { ok: false, code: 'ORDER_NOT_FOUND', error: 'Pesanan tidak ditemukan' };
 
-    var updatedAt = new Date(order.updated_at);
+    var updatedAt = new Date(order.status_updated_at || order.updated_at);
     if (isNaN(updatedAt.getTime())) {
       updatedAt = new Date(order.created_at);
     }

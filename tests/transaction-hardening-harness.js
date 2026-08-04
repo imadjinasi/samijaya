@@ -3,12 +3,23 @@ const vm = require('vm');
 const assert = require('assert');
 const crypto = require('crypto');
 
+const RealDate = Date;
+const TEST_NOW_ISO = '2026-07-22T03:00:00.000Z';
+const TEST_NOW_MS = new RealDate(TEST_NOW_ISO).getTime();
+class FixedDate extends RealDate {
+  constructor(...args) { super(...(args.length ? args : [TEST_NOW_MS])); }
+  static now() { return TEST_NOW_MS; }
+}
+function testTimestampDaysAgo(days) {
+  return new RealDate(TEST_NOW_MS - days * 86400000).toISOString().slice(0, 10) + ' 10:00:00';
+}
+
 let sheets;
 let insideLock = false;
 const context = {
-  console, JSON, Date, Math, Number, String, Object, Array, RegExp, isNaN, isFinite, parseInt,
+  console, JSON, Date: FixedDate, Math, Number, String, Object, Array, RegExp, isNaN, isFinite, parseInt,
   Utilities: { formatDate(value, _zone, format) {
-    const d = new Date(value); const y = d.getUTCFullYear(); const m = String(d.getUTCMonth()+1).padStart(2,'0'); const day = String(d.getUTCDate()).padStart(2,'0');
+    const d = new RealDate(value); const y = d.getUTCFullYear(); const m = String(d.getUTCMonth()+1).padStart(2,'0'); const day = String(d.getUTCDate()).padStart(2,'0');
     if (format === 'yyyy-MM-dd') return `${y}-${m}-${day}`;
     return `${y}-${m}-${day}T10:00:00+07:00`;
   } },
@@ -40,7 +51,7 @@ context._promoRefundUsageByOrder = (orderId, at) => {
 function reset(status='MENUNGGU', method='AMBIL') {
   sheets={
     Members:[{member_id:'M1',nama:'A',status:'aktif',total_poin:100,total_belanja:0}],
-    Orders:[{order_id:'O1',member_id:'M1',status,metode_kirim:method,total:20000,poin_dipakai:25,poin_earn_final:20,commit_status:'COMMITTED',updated_at:'2026-07-21 10:00:00',status_updated_at:'2026-07-21 10:00:00',timeline_json:'[]',promo_id:''}],
+    Orders:[{order_id:'O1',member_id:'M1',status,metode_kirim:method,total:20000,poin_dipakai:25,poin_earn_final:20,commit_status:'COMMITTED',updated_at:testTimestampDaysAgo(1),status_updated_at:testTimestampDaysAgo(1),timeline_json:'[]',promo_id:''}],
     PointHistory:[],PromoUsage:[],Reviews:[]
   };
   context.ORDER_STATUS_TEST_FAIL_STAGE=''; context.REVIEW_TEST_FAIL_STAGE='';

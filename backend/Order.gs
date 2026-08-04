@@ -69,7 +69,7 @@ function _toMinutes(hhmm) {
   var hour = Number(match[1]);
   var minute = Number(match[2]);
   if (hour > 23 || minute > 59) return null;
-  return hour === null || minute === null ? null : hour * 60 + minute;
+  return hour * 60 + minute;
 }
 
 /**

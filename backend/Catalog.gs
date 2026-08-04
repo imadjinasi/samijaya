@@ -37,8 +37,10 @@ var _CATALOG_CACHE_TTL = 300; // 5 menit
  */
 function catalogGetCatalog() {
   // Cek cache dulu
-  var cache = CacheService.getScriptCache();
-  var cached = cache.get(_CATALOG_CACHE_KEY);
+  var cacheRead = cacheReadBestEffort(_CATALOG_CACHE_KEY, {
+    operation: 'catalogGetCatalog', event_code: 'CATALOG_CACHE_READ_FAILED'
+  });
+  var cached = cacheRead.value;
   if (cached) {
     try {
       var cachedData = JSON.parse(cached);
@@ -166,14 +168,15 @@ function catalogGetCatalog() {
     catalog_revision: catalogGetRevision()
   };
 
-  // Simpan ke cache (stringify seluruh object)
+  // Simpan best-effort; katalog tetap sukses bila cache tidak tersedia/terlalu besar.
   try {
     var catalogStr = JSON.stringify(catalogData);
-    cache.put(_CATALOG_CACHE_KEY, catalogStr, _CATALOG_CACHE_TTL);
-  } catch (e) {
-    // Gagal cache (misalnya terlalu besar), lanjut tanpa error
+    cacheWriteBestEffort(_CATALOG_CACHE_KEY, catalogStr, _CATALOG_CACHE_TTL, {
+      operation: 'catalogGetCatalog', event_code: 'CATALOG_CACHE_WRITE_FAILED'
+    });
+  } catch (_) {
     safeLog('ERROR', 'CATALOG_CACHE_WRITE_FAILED', '', {
-      operation: 'catalogGetCatalog', stage: 'cache_write', error_code: 'CACHE_WRITE_FAILED', retryable: true
+      operation: 'catalogGetCatalog', stage: 'cache_serialize', error_code: 'CACHE_WRITE_FAILED', retryable: true
     });
   }
 

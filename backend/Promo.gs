@@ -205,7 +205,23 @@ function _promoValidateConfig(promo) {
   if (bonus === null || bonus < 0 || !Number.isInteger(bonus) || multiplier === null || multiplier <= 0) {
     return _promoError('PROMO_CONFIG_INVALID', 'Konfigurasi bonus atau multiplier poin tidak valid');
   }
-  if (!subtotalPresent && !productPresent && !shippingPresent && bonus === 0 && multiplier === 1) {
+
+  var productKelipatan = false;
+  if (_promoHasValue(promo.diskon_produk_kelipatan)) {
+    productKelipatan = sheetParseBoolean(promo.diskon_produk_kelipatan, { activeAliases: true });
+    if (productKelipatan === null) {
+      return _promoError('PROMO_CONFIG_INVALID', 'diskon_produk_kelipatan harus berupa boolean');
+    }
+  }
+  var addonKelipatan = false;
+  if (_promoHasValue(promo.diskon_addon_kelipatan)) {
+    addonKelipatan = sheetParseBoolean(promo.diskon_addon_kelipatan, { activeAliases: true });
+    if (addonKelipatan === null) {
+      return _promoError('PROMO_CONFIG_INVALID', 'diskon_addon_kelipatan harus berupa boolean');
+    }
+  }
+
+  if (!subtotalPresent && !productPresent && !shippingPresent && !addonPresent && bonus === 0 && multiplier === 1) {
     return _promoError('PROMO_CONFIG_INVALID', 'Kode promo tidak memiliki efek');
   }
 
@@ -227,8 +243,8 @@ function _promoValidateConfig(promo) {
       addon_effect: addonPresent,
       bonus_poin: bonus,
       multiplier_poin: multiplier,
-      product_kelipatan: _promoIsTruthy(promo.diskon_produk_kelipatan),
-      addon_kelipatan: _promoIsTruthy(promo.diskon_addon_kelipatan)
+      product_kelipatan: productKelipatan,
+      addon_kelipatan: addonKelipatan
     }
   };
 }
@@ -401,9 +417,7 @@ function _promoCalculateDiscount(promo, config, context) {
       }
       
       if (productType === 'NOMINAL' && config.product_kelipatan) {
-         var maxCap = _promoNumber(promo.diskon_produk_max, 0);
          discountProduct = totalProductNominal;
-         if (maxCap > 0) discountProduct = Math.min(discountProduct, maxCap);
          discountProduct = Math.max(0, Math.min(discountProduct, eligibleSubtotal));
       } else {
          discountProduct = _promoCalculateCappedDiscount(

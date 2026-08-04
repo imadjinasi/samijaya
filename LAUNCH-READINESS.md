@@ -48,9 +48,11 @@ Status migration: `VERIFIED`, `UNVERIFIED`, `NOT REQUIRED`, `REQUIRED`, `FAILED`
 | `migrateCampaigns` | Campaigns | Header strict | UNVERIFIED | Restore workbook |
 | `migrateOrderSeen` | Seen timestamps | Additive/backfill | UNVERIFIED | Restore snapshot |
 | `migratePromoCodes_7_11_A` | Promo sheets/order fields | Additive | UNVERIFIED | Restore workbook |
+| `migratePromoAddons` | Tujuh field promo add-on/kelipatan | Additive/idempotent | UNVERIFIED | Restore workbook |
 | `migrateSessionsSecurity_8_A1` | OTP lock fields | Additive | UNVERIFIED | Restore workbook |
 | `migrateOrderIdempotency_8_A2` | Commit fields | Additive | UNVERIFIED | Restore workbook |
 | `migrateTransactionHardening_8_A3` | Transaction/ledger/review fields | Additive | UNVERIFIED | Restore workbook |
+| `migrateLegacyOrderItemProductIdsByExactName` | Remap product_id legacy bila nama persis dan unik | Conditional; backup wajib | REQUIRED | Audit ulang dan pulihkan backup bila bukti mapping salah |
 | Fase 8-B/8-C | No migration | N/A | NOT REQUIRED | N/A |
 
 Update status dari full schema gate. Jangan menjalankan migration produksi dari checklist ini.

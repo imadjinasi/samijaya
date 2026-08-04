@@ -13,6 +13,7 @@ var PHASE8D_LAUNCH_SCHEMA_GROUPS = [
   { code:'ADDRESS_DEFAULT', sheets:{ MemberAddresses:['is_default'] } },
   { code:'ORDER_SEEN', sheets:{ Orders:['status_updated_at'], Members:['last_seen_orders_at'] } },
   { code:'PROMO', sheets:{ PromoCodes:['promo_id','kode','nama','aktif','min_subtotal','metode_kirim','limit_total','limit_per_member','limit_harian'], PromoUsage:['usage_id','promo_id','promo_code','order_id','member_id','status','used_at'] } },
+  { code:'PROMO_ADDON_MULTIPLIER', sheets:{ PromoCodes:['diskon_produk_kelipatan','required_addon_ids','diskon_addon_ids','diskon_addon_tipe','diskon_addon_nilai','diskon_addon_max','diskon_addon_kelipatan'] } },
   { code:'SESSION_SECURITY', sheets:{ Sessions:['otp_failed_attempts','otp_locked_at'] } },
   { code:'ORDER_IDEMPOTENCY', sheets:{ Orders:['client_request_id','request_fingerprint','commit_status','commit_stage','commit_error_code','commit_snapshot_json','committed_at'] } },
   { code:'TRANSACTION_RECOVERY', sheets:{ Orders:['transaction_status','transaction_stage','transaction_error_code','transaction_snapshot_json','cancelled_at','cancelled_by','cancel_reason'], PointHistory:['event_code','saldo_sebelum','event_status','event_snapshot_json'], Reviews:['request_fingerprint','updated_at'] } },

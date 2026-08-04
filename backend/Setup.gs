@@ -210,7 +210,10 @@ var SHEET_DEFS = [
      'diskon_subtotal_nilai', 'diskon_subtotal_max', 'diskon_produk_ids',
      'diskon_produk_tipe', 'diskon_produk_nilai', 'diskon_produk_max',
      'diskon_ongkir_tipe', 'diskon_ongkir_nilai', 'diskon_ongkir_max',
-     'bonus_poin', 'multiplier_poin', 'created_at', 'updated_at'],
+     'bonus_poin', 'multiplier_poin', 'created_at', 'updated_at',
+     'diskon_produk_kelipatan', 'required_addon_ids', 'diskon_addon_ids',
+     'diskon_addon_tipe', 'diskon_addon_nilai', 'diskon_addon_max',
+     'diskon_addon_kelipatan'],
     null
   ],
 

@@ -64,3 +64,5 @@ Urutan aman untuk workbook existing:
 7. Setelah semua gate lokal dan staging lulus, barulah lakukan `clasp push`/fixed-ID deployment sesuai approval terpisah.
 
 Jangan menaruh secret atau nilai produksi dalam Handbook. Perbarui `DataHandbook.gs` ketika header, parser, writer, default efektif, enum, sensitivitas, atau cara operasional berubah; jalankan ulang migration dan audit setelah perubahan source disetujui.
+
+Untuk workbook lama yang belum memiliki field promo add-on/kelipatan, jalankan `migratePromoAddons()` hanya setelah backup lalu sinkronkan Handbook dengan `migrateDataHandbook_8_D()`. Untuk `OrderItems.product_id` legacy, jalankan `auditLegacyOrderItemProductMappingReadOnly()` lebih dahulu. Migration `migrateLegacyOrderItemProductIdsByExactName()` hanya mengubah row yang `nama_snapshot`-nya sama persis dengan tepat satu produk aktif maupun nonaktif saat ini; row unmatched/ambiguous tetap tidak diubah dan wajib direkonsiliasi manual.

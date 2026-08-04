@@ -1352,6 +1352,7 @@ function renderCartModal() {
     var itemNameHtml = isHabis 
       ? '<div class="cart-item-name"><span style="color:#C0392B;font-weight:bold;">[HABIS]</span> ' + escHtml(item.nama) + variantInfoHtml + addonsInfoHtml + '</div>' 
       : '<div class="cart-item-name">' + escHtml(item.nama) + variantInfoHtml + addonsInfoHtml + '</div>';
+    var itemA11yName = escHtml(item.nama);
 
     html +=
       '<div class="cart-item" data-pid="' + escHtml(item.product_id) + '" data-vid="' + escHtml(item.variant_id) + '">' +
@@ -1362,11 +1363,11 @@ function renderCartModal() {
         '</div>' +
         '<div class="cart-item-qty">' +
           (isHabis
-            ? '<button class="btn-habis-remove" onclick="removeCartItem(' + i + ')" style="color:#C0392B;font-size:0.75rem;padding:4px 10px;border:1px solid #C0392B;border-radius:var(--r-pill);white-space:nowrap;background:transparent;">Hapus</button>'
-            : '<button onclick="updateQtyByIndex(' + i + ', -1)">' + ICON.minus + '</button><span>' + item.qty + '</span><button onclick="updateQtyByIndex(' + i + ', 1)">' + ICON.plus + '</button>'
+            ? '<button class="btn-habis-remove" aria-label="Hapus ' + itemA11yName + ' dari keranjang" onclick="removeCartItem(' + i + ')" style="color:#C0392B;font-size:0.75rem;padding:4px 10px;border:1px solid #C0392B;border-radius:var(--r-pill);white-space:nowrap;background:transparent;">Hapus</button>'
+            : '<button aria-label="Kurangi jumlah ' + itemA11yName + '" onclick="updateQtyByIndex(' + i + ', -1)">' + ICON.minus + '</button><span>' + item.qty + '</span><button aria-label="Tambah jumlah ' + itemA11yName + '" onclick="updateQtyByIndex(' + i + ', 1)">' + ICON.plus + '</button>'
           ) +
         '</div>' +
-        (isHabis ? '' : '<button class="cart-item-remove" onclick="removeCartItem(' + i + ')" title="Hapus">' + ICON.trash + '</button>') +
+        (isHabis ? '' : '<button class="cart-item-remove" aria-label="Hapus ' + itemA11yName + ' dari keranjang" onclick="removeCartItem(' + i + ')" title="Hapus">' + ICON.trash + '</button>') +
       '</div>';
   }
   html += '</div>';
@@ -4115,8 +4116,8 @@ function renderMyAddressesList(addresses) {
   var html = '<div style="display:flex; flex-direction:column; gap:12px;">';
   for (var i = 0; i < addresses.length; i++) {
     var addr = addresses[i];
-    var encodedAddr = escHtml(JSON.stringify(addr)); // for passing to JS
     var isDefault = String(addr.is_default) === '1' || addr.is_default === true;
+    var addressId = escHtml(addr.address_id);
     
     html += '<div class="address-card" style="background:#fff; border-radius:var(--r-card); padding:16px; box-shadow:var(--shadow);">';
     
@@ -4139,15 +4140,38 @@ function renderMyAddressesList(addresses) {
     // Actions
     html += '<div style="display:flex; gap:8px;">';
     if (!isDefault) {
-      html += '<button class="btn-outline" style="flex:1; padding:8px;" onclick="setDefaultAddress(\'' + addr.address_id + '\')">Jadikan Utama</button>';
+      html += '<button type="button" class="btn-outline" style="flex:1; padding:8px;" data-address-action="default" data-address-id="' + addressId + '">Jadikan Utama</button>';
     }
-    html += '<button class="btn-outline" style="flex:1; padding:8px;" onclick=\'showAddressForm(' + encodedAddr + ')\'>Edit</button>';
-    html += '<button class="btn-outline" style="flex:1; padding:8px; color:var(--danger); border-color:var(--danger);" onclick="deleteAddress(\'' + addr.address_id + '\')">Hapus</button>';
+    html += '<button type="button" class="btn-outline" style="flex:1; padding:8px;" data-address-action="edit" data-address-id="' + addressId + '">Edit</button>';
+    html += '<button type="button" class="btn-outline" style="flex:1; padding:8px; color:var(--danger); border-color:var(--danger);" data-address-action="delete" data-address-id="' + addressId + '">Hapus</button>';
     html += '</div>';
     html += '</div>';
   }
   html += '</div>';
   container.innerHTML = html;
+  container.onclick = function(event) {
+    var target = event && event.target;
+    var button = target && typeof target.closest === 'function' ? target.closest('[data-address-action]') : null;
+    if (!button || !container.contains(button)) return;
+    var action = button.getAttribute('data-address-action');
+    var selectedId = button.getAttribute('data-address-id');
+    if (action === 'default') {
+      setDefaultAddress(selectedId);
+      return;
+    }
+    if (action === 'delete') {
+      deleteAddress(selectedId);
+      return;
+    }
+    if (action === 'edit') {
+      for (var a = 0; a < addresses.length; a++) {
+        if (String(addresses[a].address_id) === String(selectedId)) {
+          showAddressForm(addresses[a]);
+          return;
+        }
+      }
+    }
+  };
 }
 
 function showAddressForm(addr) {

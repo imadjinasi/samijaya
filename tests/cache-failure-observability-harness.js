@@ -4,6 +4,7 @@ const assert = require('assert');
 
 const removed = [];
 const properties = new Map();
+const cacheValues = new Map();
 let writes = [];
 let cacheThrows = false;
 let uuidSequence = 0;
@@ -20,7 +21,9 @@ const context = {
   }) },
   CacheService: { getScriptCache: () => ({
     remove: key => { if (cacheThrows) throw new Error('cache down'); removed.push(key); },
-    get: () => null, put() {}, removeAll(keys) { keys.forEach(key => removed.push(key)); }
+    get: key => { if (cacheThrows) throw new Error('cache down'); return cacheValues.has(key) ? cacheValues.get(key) : null; },
+    put: (key, value) => { if (cacheThrows) throw new Error('cache down'); cacheValues.set(key, String(value)); },
+    removeAll(keys) { keys.forEach(key => removed.push(key)); }
   }) },
   Logger: { log() {} },
   ContentService: { createTextOutput: value => ({ setMimeType: () => value }), MimeType: { JSON: 'json' } },
@@ -28,8 +31,13 @@ const context = {
 };
 vm.createContext(context);
 vm.runInContext(fs.readFileSync('backend/Util.gs', 'utf8'), context, { filename: 'backend/Util.gs' });
-context.readAll = name => name === 'Settings' ? [{ key: 'TOKO_BUKA' }, { key: 'ADMIN_CHAT_IDS' }] : [];
+context.readAll = name => name === 'Settings' ? [{ key: 'TOKO_BUKA', value: '1' }, { key: 'ADMIN_CHAT_IDS', value: 'ADMIN' }] : [];
 context.appendRowObj = (sheet, row) => { writes.push({ sheet, row }); return row; };
+
+cacheThrows = true;
+assert.strictEqual(context.getSetting('TOKO_BUKA'), '1', 'Settings reader must fall back to sheet when cache is unavailable');
+assert.strictEqual(context.getSetting('MISSING_KEY'), null, 'missing Settings key should still return null when cache is unavailable');
+cacheThrows = false;
 
 assert.strictEqual(context.cacheInvalidateSetting('TOKO_BUKA'), true);
 assert(removed.includes('setting_TOKO_BUKA'), 'targeted Settings invalidation missing');
@@ -72,6 +80,17 @@ for (const operation of ['telegramCloseStore', 'telegramOpenStore', 'telegramSlo
 }
 assert(telegramSource.includes("cacheInvalidateSetting('TOKO_BUKA'"), 'targeted setting invalidation missing');
 assert(telegramSource.includes('clearApplicationDataCaches()'), '/clearcache not routed through data-cache registry');
+
+context.variantsGroupByProduct = () => ({});
+context.addonsGroupByProduct = () => ({});
+context.campaignsReadActive = () => [];
+context.readAll = name => name === 'Settings' ? [{ key: 'TOKO_BUKA', value: '1' }] : [];
+vm.runInContext(fs.readFileSync('backend/Catalog.gs', 'utf8'), context, { filename: 'backend/Catalog.gs' });
+cacheThrows = true;
+const catalogWithoutCache = context.catalogGetCatalog();
+assert.strictEqual(catalogWithoutCache.ok, true, 'catalog must fall back to sheets when cache read/write fails');
+assert.deepStrictEqual(Array.from(catalogWithoutCache.data.products), []);
+cacheThrows = false;
 
 const tgContext = {
   console, JSON, Date, Math, Number, String, Object, Array, RegExp, encodeURIComponent,

@@ -52,6 +52,31 @@ assert.strictEqual(context.getCatalogCache().revision, 'r1');
 storage.set('s:sj_catalog_v2', JSON.stringify({ data:validCatalog, revision:'r0', savedAt:Date.now()-400000 }));
 assert.strictEqual(context.getCatalogCache().expired, true);
 
+const addressContainer = { innerHTML:'', onclick:null, contains:()=>true };
+let editedAddress = null, defaultAddressId = '', deletedAddressId = '';
+const addressContext = {
+  console, String, Array, Object,
+  document: { getElementById:id => id === 'address-content' ? addressContainer : null },
+  escHtml:value => String(value == null ? '' : value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'),
+  showAddressForm:address => { editedAddress = address; },
+  setDefaultAddress:id => { defaultAddressId = id; },
+  deleteAddress:id => { deletedAddressId = id; }
+};
+vm.createContext(addressContext);
+vm.runInContext(functionSource('renderMyAddressesList'), addressContext);
+const maliciousAddress = { address_id:'ADDR-1', label:"Rumah O'Neil", detail:'<img src=x onerror=alert(1)>', alamat_snapshot:'Jalan Aman', is_default:false };
+addressContext.renderMyAddressesList([maliciousAddress]);
+assert(!/onclick\s*=/.test(addressContainer.innerHTML), 'address objects must not be embedded in inline handlers');
+assert(!addressContainer.innerHTML.includes('<img src=x'), 'stored address HTML was not escaped');
+assert(addressContainer.innerHTML.includes('data-address-action="edit"'));
+function addressButton(action) { return { getAttribute:name => name === 'data-address-action' ? action : 'ADDR-1' }; }
+addressContainer.onclick({ target:{ closest:()=>addressButton('edit') } });
+assert.strictEqual(editedAddress, maliciousAddress);
+addressContainer.onclick({ target:{ closest:()=>addressButton('default') } });
+assert.strictEqual(defaultAddressId, 'ADDR-1');
+addressContainer.onclick({ target:{ closest:()=>addressButton('delete') } });
+assert.strictEqual(deletedAddressId, 'ADDR-1');
+
 async function run() {
   context.fetch = () => new Promise(() => {});
   await assert.rejects(context.api('getCatalog', {}, { timeoutMs: 15 }), error => error.kind === 'TIMEOUT');
@@ -84,6 +109,7 @@ async function run() {
   assert(source.includes('previousAlamat') && source.includes('alamat || previousAlamat'), 'geocoding failure erases previous address');
   assert(source.includes('startCampaignQueue') && source.includes('copyCampaignCode'), 'campaign regression');
   assert(source.includes("resContainer.classList.remove('co-hidden')") && source.includes("getElementById('co-search-results').classList.add('co-hidden')"), 'search results display regression (co-hidden)');
+  for (const label of ['aria-label="Kurangi jumlah ', 'aria-label="Tambah jumlah ', ' dari keranjang"']) assert(source.includes(label), `cart accessibility label missing: ${label}`);
   console.log('frontend-failure-harness: all assertions passed');
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

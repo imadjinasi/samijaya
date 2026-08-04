@@ -33,12 +33,14 @@ const context={console,JSON,Date,Math,Number,String,Boolean,Object,Array,RegExp,
 vm.createContext(context);
 vm.runInContext(fs.readFileSync('backend/DataHandbook.gs','utf8'),context);
 
-// Registry, Setup coverage, modes, sensitive fields, PromoCodes A-AK, and no Banners.
+// Registry, Setup coverage, modes, sensitive fields, PromoCodes A-AR, and no Banners.
 const rows=context.dataHandbookBuildRows_();
 assert.strictEqual(context.DATA_HANDBOOK_BUSINESS_SHEETS.length,21);
-assert.strictEqual(rows.length,243); // 242 baseline + MemberAddresses.alamat_snapshot required by 8-D.
-assert.strictEqual(rows.filter(r=>r.sheet_name==='PromoCodes').length,37);
+assert.strictEqual(rows.length,250);
+assert.strictEqual(rows.filter(r=>r.sheet_name==='PromoCodes').length,44);
 assert.deepStrictEqual(Array.from(rows.filter(r=>r.sheet_name==='PromoCodes').map(r=>r.column_name)),Array.from(context.DATA_HANDBOOK_BUSINESS_SHEETS.find(s=>s.name==='PromoCodes').headers));
+assert.strictEqual(rows.find(r=>r.sheet_name==='PromoCodes'&&r.column_name==='diskon_produk_kelipatan').default_value,'false');
+assert(rows.find(r=>r.sheet_name==='PromoCodes'&&r.column_name==='required_addon_ids').related_to.includes('ProductAddons.addon_id'));
 for(const mode of ['MANUAL','SYSTEM','MIXED','DO_NOT_EDIT']) assert(rows.some(r=>r.input_mode===mode));
 assert(rows.find(r=>r.sheet_name==='Sessions'&&r.column_name==='token').sensitive);
 assert(rows.some(r=>r.sheet_name==='Campaigns'));
@@ -51,7 +53,7 @@ assert(setupSource.includes('setupDataHandbookForNewInstall_(ss)'));
 context.ss=new Spreadsheet();
 for(const spec of context.DATA_HANDBOOK_BUSINESS_SHEETS)context.ss.sheets[spec.name]=new Sheet(spec.name,Array.from(spec.headers));
 let result=context.dataHandbookSync_(context.ss,true);
-assert.strictEqual(result.created,true); assert.strictEqual(result.inserted,243); assert.strictEqual(context.ss.sheets.Handbook.getLastRow(),244);
+assert.strictEqual(result.created,true); assert.strictEqual(result.inserted,250); assert.strictEqual(context.ss.sheets.Handbook.getLastRow(),251);
 assert.strictEqual(businessDataReads,0);
 assert(context.ss.sheets.PromoCodes.notes[0][0].includes('[Samijaya Handbook]'));
 let cleanAudit=context.auditDataHandbookCoverageReadOnly();
@@ -65,7 +67,7 @@ handbook.values.push(['CustomSheet','Tujuan','custom_column',1,'MANUAL',false,'t
 context.ss.sheets.Products.notes[0][1]='Catatan operator';
 context.ss.sheets.Products.notes[0][2]='[Samijaya Handbook]\nVersi lama';
 result=context.dataHandbookSync_(context.ss,true);
-assert.strictEqual(result.inserted,0); assert.strictEqual(result.updated,243); assert.strictEqual(result.custom_rows,1);
+assert.strictEqual(result.inserted,0); assert.strictEqual(result.updated,250); assert.strictEqual(result.custom_rows,1);
 assert(result.note_conflicts.includes('Products.nama'));
 assert.strictEqual(context.ss.sheets.Products.notes[0][1],'Catatan operator');
 assert(context.ss.sheets.Products.notes[0][2].includes('Lihat sheet Handbook'));
@@ -86,8 +88,10 @@ handbook.values.find(r=>r[0]==='Sessions'&&r[2]==='token')[12]=false;
 handbook.values.find(r=>r[0]==='Products'&&r[2]==='harga')[4]='INVALID';
 handbook.values.push(['Products','Tujuan','old_column',99,'MANUAL',false,'teks','','','','','BEBAS_SEBELUM_DIPAKAI',false,'','']);
 context.ss.sheets.MemberAddresses.values[0]=context.ss.sheets.MemberAddresses.values[0].filter(h=>h!=='alamat_snapshot');
+context.ss.sheets.Products.values[0].push('future_column');
 const audit=context.auditDataHandbookCoverageReadOnly();
 assert(audit.missing_business_header.includes('MemberAddresses.alamat_snapshot'));
+assert(audit.unregistered_business_header.includes('Products.future_column'));
 assert(audit.duplicate_handbook_key.includes('Settings.key'));
 assert(audit.stale_unknown_handbook_row.includes('Products.old_column'));
 assert(audit.custom_row.includes('CustomSheet.custom_column'));

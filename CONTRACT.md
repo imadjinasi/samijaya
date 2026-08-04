@@ -80,6 +80,9 @@ Key wajib (nilai default dalam kurung):
 ### 10. OrderItems
 `order_id | product_id | nama_snapshot | harga_snapshot | qty | subtotal`
 
+- OrderItems lama tetap memakai snapshot nama/harga untuk histori. `product_id` orphan hanya boleh dimigrasikan setelah backup bila `nama_snapshot` yang di-trim sama persis dengan tepat satu `Products.nama`; unmatched/ambiguous tidak boleh ditebak atau diubah.
+- Jalankan `auditLegacyOrderItemProductMappingReadOnly()` sebelum `migrateLegacyOrderItemProductIdsByExactName()`. Migration conditional, memakai lock, dan aman dijalankan ulang.
+
 ### Sheet ProductVariants (BARU — Fase 7.8)
 Menyimpan varian per produk. Produk bisa punya 0 varian (produk tanpa varian) atau 1-6 varian (produk bervarian, 1-axis).
 
@@ -171,17 +174,23 @@ Harga 1 item = Products.harga (dasar) + ProductVariants.harga (selisih varian, 0
 - `ulasan`: teks bebas, opsional
 
 ### 17. PromoCodes
-`promo_id | kode | nama | deskripsi | catatan_customer | aktif | mulai_at | berakhir_at | hari_berlaku | jam_mulai | jam_berakhir | min_subtotal | max_subtotal | metode_kirim | required_product_ids | required_kategori_ids | required_match_mode | member_baru_only | whitelist_member_ids | bisa_dengan_poin | limit_total | limit_per_member | limit_harian | diskon_subtotal_tipe | diskon_subtotal_nilai | diskon_subtotal_max | diskon_produk_ids | diskon_produk_tipe | diskon_produk_nilai | diskon_produk_max | diskon_ongkir_tipe | diskon_ongkir_nilai | diskon_ongkir_max | bonus_poin | multiplier_poin | created_at | updated_at`
+`promo_id | kode | nama | deskripsi | catatan_customer | aktif | mulai_at | berakhir_at | hari_berlaku | jam_mulai | jam_berakhir | min_subtotal | max_subtotal | metode_kirim | required_product_ids | required_kategori_ids | required_match_mode | member_baru_only | whitelist_member_ids | bisa_dengan_poin | limit_total | limit_per_member | limit_harian | diskon_subtotal_tipe | diskon_subtotal_nilai | diskon_subtotal_max | diskon_produk_ids | diskon_produk_tipe | diskon_produk_nilai | diskon_produk_max | diskon_ongkir_tipe | diskon_ongkir_nilai | diskon_ongkir_max | bonus_poin | multiplier_poin | created_at | updated_at | diskon_produk_kelipatan | required_addon_ids | diskon_addon_ids | diskon_addon_tipe | diskon_addon_nilai | diskon_addon_max | diskon_addon_kelipatan`
 
 - `kode`: unik case-insensitive; backend menormalisasi trim + uppercase.
 - `aktif`: menerima `aktif`, `true`, `1`, atau `ya` (case-insensitive).
-- Daftar hari, metode, product ID, kategori ID, dan member ID memakai comma-separated string; setiap elemen di-trim.
+- Daftar hari, metode, product ID, kategori ID, add-on ID, dan member ID memakai comma-separated string; setiap elemen di-trim.
 - `required_match_mode`: `ANY` atau `ALL`.
 - Limit kosong/0 berarti tanpa limit.
-- Diskon subtotal dan diskon produk tidak boleh aktif bersamaan. Konfigurasi konflik ditolak.
-- Tipe diskon harga: `PERSEN | NOMINAL`; tipe diskon ongkir: `GRATIS | PERSEN | NOMINAL`.
+- Diskon subtotal tidak boleh aktif bersamaan dengan diskon produk atau add-on. Diskon produk dan add-on boleh digabung. Konfigurasi konflik ditolak.
+- Tipe diskon subtotal/produk: `PERSEN | NOMINAL`; tipe diskon add-on/ongkir: `GRATIS | PERSEN | NOMINAL`.
 - Cap persen kosong/0 berarti tanpa cap.
-- Satu kode boleh menggabungkan satu diskon harga, diskon ongkir, bonus poin, dan multiplier poin.
+- `diskon_produk_kelipatan`: boolean; bila true, diskon produk `NOMINAL` dikalikan qty produk target. Flag tidak mengubah `PERSEN`, karena persen sudah dihitung dari subtotal seluruh qty.
+- `required_addon_ids`: syarat add-on yang digabung dengan syarat produk/kategori sesuai `required_match_mode`.
+- `diskon_addon_ids`: daftar add-on target. `diskon_addon_max` hanya menjadi cap `PERSEN` per unit add-on.
+- `diskon_addon_kelipatan`: boolean; bila true, diskon add-on dikalikan qty produk induk. Bila false, diskon hanya satu kali per baris item.
+- Boolean kelipatan menerima `true/false`, `1/0`, `aktif/nonaktif`, atau `ya/tidak` (case-insensitive); nilai lain membuat konfigurasi ditolak.
+- Satu kode boleh menggabungkan diskon subtotal, atau kombinasi diskon produk dan add-on, dengan diskon ongkir, bonus poin, dan multiplier poin.
+- Jalankan manual `migratePromoAddons()` setelah backup pada workbook lama. Migration hanya menambah tujuh header di akhir PromoCodes, aman dijalankan ulang, dan tidak mengubah row promo.
 
 ### 18. PromoUsage
 `usage_id | promo_id | promo_code | order_id | member_id | status | used_at | used_date | cancelled_at | promo_diskon_subtotal | promo_diskon_produk | promo_diskon_ongkir | promo_diskon_total | promo_bonus_poin | promo_multiplier_poin`
@@ -321,6 +330,7 @@ Fase 8-B tidak menambah kolom dan tidak memerlukan migration. Setup dan migratio
 ### Cache registry dan catalog revision
 
 - Cache data aplikasi backend adalah `catalog_cache` (TTL 300 detik) dan `setting_<KEY>` (TTL 300 detik). Telegram webhook dedup `tg_upd_*` serta login rate-limit bukan cache data aplikasi.
+- Kegagalan read/write cache katalog atau Settings dicatat best-effort dan reader tetap membaca source Spreadsheet; cache tidak boleh menjadi single point of failure.
 - Invalidasi dilakukan setelah source mutation sukses. Settings hanya menghapus key terkait; writer Products/DeliverySlots/Settings publik menghapus katalog dan memperbarui revision. Kegagalan invalidasi atau revision dicatat best-effort dan tidak membatalkan commit.
 - `getCatalog.data.catalog_revision` adalah field additive. Nilainya opaque (`timestamp-random`), disimpan ringan pada Script Properties, tidak memakai Spreadsheet, tidak bertambah pada read, dan bukan counter atomic.
 - Browser boleh initial-render dari `sessionStorage`, kemudian selalu melakukan background refresh saat load untuk menemukan revision/data baru. Revision bukan push invalidation. Response lama atau request yang sudah tidak relevan wajib diabaikan.
@@ -362,7 +372,7 @@ Fase 8-B tidak menambah kolom dan tidak memerlukan migration. Setup dan migratio
 - Mode input: `MANUAL` diisi operator; `SYSTEM` dihasilkan sistem; `MIXED` dapat berubah melalui operator dan sistem; `FORMULA` khusus formula yang dikelola; `DO_NOT_EDIT` tidak boleh diedit manual.
 - Header Handbook tetap pada row pertama, dibekukan, diberi filter, wrap, lebar kolom, dan warna ringan berdasarkan mode. Tidak ada merged cell, external formula, hidden data, atau hard-coded sheet gid.
 - Jalankan `migrateDataHandbook_8_D()` secara manual setelah backup untuk membuat atau menyinkronkan Handbook dan managed header note. Migration tidak menambah/mengubah header atau value pada 21 sheet bisnis dan tidak membaca row transaksi.
-- Jalankan `auditDataHandbookCoverageReadOnly()` untuk memeriksa missing business header, missing managed row, duplicate key, stale/unknown row, custom row, custom note conflict, invalid input mode, dan sensitive field yang belum ditandai.
+- Jalankan `auditDataHandbookCoverageReadOnly()` untuk memeriksa missing business header, header bisnis yang belum terdaftar, missing managed row, duplicate key, stale/unknown row, custom row, custom note conflict, invalid input mode, dan sensitive field yang belum ditandai.
 - Managed row memakai key `sheet_name + column_name`. Duplicate key adalah conflict dan tidak dipilih atau dihapus otomatis. Row custom di luar key managed dipertahankan.
 - Managed header note memakai marker `[Samijaya Handbook]`. Note kosong atau note bermarker boleh diperbarui; note custom tanpa marker dipertahankan dan dilaporkan.
 - Handbook tidak boleh memuat nilai aktual Settings, secret, OTP, token sesi, PII member, data order, atau data produksi lain. Seluruh nilai dokumentasi melewati formula-safe write boundary.
