@@ -1,9 +1,12 @@
 /**
  * Setup.gs — Samijaya MVP
  *
- * Dua fungsi:
- *   1. setupDatabase()  — buat 21 sheet bisnis + Handbook + data default
+ * Instalasi baru:
+ *   1. setupDatabase()  — buat sheet bisnis + Handbook + data default
  *   2. hashPassword(str) — SHA-256 hex string
+ *
+ * Workbook existing memakai migrateDatabase() dari DatabaseMigration.gs.
+ * Fungsi tersebut menjadi satu-satunya runner untuk membuat tab/kolom baru.
  *
  * Jalankan hashPassword('passwordku') dari editor,
  * salin hasil Logger ke Settings ADMIN_PASSWORD_HASH.

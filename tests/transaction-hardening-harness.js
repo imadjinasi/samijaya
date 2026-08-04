@@ -110,12 +110,6 @@ assert.strictEqual(context.reviewSubmit({order_id:'O1',rating:5,ulasan:'legacy'}
 reset('SELESAI'); sheets.Reviews=[{review_id:'R1',order_id:'O1',member_id:'OTHER',rating:5,ulasan:'bad',status:'aktif'}]; assert.strictEqual(context.reviewGetPublic().data.total_ulasan,0);
 sheets.Reviews[0].member_id='M1'; assert.strictEqual(context.reviewGetPublic().data.total_ulasan,1); sheets.Orders[0].commit_status='CREATING'; assert.strictEqual(context.reviewGetPublic().data.total_ulasan,0);
 
-// Migration adds fields once and validates base schema.
-let migrationHeaders={Orders:['order_id','member_id','status','commit_status'],PointHistory:['id','member_id','order_id','tipe','jumlah','saldo_akhir'],Reviews:['review_id','order_id','member_id','rating','ulasan','status','created_at']}; let migrationWrites=0;
-function migrationSheet(name){return {getLastColumn:()=>migrationHeaders[name].length,getRange:(row,col,_rows,cols)=>row===1&&col===1?{getValues:()=>[migrationHeaders[name].slice(0,cols)]}:{setValue:v=>{migrationHeaders[name][col-1]=v;migrationWrites++;}}};}
-const migrationContext={PropertiesService:{getScriptProperties:()=>({getProperty:()=> 'test'})},SpreadsheetApp:{openById:()=>({getSheetByName:migrationSheet})},Logger:{log(){}}}; vm.createContext(migrationContext); vm.runInContext(fs.readFileSync('backend/_migrateTransactionHardening.gs','utf8'),migrationContext);
-migrationContext.migrateTransactionHardening_8_A3(); const firstWrites=migrationWrites; assert.strictEqual(firstWrites,13); migrationContext.migrateTransactionHardening_8_A3(); assert.strictEqual(migrationWrites,firstWrites);
-
 // Static guards: frontend no longer delete-then-submit; reports require SELESAI; notifications gate unchanged replay.
 const app=fs.readFileSync('docs/app.js','utf8'); const submitBlock=app.slice(app.indexOf('async function submitReview'),app.indexOf('async function deleteReview'));
 assert(!submitBlock.includes("api('deleteMyReview'"));

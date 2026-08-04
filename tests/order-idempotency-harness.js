@@ -195,19 +195,6 @@ assert.strictEqual(context._promoEnsureUsage({ ...expectedUsage, promo_diskon_to
   assert.strictEqual(setValuesCalls, 1); assert.strictEqual(realAppendRowsObj('Test', []).written, 0);
 }
 
-// Migration first run adds fields, second run is no-op.
-{
-  let headers = ['order_id','member_id','status','created_at']; let writesCount = 0;
-  const sheet = { getLastColumn: () => headers.length, getRange(row, col, rows, cols) {
-    if (row === 1 && col === 1 && rows === 1) return { getValues: () => [headers.slice(0, cols)] };
-    return { setValue(value) { headers[col - 1] = value; writesCount++; } };
-  } };
-  const migrationContext = { PropertiesService: { getScriptProperties: () => ({ getProperty: () => 'test' }) }, SpreadsheetApp: { openById: () => ({ getSheetByName: () => sheet }) }, Logger: { log() {} } };
-  vm.createContext(migrationContext); vm.runInContext(fs.readFileSync('backend/_migrateOrderIdempotency.gs','utf8'), migrationContext);
-  migrationContext.migrateOrderIdempotency_8_A2(); assert.strictEqual(writesCount, 7);
-  migrationContext.migrateOrderIdempotency_8_A2(); assert.strictEqual(writesCount, 7);
-}
-
 // Frontend pending TTL and secure UUID fallback, evaluated without booting the UI.
 {
   const appSource = fs.readFileSync('docs/app.js','utf8');

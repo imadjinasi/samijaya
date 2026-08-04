@@ -245,23 +245,4 @@ for (const sentinel of ['otp-sensitive', 'password-sensitive', 'token-sensitive'
   assert(!output.includes(sentinel), `sensitive sentinel leaked: ${sentinel}`);
 }
 
-// Migration is additive, validates base schema, and is idempotent.
-let migrationHeaders = ['token', 'no_hp', 'member_id', 'otp', 'otp_expires_at', 'otp_used', 'session_expires_at', 'created_at'];
-let migrationWrites = 0;
-const migrationSheet = {
-  getLastColumn: () => migrationHeaders.length,
-  getRange(row, column, rows, columns) {
-    if (row === 1 && column === 1 && rows === 1) return { getValues: () => [migrationHeaders.slice(0, columns)] };
-    return { setValue(value) { migrationHeaders[column - 1] = value; migrationWrites++; } };
-  },
-};
-context.SpreadsheetApp = { openById: () => ({ getSheetByName: name => name === 'Sessions' ? migrationSheet : null }) };
-vm.runInContext(fs.readFileSync('backend/_migrateSessionsSecurity.gs', 'utf8'), context, { filename: 'backend/_migrateSessionsSecurity.gs' });
-context.migrateSessionsSecurity_8_A1();
-assert.deepStrictEqual(Array.from(migrationHeaders.slice(-2)), ['otp_failed_attempts', 'otp_locked_at']);
-assert.strictEqual(migrationWrites, 2);
-context.migrateSessionsSecurity_8_A1(); assert.strictEqual(migrationWrites, 2, 'second migration run must not write');
-migrationHeaders = ['token']; migrationWrites = 0;
-context.migrateSessionsSecurity_8_A1(); assert.strictEqual(migrationWrites, 0, 'invalid base schema must abort');
-
 console.log('security-harness: all assertions passed');

@@ -57,12 +57,12 @@ Urutan aman untuk workbook existing:
 
 1. Buat backup Spreadsheet dan pastikan source release sudah diverifikasi.
 2. Jalankan deployment schema/readiness audit yang relevan. Jangan memperbaiki row transaksi secara manual.
-3. Jalankan `migrateDataHandbook_8_D()` dari editor Apps Script. Fungsi ini hanya menyinkronkan Handbook dan managed header note; tidak menjalankan migration schema lain.
-4. Periksa hasil log `row_conflicts` dan `note_conflicts`. Pertahankan custom row/note sampai pemiliknya memutuskan tindak lanjut.
+3. Jalankan satu fungsi `migrateDatabase()` dari editor Apps Script. Fungsi ini mem-preflight seluruh header, membuat tab/kolom yang belum ada, mempertahankan kolom tambahan operator, lalu menyinkronkan Handbook dan managed header note.
+4. Periksa `created_sheets`, `added_columns`, `preserved_unknown_columns`, `row_conflicts`, dan `note_conflicts` pada log. Pertahankan custom column/row/note sampai pemiliknya memutuskan tindak lanjut.
 5. Jalankan `auditDataHandbookCoverageReadOnly()`. Audit bersih harus tidak memiliki missing header/row, duplicate, stale row, note conflict, invalid mode, atau missing sensitive classification. `custom_row` boleh tetap ada.
-6. Khusus `MemberAddresses.alamat_snapshot`, audit dapat melaporkan missing header pada workbook lama. Handbook tidak menambahkannya; lakukan migration schema terpisah hanya setelah backup dan approval khusus.
+6. Jangan menjalankan migration backfill row hanya karena migration struktur selesai. `migrateOrderItemRef`, `migrateAddressDefault`, `migrateOrderSeen`, template, dan legacy product mapping tetap membutuhkan bukti serta approval terpisah.
 7. Setelah semua gate lokal dan staging lulus, barulah lakukan `clasp push`/fixed-ID deployment sesuai approval terpisah.
 
 Jangan menaruh secret atau nilai produksi dalam Handbook. Perbarui `DataHandbook.gs` ketika header, parser, writer, default efektif, enum, sensitivitas, atau cara operasional berubah; jalankan ulang migration dan audit setelah perubahan source disetujui.
 
-Untuk workbook lama yang belum memiliki field promo add-on/kelipatan, jalankan `migratePromoAddons()` hanya setelah backup lalu sinkronkan Handbook dengan `migrateDataHandbook_8_D()`. Untuk `OrderItems.product_id` legacy, jalankan `auditLegacyOrderItemProductMappingReadOnly()` lebih dahulu. Migration `migrateLegacyOrderItemProductIdsByExactName()` hanya mengubah row yang `nama_snapshot`-nya sama persis dengan tepat satu produk aktif maupun nonaktif saat ini; row unmatched/ambiguous tetap tidak diubah dan wajib direkonsiliasi manual.
+Untuk workbook lama yang belum memiliki field promo add-on/kelipatan, jalankan runner struktur tunggal `migrateDatabase()` hanya setelah backup. Untuk `OrderItems.product_id` legacy, jalankan `auditLegacyOrderItemProductMappingReadOnly()` lebih dahulu. Migration `migrateLegacyOrderItemProductIdsByExactName()` hanya mengubah row yang `nama_snapshot`-nya sama persis dengan tepat satu produk aktif maupun nonaktif saat ini; row unmatched/ambiguous tetap tidak diubah dan wajib direkonsiliasi manual.

@@ -190,7 +190,7 @@ Harga 1 item = Products.harga (dasar) + ProductVariants.harga (selisih varian, 0
 - `diskon_addon_kelipatan`: boolean; bila true, diskon add-on dikalikan qty produk induk. Bila false, diskon hanya satu kali per baris item.
 - Boolean kelipatan menerima `true/false`, `1/0`, `aktif/nonaktif`, atau `ya/tidak` (case-insensitive); nilai lain membuat konfigurasi ditolak.
 - Satu kode boleh menggabungkan diskon subtotal, atau kombinasi diskon produk dan add-on, dengan diskon ongkir, bonus poin, dan multiplier poin.
-- Jalankan manual `migratePromoAddons()` setelah backup pada workbook lama. Migration hanya menambah tujuh header di akhir PromoCodes, aman dijalankan ulang, dan tidak mengubah row promo.
+- Jalankan `migrateDatabase()` setelah backup pada workbook lama. Runner struktur tunggal ini menambahkan seluruh header yang belum ada, termasuk tujuh field promo add-on/kelipatan, tanpa mengubah row promo atau kolom tambahan operator.
 
 ### 18. PromoUsage
 `usage_id | promo_id | promo_code | order_id | member_id | status | used_at | used_date | cancelled_at | promo_diskon_subtotal | promo_diskon_produk | promo_diskon_ongkir | promo_diskon_total | promo_bonus_poin | promo_multiplier_poin`
@@ -289,7 +289,7 @@ tersebut tidak dianggap terverifikasi oleh GAS.
 
 ### Migration dan prosedur operasional
 
-- Jalankan manual `migrateTransactionHardening_8_A3()` setelah backup dan sebelum deployment kode. Migration hanya menambah header dan aman dijalankan ulang.
+- Jalankan `migrateDatabase()` setelah backup dan sebelum deployment kode. Runner hanya membuat tab/header yang belum ada, melakukan preflight seluruh workbook sebelum write, dan aman dijalankan ulang.
 - Verifikasi header baru pada `Orders`, `PointHistory`, dan `Reviews` sesuai schema di atas.
 - Untuk `RECOVERY_REQUIRED`, hentikan perubahan order terkait, cocokkan snapshot dengan saldo/member/ledger/promo, perbaiki hanya berdasarkan bukti audit, lalu retry request target yang sama.
 - Jangan menghapus row ledger, review, order, atau PromoUsage untuk menyelesaikan konflik.
@@ -371,13 +371,13 @@ Fase 8-B tidak menambah kolom dan tidak memerlukan migration. Setup dan migratio
 - Registry deklaratif berada di `backend/DataHandbook.gs` dan mencakup seluruh header 21 sheet bisnis. Setiap baris menjelaskan sumber input, kewajiban, tipe, nilai yang diperbolehkan, default efektif, contoh, sensitivitas, relasi, dan kebijakan edit.
 - Mode input: `MANUAL` diisi operator; `SYSTEM` dihasilkan sistem; `MIXED` dapat berubah melalui operator dan sistem; `FORMULA` khusus formula yang dikelola; `DO_NOT_EDIT` tidak boleh diedit manual.
 - Header Handbook tetap pada row pertama, dibekukan, diberi filter, wrap, lebar kolom, dan warna ringan berdasarkan mode. Tidak ada merged cell, external formula, hidden data, atau hard-coded sheet gid.
-- Jalankan `migrateDataHandbook_8_D()` secara manual setelah backup untuk membuat atau menyinkronkan Handbook dan managed header note. Migration tidak menambah/mengubah header atau value pada 21 sheet bisnis dan tidak membaca row transaksi.
+- `migrateDatabase()` otomatis membuat/menyinkronkan Handbook dan managed header note setelah struktur selesai. `migrateDataHandbook_8_D()` tetap tersedia hanya untuk sinkronisasi dokumentasi tanpa migration struktur.
 - Jalankan `auditDataHandbookCoverageReadOnly()` untuk memeriksa missing business header, header bisnis yang belum terdaftar, missing managed row, duplicate key, stale/unknown row, custom row, custom note conflict, invalid input mode, dan sensitive field yang belum ditandai.
 - Managed row memakai key `sheet_name + column_name`. Duplicate key adalah conflict dan tidak dipilih atau dihapus otomatis. Row custom di luar key managed dipertahankan.
 - Managed header note memakai marker `[Samijaya Handbook]`. Note kosong atau note bermarker boleh diperbarui; note custom tanpa marker dipertahankan dan dilaporkan.
 - Handbook tidak boleh memuat nilai aktual Settings, secret, OTP, token sesi, PII member, data order, atau data produksi lain. Seluruh nilai dokumentasi melewati formula-safe write boundary.
 - Perbarui registry handbook setiap kali sheet/header, parser, writer, allowed value, default efektif, sensitivitas, atau jalur operasional berubah.
-- `MemberAddresses.alamat_snapshot` tersedia untuk instalasi baru melalui Setup. Migration handbook tidak menambah header tersebut pada workbook existing; audit melaporkan bila header aktual belum tersedia.
+- `MemberAddresses.alamat_snapshot` tersedia untuk instalasi baru melalui Setup dan ditambahkan secara aman pada workbook existing oleh `migrateDatabase()` bila belum ada.
 
 ## 5. Struktur Repo
 

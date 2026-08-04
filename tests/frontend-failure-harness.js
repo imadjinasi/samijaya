@@ -138,6 +138,9 @@ async function run() {
   const styleSource = fs.readFileSync('docs/style.css', 'utf8');
   assert(styleSource.includes('grid-template-columns: minmax(0, 1fr) minmax(320px, 380px)'), 'desktop checkout grid missing');
   assert(styleSource.includes('#cart-modal .modal-sheet') && styleSource.includes('width: min(420px, 100%)'), 'desktop cart drawer missing');
+  assert(styleSource.includes('#product-grid:not(.grid-mode) .product-card'), 'desktop list view styling missing');
+  assert(styleSource.includes('#product-grid.grid-mode .product-card'), 'desktop grid view styling missing');
+  assert(styleSource.includes('#product-grid.grid-mode {\n    grid-template-columns: repeat(3, 1fr);'), 'desktop grid column rule missing');
   console.log('frontend-failure-harness: all assertions passed');
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

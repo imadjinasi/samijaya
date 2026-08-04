@@ -94,22 +94,4 @@ assert.strictEqual(promoHeaders.length,44);
 assert.deepStrictEqual(promoHeaders.slice(-7),additiveHeaders);
 for (const header of additiveHeaders) assert(fs.readFileSync('CONTRACT.md','utf8').includes(header), `Contract missing ${header}`);
 
-let migrationHeaders=promoHeaders.slice(0,-7), migrationWrites=0;
-const migrationSheet={
-  getLastColumn:()=>migrationHeaders.length,
-  getRange:(row,col,_rows,cols)=>row===1&&col===1
-    ? {getValues:()=>[migrationHeaders.slice(0,cols)]}
-    : {setValue:value=>{migrationHeaders[col-1]=value;migrationWrites++;}}
-};
-const migrationContext={
-  PropertiesService:{getScriptProperties:()=>({getProperty:()=> 'test-sheet'})},
-  SpreadsheetApp:{openById:()=>({getSheetByName:()=>migrationSheet})}, Logger:{log(){}}
-};
-vm.createContext(migrationContext);
-vm.runInContext(fs.readFileSync('backend/_migratePromoAddons.gs','utf8'), migrationContext, {filename:'backend/_migratePromoAddons.gs'});
-migrationContext.migratePromoAddons();
-assert.strictEqual(migrationWrites,7);
-migrationContext.migratePromoAddons();
-assert.strictEqual(migrationWrites,7, 'promo add-on migration must be idempotent');
-
 console.log('promo-multiplier-harness: all assertions passed');

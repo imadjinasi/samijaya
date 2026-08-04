@@ -40,22 +40,15 @@ Status migration: `VERIFIED`, `UNVERIFIED`, `NOT REQUIRED`, `REQUIRED`, `FAILED`
 
 | Function | Result | Rerun | Current status | Recovery |
 |---|---|---|---|---|
-| `migrateVariants_7_8_A` | Variant sheet/fields | Additive/idempotent | UNVERIFIED | Restore workbook |
-| `migrateAddons` | Add-on sheets | Create-if-missing | UNVERIFIED | Restore workbook |
+| `migrateDatabase` | Seluruh tab/header dari `SHEET_DEFS` + sinkronisasi Handbook | Additive/idempotent; preflight sebelum write | UNVERIFIED | Restore workbook |
 | `migrateOrderItemRef` | Item ref/backfill | Conditional backfill | UNVERIFIED | Verify ordering evidence |
 | `migrateAddressDefault` | Default field/backfill | Conditional backfill | UNVERIFIED | Restore/reconcile |
 | `migrateTemplates_FixB1` | Template upsert | Rewrites known templates | UNVERIFIED | Restore template snapshot |
-| `migrateCampaigns` | Campaigns | Header strict | UNVERIFIED | Restore workbook |
 | `migrateOrderSeen` | Seen timestamps | Additive/backfill | UNVERIFIED | Restore snapshot |
-| `migratePromoCodes_7_11_A` | Promo sheets/order fields | Additive | UNVERIFIED | Restore workbook |
-| `migratePromoAddons` | Tujuh field promo add-on/kelipatan | Additive/idempotent | UNVERIFIED | Restore workbook |
-| `migrateSessionsSecurity_8_A1` | OTP lock fields | Additive | UNVERIFIED | Restore workbook |
-| `migrateOrderIdempotency_8_A2` | Commit fields | Additive | UNVERIFIED | Restore workbook |
-| `migrateTransactionHardening_8_A3` | Transaction/ledger/review fields | Additive | UNVERIFIED | Restore workbook |
 | `migrateLegacyOrderItemProductIdsByExactName` | Remap product_id legacy bila nama persis dan unik | Conditional; backup wajib | REQUIRED | Audit ulang dan pulihkan backup bila bukti mapping salah |
 | Fase 8-B/8-C | No migration | N/A | NOT REQUIRED | N/A |
 
-Update status dari full schema gate. Jangan menjalankan migration produksi dari checklist ini.
+Migration struktur baru hanya melalui `migrateDatabase()`. Backfill row tetap terpisah dan tidak boleh dijalankan otomatis. Update status dari full schema gate; jangan menjalankan migration produksi dari checklist ini.
 
 ## Smoke and monitoring
 
