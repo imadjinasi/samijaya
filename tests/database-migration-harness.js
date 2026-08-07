@@ -103,7 +103,7 @@ const fullInstall = new Spreadsheet();
 const fullReport = context.databaseMigrateSchema_(fullInstall, context.SHEET_DEFS);
 assert.strictEqual(fullReport.created_sheets.length, context.SHEET_DEFS.length);
 for (const [sheetName, requiredHeaders] of Object.entries({
-  Sessions: ['otp_failed_attempts', 'otp_locked_at'],
+  Sessions: ['otp_failed_attempts', 'otp_locked_at', 'otp_plain'],
   Orders: ['client_request_id', 'transaction_status', 'cancel_reason'],
   PromoCodes: ['diskon_produk_kelipatan', 'required_addon_ids', 'diskon_addon_kelipatan'],
   OrderItems: ['variant_id', 'order_item_ref'],

@@ -39,7 +39,9 @@ var SHEET_DEFS = [
       ['ADMIN_PASSWORD_HASH',         '',     'Hash SHA-256 password admin'],
       ['ADMIN_CHAT_IDS',              '',     'CSV chat_id admin Telegram'],
       ['TOKO_BUKA',                   '1',    '1=buka, 0=tutup'],
-      ['NOMOR_WA_TOKO',               '',     'Nomor WhatsApp toko']
+      ['NOMOR_WA_TOKO',               '',     'Nomor WhatsApp toko'],
+      ['DEMO_PHONE',                  '',     'Nomor HP dummy untuk reviewer (kosongkan untuk nonaktif)'],
+      ['DEMO_OTP',                    '',     'OTP statis untuk DEMO_PHONE (kosongkan untuk nonaktif)']
     ]
   ],
 
@@ -138,7 +140,7 @@ var SHEET_DEFS = [
   // --- 12. Sessions ---
   ['Sessions',
     ['token', 'no_hp', 'member_id', 'otp', 'otp_expires_at', 'otp_used', 'session_expires_at', 'created_at',
-     'otp_failed_attempts', 'otp_locked_at'],
+     'otp_failed_attempts', 'otp_locked_at', 'otp_plain'],
     null
   ],
 

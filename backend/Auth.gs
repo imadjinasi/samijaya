@@ -72,6 +72,83 @@ function generateOtp() {
   throw new Error('OTP_GENERATION_FAILED');
 }
 
+var AUTH_HASH_PREFIX = 'sha256$';
+var OTP_GLOBAL_RATE_PROPERTY = 'OTP_GLOBAL_RATE_STATE';
+var OTP_GLOBAL_RATE_MAX = 40;
+var OTP_GLOBAL_RATE_WINDOW_MS = 10 * 60 * 1000;
+
+function authBytesToHex(bytes) {
+  var hex = '';
+  for (var i = 0; i < bytes.length; i++) {
+    var value = bytes[i];
+    if (value < 0) value += 256;
+    hex += ('0' + value.toString(16)).slice(-2);
+  }
+  return hex;
+}
+
+function authGetHashPepper() {
+  var props = PropertiesService.getScriptProperties();
+  var pepper = String(props.getProperty('AUTH_HASH_PEPPER') || '');
+  if (pepper) return pepper;
+  pepper = Utilities.getUuid() + Utilities.getUuid() + Utilities.getUuid();
+  props.setProperty('AUTH_HASH_PEPPER', pepper);
+  return pepper;
+}
+
+function authHashSecret(value) {
+  var digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(value) + '|' + authGetHashPepper(),
+    Utilities.Charset.UTF_8
+  );
+  return AUTH_HASH_PREFIX + authBytesToHex(digest);
+}
+
+function authConstantTimeEqual(left, right) {
+  left = String(left || '');
+  right = String(right || '');
+  var mismatch = left.length ^ right.length;
+  var maxLength = Math.max(left.length, right.length);
+  for (var i = 0; i < maxLength; i++) {
+    mismatch |= (left.charCodeAt(i % (left.length || 1)) || 0) ^
+      (right.charCodeAt(i % (right.length || 1)) || 0);
+  }
+  return mismatch === 0;
+}
+
+function authSecretMatches(storedValue, inputValue) {
+  var stored = String(storedValue || '').replace(/^'/, '');
+  if (stored.indexOf(AUTH_HASH_PREFIX) === 0) {
+    return authConstantTimeEqual(stored, authHashSecret(inputValue));
+  }
+  // Kompatibilitas sementara untuk OTP dan sesi yang dibuat sebelum hashing.
+  return authConstantTimeEqual(stored, String(inputValue || ''));
+}
+
+function authConsumeGlobalOtpQuota(now) {
+  var props = PropertiesService.getScriptProperties();
+  var nowMs = now.getTime();
+  try {
+    var raw = props.getProperty(OTP_GLOBAL_RATE_PROPERTY);
+    var state = raw ? JSON.parse(raw) : null;
+    if (!state || !isFinite(Number(state.window_start)) ||
+        nowMs - Number(state.window_start) >= OTP_GLOBAL_RATE_WINDOW_MS ||
+        nowMs < Number(state.window_start)) {
+      state = { window_start: nowMs, count: 0 };
+    }
+    if (Number(state.count) >= OTP_GLOBAL_RATE_MAX) {
+      return { ok: false, code: 'OTP_GLOBAL_LIMIT', error: 'Permintaan OTP sedang terlalu ramai. Coba lagi beberapa menit.' };
+    }
+    state.count = Number(state.count) + 1;
+    props.setProperty(OTP_GLOBAL_RATE_PROPERTY, JSON.stringify(state));
+    return { ok: true };
+  } catch (err) {
+    try { safeLog('ERROR', 'OTP_GLOBAL_RATE_UNAVAILABLE', '', { operation: 'requestOtp', stage: 'rate_limit', error_code: 'RATE_LIMIT_UNAVAILABLE', retryable: true }); } catch (_) {}
+    return { ok: false, code: 'OTP_RATE_LIMIT_UNAVAILABLE', error: 'Layanan OTP sedang sibuk. Silakan coba lagi.' };
+  }
+}
+
 // ============================================================
 // 1. authRequestOtp(payload)
 // ============================================================
@@ -94,11 +171,18 @@ function authRequestOtp(payload) {
   var otpValidMinutes = sheetParseInteger(getSetting('OTP_VALID_MINUTES'), { min: 1, max: 1440 });
   if (otpMaxPerDay === null || otpResendCooldown === null || otpValidMinutes === null) return { ok: false, code: 'SETTINGS_INVALID', error: 'Konfigurasi autentikasi tidak valid' };
 
+  // --- Demo account: OTP statis untuk reviewer (Midtrans, dll) ---
+  var demoPhone = String(getSetting('DEMO_PHONE') || '').trim();
+  var demoOtp = String(getSetting('DEMO_OTP') || '').trim();
+  var isDemoAccount = demoPhone && demoOtp && noHp === normalizePhone(demoPhone);
+
   var otp;
   var isResend = false;
   var lockResult = withLock(function () {
     var sessions = readAll('Sessions');
     var now = new Date();
+    var globalQuota = authConsumeGlobalOtpQuota(now);
+    if (!globalQuota.ok) return globalQuota;
     var oneDayAgo = now.getTime() - (24 * 60 * 60 * 1000);
 
     // Hitung berapa OTP untuk no_hp ini dalam 24 jam terakhir
@@ -141,19 +225,20 @@ function authRequestOtp(payload) {
       }
     }
 
-    // Kalau SUDAH ADA OTP aktif, jangan buat baru
+    // OTP tersimpan sebagai hash sehingga resend selalu merotasi OTP aktif.
     if (activeSession) {
-      otp = String(activeSession.otp).replace(/^'/, "");
+      otp = isDemoAccount ? demoOtp : generateOtp();
       isResend = true;
-      var expiresAtObj = new Date(activeSession.otp_expires_at);
-      var hh = String(expiresAtObj.getHours()).padStart(2, '0');
-      var mm = String(expiresAtObj.getMinutes()).padStart(2, '0');
-      return {
-        ok: true,
-        data: {
-          message: 'OTP sudah ada, admin akan kirim ulang via WhatsApp, berlaku hingga ' + hh + ':' + mm
-        }
-      };
+      var rotatedExpiresAt = new Date(now.getTime() + (otpValidMinutes * 60 * 1000)).toISOString();
+      if (!updateRowById('Sessions', 'token', activeSession.token, {
+        otp: authHashSecret(otp),
+        otp_plain: "'" + otp,
+        otp_expires_at: rotatedExpiresAt,
+        created_at: nowJkt(),
+        otp_failed_attempts: 0,
+        otp_locked_at: ''
+      })) throw new Error('OTP_ROTATION_FAILED');
+      return { ok: true };
     }
 
     // Cek limit per hari HANYA JIKA perlu buat OTP baru
@@ -161,9 +246,9 @@ function authRequestOtp(payload) {
       return { ok: false, error: 'Batas OTP hari ini tercapai, coba besok', code: 'OTP_LIMIT' };
     }
 
-    // Generate OTP & token
-    otp = generateOtp();
-    var token = uuid();
+    // Token row ini hanya ID OTP sementara, bukan bearer session.
+    otp = isDemoAccount ? demoOtp : generateOtp();
+    var token = 'otp_' + uuid();
     var otpExpiresAt = new Date(now.getTime() + (otpValidMinutes * 60 * 1000)).toISOString();
 
     // Append row ke Sessions
@@ -171,7 +256,8 @@ function authRequestOtp(payload) {
       token: token,
       no_hp: noHp,
       member_id: '',
-      otp: "'" + otp,
+      otp: authHashSecret(otp),
+      otp_plain: "'" + otp,
       otp_expires_at: otpExpiresAt,
       otp_used: 0,
       session_expires_at: '',
@@ -188,19 +274,21 @@ function authRequestOtp(payload) {
     return lockResult;
   }
 
-  // Setelah lock release: kirim notifikasi (placeholder)
-  sendOtpToAdminTelegram(noHp, nama, otp, isResend);
-
-  if (lockResult.data && lockResult.data.message) {
-    return lockResult; // resend
+  // Setelah lock release: Fonnte ke customer dan Telegram sebagai fallback admin.
+  if (!isDemoAccount) {
+    var fonnteResult = sendOtpViaFonnte(noHp, nama, otp);
+    sendOtpToAdminTelegram(noHp, nama, otp, isResend, fonnteResult);
   }
 
   var otpValidMinutesDisplay = sheetParseInteger(getSetting('OTP_VALID_MINUTES'), { min: 1, max: 1440 });
   if (otpValidMinutesDisplay === null) return { ok: false, code: 'SETTINGS_INVALID', error: 'Konfigurasi autentikasi tidak valid' };
+  var otpMessage = isDemoAccount
+    ? 'Masukkan kode OTP: ' + demoOtp + ' (berlaku ' + otpValidMinutesDisplay + ' menit)'
+    : 'OTP dikirim langsung melalui WhatsApp, berlaku ' + otpValidMinutesDisplay + ' menit';
   return {
     ok: true,
     data: {
-      message: 'OTP akan dikirim admin via WhatsApp, berlaku ' + otpValidMinutesDisplay + ' menit'
+      message: otpMessage
     }
   };
 }
@@ -259,8 +347,7 @@ function authVerifyOtp(payload) {
       return { ok: false, error: 'Kode OTP tidak valid', code: 'OTP_INVALID' };
     }
 
-    var storedOtp = String(matchRow.otp).replace(/^'/, '');
-    if (storedOtp !== inputOtp) {
+    if (!authSecretMatches(matchRow.otp, inputOtp)) {
       var priorFailedAttempts = sheetParseInteger(matchRow.otp_failed_attempts, { min: 0, max: 1000 });
       if (priorFailedAttempts === null && String(matchRow.otp_failed_attempts || '').trim() !== '') throw new Error('SESSION_ATTEMPT_COUNT_INVALID');
       var failedAttempts = (priorFailedAttempts === null ? 0 : priorFailedAttempts) + 1;
@@ -309,9 +396,13 @@ function authVerifyOtp(payload) {
       return { ok: false, error: 'Sesi tidak valid atau kedaluwarsa', code: 'UNAUTHORIZED' };
     }
     
-    // Tandai used dan bind session dalam satu update row.
+    // Bearer token hanya dikembalikan ke browser; sheet menyimpan hash-nya.
+    var sessionToken = uuid();
+    var storedSessionToken = authHashSecret(sessionToken);
     var sessionExpiresAt = new Date(now.getTime() + (sessionValidDays * 24 * 60 * 60 * 1000)).toISOString();
     if (!updateRowById('Sessions', 'token', matchRow.token, {
+      token: storedSessionToken,
+      otp_plain: '',
       otp_used: 1,
       member_id: member.member_id,
       session_expires_at: sessionExpiresAt
@@ -332,7 +423,7 @@ function authVerifyOtp(payload) {
     return {
       ok: true,
       data: {
-        token: matchRow.token,
+        token: sessionToken,
         member: member,
         addresses: addresses
       }
@@ -355,11 +446,17 @@ function requireSession(token) {
 
   var sessions = readAll('Sessions');
   var now = new Date();
+  var rawToken = String(token);
+  var hashedToken = authHashSecret(rawToken);
 
   var matchRow = null;
   for (var i = 0; i < sessions.length; i++) {
     var row = sessions[i];
-    if (String(row.token) !== String(token)) continue;
+    var storedToken = String(row.token || '').replace(/^'/, '');
+    var tokenMatches = storedToken.indexOf(AUTH_HASH_PREFIX) === 0
+      ? authConstantTimeEqual(storedToken, hashedToken)
+      : authConstantTimeEqual(storedToken, rawToken);
+    if (!tokenMatches) continue;
     if (sheetParseInteger(row.otp_used, { min: 0, max: 1 }) !== 1) continue;
 
     var sessionExp = new Date(row.session_expires_at).getTime();
@@ -554,7 +651,72 @@ function authUpdateProfile(payload, token) {
 }
 
 // ============================================================
-// 5. sendOtpToAdminTelegram(no_hp, nama, otp)
+// 5. sendOtpViaFonnte(no_hp, nama, otp)
+// ============================================================
+function sendOtpViaFonnte(no_hp, nama, otp) {
+  var token = String(PropertiesService.getScriptProperties().getProperty('FONNTE_API_TOKEN') || '').trim();
+  if (!token) {
+    safeLog('ERROR', 'FONNTE_NOT_CONFIGURED', '', {
+      operation: 'sendOtpViaFonnte', stage: 'config', error_code: 'FONNTE_NOT_CONFIGURED', retryable: false
+    });
+    return { ok: false, code: 'FONNTE_NOT_CONFIGURED' };
+  }
+
+  var displayNama = nama || 'Customer';
+  var message = fillTemplate('OTP', { NAMA: displayNama, OTP: otp });
+  var response;
+  try {
+    response = UrlFetchApp.fetch('https://api.fonnte.com/send', {
+      method: 'post',
+      headers: { Authorization: token },
+      payload: {
+        target: String(no_hp),
+        message: message,
+        countryCode: '0',
+        connectOnly: true
+      },
+      muteHttpExceptions: true
+    });
+  } catch (_) {
+    safeLog('ERROR', 'FONNTE_NETWORK_FAILED', '', {
+      operation: 'sendOtpViaFonnte', stage: 'network', error_code: 'FONNTE_NETWORK_ERROR', retryable: true
+    });
+    return { ok: false, code: 'FONNTE_NETWORK_ERROR', retryable: true };
+  }
+
+  var httpCode = Number(response.getResponseCode());
+  if (httpCode < 200 || httpCode >= 300) {
+    safeLog('ERROR', 'FONNTE_HTTP_FAILED', '', {
+      operation: 'sendOtpViaFonnte', stage: 'http', error_code: 'FONNTE_HTTP_ERROR', retryable: httpCode >= 500, http_status: httpCode
+    });
+    return { ok: false, code: 'FONNTE_HTTP_ERROR', retryable: httpCode >= 500 };
+  }
+
+  var body;
+  try { body = JSON.parse(response.getContentText() || '{}'); }
+  catch (_) {
+    safeLog('ERROR', 'FONNTE_RESPONSE_INVALID', '', {
+      operation: 'sendOtpViaFonnte', stage: 'response', error_code: 'FONNTE_RESPONSE_INVALID', retryable: true
+    });
+    return { ok: false, code: 'FONNTE_RESPONSE_INVALID', retryable: true };
+  }
+
+  var accepted = body && (body.status === true || body.Status === true);
+  if (!accepted) {
+    safeLog('ERROR', 'FONNTE_API_FAILED', '', {
+      operation: 'sendOtpViaFonnte', stage: 'api', error_code: 'FONNTE_API_ERROR', retryable: false
+    });
+    return { ok: false, code: 'FONNTE_API_ERROR' };
+  }
+
+  safeLog('NOTIF', 'FONNTE_OTP_QUEUED', '', {
+    operation: 'sendOtpViaFonnte', stage: 'complete', error_code: '', retryable: false
+  });
+  return { ok: true };
+}
+
+// ============================================================
+// 6. sendOtpToAdminTelegram(no_hp, nama, otp)
 // ============================================================
 /**
  * Kirim notifikasi OTP ke admin via Telegram.
@@ -564,15 +726,18 @@ function authUpdateProfile(payload, token) {
  * @param {string} nama  — nama customer (bisa kosong)
  * @param {string} otp   — OTP 6 digit
  */
-function sendOtpToAdminTelegram(no_hp, nama, otp, isResend) {
+function sendOtpToAdminTelegram(no_hp, nama, otp, isResend, fonnteResult) {
   var displayNama = nama || 'Customer';
   var statusText = isResend ? ' (ulang)' : '';
+  var fonnteText = fonnteResult && fonnteResult.ok
+    ? '\nFonnte: masuk antrean pengiriman otomatis'
+    : '\nFonnte: gagal/tidak aktif, gunakan tombol manual';
 
   // Susun pesan untuk admin
   var pesan = '🔐 <b>OTP Request</b>' + statusText + '\n'
     + 'Nama: ' + displayNama + '\n'
     + 'No HP: ' + no_hp + '\n'
-    + 'OTP: <code>' + otp + '</code>';
+    + 'OTP: <code>' + otp + '</code>' + fonnteText;
 
   // Susun teks WhatsApp dari template OTP
   var waText = fillTemplate('OTP', { NAMA: displayNama, OTP: otp });

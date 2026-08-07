@@ -299,6 +299,32 @@ function escHtml(str) {
   return div.innerHTML;
 }
 
+function safeHttpsUrl(value) {
+  var raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    var parsed = new URL(raw, window.location.href);
+    return parsed.protocol === 'https:' ? parsed.href : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+function safeDriveImageUrl(fileId, width) {
+  var normalized = String(fileId || '').trim();
+  if (!/^[A-Za-z0-9_-]{10,200}$/.test(normalized)) return '';
+  return 'https://lh3.googleusercontent.com/d/' + encodeURIComponent(normalized) + '=w' + Number(width || 400);
+}
+
+document.addEventListener('click', function(event) {
+  var image = event.target.closest && event.target.closest('[data-open-image]');
+  if (!image) return;
+  event.preventDefault();
+  event.stopPropagation();
+  var url = safeHttpsUrl(image.getAttribute('data-open-image'));
+  if (url) window.open(url, '_blank', 'noopener,noreferrer');
+});
+
 function promoContextSignature() {
   var member = session.member || {};
   var items = cart.map(function(item) {
@@ -483,13 +509,20 @@ function loadCart() {
 }
 
 function saveSession() {
-  localStorage.setItem('sj_session', JSON.stringify(session));
+  if (!session.token) {
+    localStorage.removeItem('sj_session');
+    return;
+  }
+  localStorage.setItem('sj_session', JSON.stringify({ token: String(session.token) }));
 }
 
 function loadSession() {
   try {
     var raw = localStorage.getItem('sj_session');
-    if (raw) session = JSON.parse(raw);
+    if (raw) {
+      var stored = JSON.parse(raw);
+      session = { token: stored && stored.token ? String(stored.token) : null, member: null, addresses: [] };
+    }
   } catch (e) {
     session = { token: null, member: null };
   }
@@ -619,12 +652,11 @@ function startCampaignQueue() {
 
 function campaignImageUrl(item) {
   var fileId = String(item.gambar_file_id || '').trim();
-  return fileId ? 'https://lh3.googleusercontent.com/d/' + encodeURIComponent(fileId) + '=w800' : String(item.gambar_url || '').trim();
+  return fileId ? safeDriveImageUrl(fileId, 800) : safeHttpsUrl(item.gambar_url);
 }
 
 function campaignSafeLink(value) {
-  var link = String(value || '').trim();
-  return /^https?:\/\//i.test(link) ? link : '';
+  return safeHttpsUrl(value);
 }
 
 function showNextCampaign(marker) {
@@ -982,9 +1014,9 @@ function renderOneProduct(p) {
   var isHabis = (Number(p.tersedia) === 0);
   var imgHtml = '';
   if (p.foto_url || p.foto_file_id) {
-    var fullUrl = p.foto_file_id ? 'https://lh3.googleusercontent.com/d/' + escHtml(p.foto_file_id) + '=w1200' : escHtml(p.foto_url);
-    var thumbUrl = p.foto_file_id ? 'https://lh3.googleusercontent.com/d/' + escHtml(p.foto_file_id) + '=w400' : escHtml(p.foto_url);
-    imgHtml = '<img src="' + thumbUrl + '" alt="' + escHtml(p.nama) + '" loading="lazy" style="cursor: pointer;" onclick="event.stopPropagation(); window.open(\'' + fullUrl + '\', \'_blank\')">';
+    var fullUrl = p.foto_file_id ? safeDriveImageUrl(p.foto_file_id, 1200) : safeHttpsUrl(p.foto_url);
+    var thumbUrl = p.foto_file_id ? safeDriveImageUrl(p.foto_file_id, 400) : safeHttpsUrl(p.foto_url);
+    if (thumbUrl) imgHtml = '<img src="' + escHtml(thumbUrl) + '" alt="' + escHtml(p.nama) + '" loading="lazy" style="cursor:pointer" data-open-image="' + escHtml(fullUrl || thumbUrl) + '">';
   } else {
     imgHtml = '<div class="product-img-placeholder">' + ICON.bottle + '</div>';
   }
@@ -1061,7 +1093,7 @@ function openProductModal(productId) {
   var isHabis = (Number(p.tersedia) === 0);
   var imgUrl = '';
   if (p.foto_url) {
-    imgUrl = p.foto_file_id ? 'https://lh3.googleusercontent.com/d/' + escHtml(p.foto_file_id) + '=w1200' : escHtml(p.foto_url);
+    imgUrl = p.foto_file_id ? safeDriveImageUrl(p.foto_file_id, 1200) : safeHttpsUrl(p.foto_url);
   }
 
   var modal = document.getElementById('product-modal');
@@ -1073,7 +1105,7 @@ function openProductModal(productId) {
 
   html += '<div style="flex: 1 1 auto; overflow-y: auto; padding-bottom: 16px;">';
   if (imgUrl) {
-    html += '<div style="position:relative; width:100%; aspect-ratio:1/1; max-height:40vh; background:var(--latte);"><img src="' + imgUrl + '" style="width:100%; height:100%; max-height:40vh; object-fit:cover; cursor:pointer;" onclick="window.open(\'' + imgUrl + '\', \'_blank\')">';
+    html += '<div style="position:relative; width:100%; aspect-ratio:1/1; max-height:40vh; background:var(--latte);"><img src="' + escHtml(imgUrl) + '" data-open-image="' + escHtml(imgUrl) + '" style="width:100%; height:100%; max-height:40vh; object-fit:cover; cursor:pointer;">';
     if (isHabis) {
       html += '<div style="position:absolute; inset:0; background:rgba(255,255,255,0.4);"></div>';
       html += '<div class="product-badge" style="background:#8B2E2E;color:#fff;top:16px;">HABIS</div>';
@@ -1337,12 +1369,13 @@ function renderCartModal() {
     var isHabis = (p && Number(p.tersedia) === 0);
 
     if (p && p.foto_url) {
-      var fullUrl = p.foto_file_id ? 'https://lh3.googleusercontent.com/d/' + escHtml(p.foto_file_id) + '=w1200' : escHtml(p.foto_url);
+      var fullUrl = p.foto_file_id ? safeDriveImageUrl(p.foto_file_id, 1200) : safeHttpsUrl(p.foto_url);
       var imgStyle = isHabis ? 'filter: grayscale(100%) opacity(0.6); cursor: pointer;' : 'cursor: pointer;';
-      imgHtml = '<div class="cart-item-thumb" style="position:relative;"><img src="' + escHtml(p.foto_url) + '" alt="' + escHtml(item.nama) + '" style="' + imgStyle + '" onclick="window.open(\'' + fullUrl + '\', \'_blank\')">' + (isHabis ? '<div style="position:absolute;bottom:0;left:0;right:0;background:#8B2E2E;color:#fff;font-size:0.55rem;text-align:center;padding:2px 0;font-weight:bold;">HABIS</div>' : '') + '</div>';
+      if (fullUrl) imgHtml = '<div class="cart-item-thumb" style="position:relative;"><img src="' + escHtml(fullUrl) + '" alt="' + escHtml(item.nama) + '" data-open-image="' + escHtml(fullUrl) + '" style="' + imgStyle + '">' + (isHabis ? '<div style="position:absolute;bottom:0;left:0;right:0;background:#8B2E2E;color:#fff;font-size:0.55rem;text-align:center;padding:2px 0;font-weight:bold;">HABIS</div>' : '') + '</div>';
     } else {
       imgHtml = '<div class="cart-item-thumb placeholder" style="position:relative;display:flex;align-items:center;justify-content:center;color:var(--brown)">' + ICON.bottle + (isHabis ? '<div style="position:absolute;bottom:0;left:0;right:0;background:#8B2E2E;color:#fff;font-size:0.55rem;text-align:center;padding:2px 0;font-weight:bold;">HABIS</div>' : '') + '</div>';
     }
+    if (!imgHtml) imgHtml = '<div class="cart-item-thumb placeholder" style="display:flex;align-items:center;justify-content:center;color:var(--brown)">' + ICON.bottle + '</div>';
 
     var variantInfoHtml = item.nama_varian ? '<div style="font-size:0.8rem;color:#777;margin-top:2px;">' + (item.nama_axis ? escHtml(item.nama_axis) + ': ' : '') + escHtml(item.nama_varian) + '</div>' : '';
 
@@ -3385,13 +3418,14 @@ document.addEventListener('DOMContentLoaded', async function () {
       var meRes = await api('getMe');
       if (meRes.ok) {
         session.member = meRes.data.member;
+        session.addresses = meRes.data.addresses || [];
         saveSession();
       } else if (meRes.code === 'UNAUTHORIZED') {
         session = { token: null, member: null };
         localStorage.removeItem('sj_session');
       }
     } catch (e) {
-      // Gagal koneksi, tetap pakai session lama
+      // Token tetap dipertahankan agar validasi dapat dicoba lagi tanpa menyimpan PII lokal.
     }
   }
 

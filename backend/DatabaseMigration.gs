@@ -15,7 +15,7 @@
  * Backfill atau koreksi ROW lama sengaja tidak dijalankan di sini. Migration
  * data seperti legacy OrderItems tetap membutuhkan audit dan approval khusus.
  */
-var DATABASE_MIGRATION_VERSION = '2026-08-04.1';
+var DATABASE_MIGRATION_VERSION = '2026-08-07.1';
 
 function migrateDatabase() {
   var spreadsheetId = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');

@@ -16,7 +16,7 @@ var DATA_HANDBOOK_INPUT_MODES = ['MANUAL','SYSTEM','MIXED','FORMULA','DO_NOT_EDI
 var DATA_HANDBOOK_BUSINESS_SHEETS = [
   { name:'Settings', purpose:'Konfigurasi aplikasi dan integrasi. Kolom value dapat berisi rahasia.', headers:['key','value','keterangan'] },
   { name:'Members', purpose:'Profil member dan saldo/ringkasan transaksi yang dipelihara sistem.', headers:['member_id','nama','no_hp','tgl_lahir','email','jenis_kelamin','total_poin','total_belanja','created_at','status','last_seen_orders_at'] },
-  { name:'Sessions', purpose:'OTP dan sesi login. Seluruh isi bersifat sistem dan sensitif.', headers:['token','no_hp','member_id','otp','otp_expires_at','otp_used','session_expires_at','created_at','otp_failed_attempts','otp_locked_at'] },
+  { name:'Sessions', purpose:'OTP dan sesi login. Seluruh isi bersifat sistem dan sensitif.', headers:['token','no_hp','member_id','otp','otp_expires_at','otp_used','session_expires_at','created_at','otp_failed_attempts','otp_locked_at','otp_plain'] },
   { name:'MemberAddresses', purpose:'Alamat tersimpan milik member yang dikelola melalui frontend.', headers:['address_id','member_id','label','detail','alamat_snapshot','latitude','longitude','created_at','status','is_default'] },
   { name:'Products', purpose:'Katalog produk yang ditampilkan kepada pelanggan.', headers:['product_id','nama','harga','foto_file_id','kategori_id','deskripsi','badge_promo','tersedia','urutan','status'] },
   { name:'Categories', purpose:'Kelompok dan urutan kategori katalog.', headers:['kategori_id','nama','urutan','status'] },
@@ -47,7 +47,7 @@ var DATA_HANDBOOK_SYSTEM_SHEETS = {
   OrderItemAddons:true, PointHistory:true, PromoUsage:true, Logs:true
 };
 var DATA_HANDBOOK_OPTIONAL_COLUMNS = {
-  Settings:['keterangan'], Members:['tgl_lahir','email','jenis_kelamin','last_seen_orders_at'], Sessions:['otp_failed_attempts','otp_locked_at'],
+  Settings:['keterangan'], Members:['tgl_lahir','email','jenis_kelamin','last_seen_orders_at'], Sessions:['otp_failed_attempts','otp_locked_at','otp_plain'],
   MemberAddresses:['alamat_snapshot'], Products:['foto_file_id','deskripsi','badge_promo','urutan'], Categories:['urutan'],
   ProductVariants:['created_at','updated_at'], ProductAddons:['created_at','updated_at'], PickupLocations:['jam_buka','jam_tutup'],
   Holidays:['keterangan'], Orders:['lokasi_pickup_id','address_id','alamat_snapshot','lat','lng','jarak_km','ongkir','slot_id','catatan_customer','catatan_admin','timeline_json','nama_penerima','no_hp_penerima','status_updated_at','promo_id','promo_code','promo_nama','ongkir_sebelum_promo','promo_diskon_subtotal','promo_diskon_produk','promo_diskon_ongkir','promo_diskon_total','promo_bonus_poin','promo_multiplier_poin','poin_earn_dasar','poin_earn_final','promo_snapshot_json','client_request_id','request_fingerprint','commit_status','commit_stage','commit_error_code','commit_snapshot_json','committed_at','transaction_status','transaction_stage','transaction_error_code','transaction_snapshot_json','cancelled_at','cancelled_by','cancel_reason'],
@@ -79,7 +79,7 @@ var DATA_HANDBOOK_COLUMN_DESCRIPTIONS = {
 var DATA_HANDBOOK_SENSITIVE = {
   'Settings.value':true,
   'Members.nama':true,'Members.no_hp':true,'Members.tgl_lahir':true,'Members.email':true,
-  'Sessions.token':true,'Sessions.no_hp':true,'Sessions.otp':true,
+  'Sessions.token':true,'Sessions.no_hp':true,'Sessions.otp':true,'Sessions.otp_plain':true,
   'MemberAddresses.detail':true,'MemberAddresses.alamat_snapshot':true,'MemberAddresses.latitude':true,'MemberAddresses.longitude':true,
   'Orders.nama':true,'Orders.no_hp':true,'Orders.alamat_snapshot':true,'Orders.lat':true,'Orders.lng':true,
   'Orders.catatan_customer':true,'Orders.catatan_admin':true,'Orders.nama_penerima':true,'Orders.no_hp_penerima':true,
@@ -221,7 +221,7 @@ function dataHandbookApplyLayout_(sheet, rowCount) {
 function dataHandbookSync_(ss, installNotes) {
   var report={created:false,inserted:0,updated:0,custom_rows:0,row_conflicts:[],note_conflicts:[],notes_written:0};
   var rows=dataHandbookBuildRows_();
-  if (rows.length!==250) throw new Error('HANDBOOK_MANAGED_ROW_COUNT_INVALID:'+rows.length);
+  if (rows.length!==251) throw new Error('HANDBOOK_MANAGED_ROW_COUNT_INVALID:'+rows.length);
   var sheet=ss.getSheetByName('Handbook');
   if (!sheet) { sheet=ss.insertSheet('Handbook'); sheet.getRange(1,1,1,DATA_HANDBOOK_HEADERS.length).setValues([DATA_HANDBOOK_HEADERS]); report.created=true; }
   dataHandbookValidateHeader_(sheet);

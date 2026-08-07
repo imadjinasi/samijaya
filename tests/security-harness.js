@@ -1,6 +1,7 @@
 const fs = require('fs');
 const vm = require('vm');
 const assert = require('assert');
+const crypto = require('crypto');
 
 let sheets = {};
 let properties = {};
@@ -15,6 +16,9 @@ let handlerThrows = false;
 let forceUpdateFalse = false;
 let digestQueue = [];
 let hashCalls = 0;
+let fetchHandler = null;
+let fetchRequests = [];
+let otpAdminNotifications = 0;
 
 const scriptProperties = {
   getProperty(key) { return properties[key] || ''; },
@@ -46,11 +50,18 @@ const context = {
   Utilities: {
     DigestAlgorithm: { SHA_256: 'SHA_256' }, Charset: { UTF_8: 'UTF_8' },
     getUuid: () => '00000000-0000-4000-8000-000000000001',
-    computeDigest() { return digestQueue.length ? digestQueue.shift() : [0, 0, 0, 1]; },
+    computeDigest(algorithm, value) {
+      if (digestQueue.length) return digestQueue.shift();
+      return Array.from(crypto.createHash('sha256').update(String(value)).digest()).map(byte => byte > 127 ? byte - 256 : byte);
+    },
     formatDate: () => '2026-07-21 18:20:00',
   },
   SpreadsheetApp: { openById() { throw new Error('production spreadsheet access forbidden'); } },
-  UrlFetchApp: { fetch() { throw new Error('production network access forbidden'); } },
+  UrlFetchApp: { fetch(url, options) {
+    fetchRequests.push({ url, options });
+    if (fetchHandler) return fetchHandler(url, options);
+    throw new Error('production network access forbidden');
+  } },
   Logger: { log(value) { logs.push(String(value)); } },
 };
 vm.createContext(context);
@@ -83,7 +94,7 @@ context.getSetting = key => {
 context.genId = prefix => prefix + '_test';
 context.uuid = () => 'session-token-sentinel';
 context.nowJkt = () => '2026-07-21 18:20:00';
-context.sendOtpToAdminTelegram = () => {};
+context.sendOtpToAdminTelegram = () => { otpAdminNotifications++; return { ok: true }; };
 context.tgSend = (chatId, text, opts) => { sent.push({ chatId: String(chatId), text, opts }); return { ok: true }; };
 context.tgApi = (method, payload) => { apiCalls.push({ method, payload }); return { ok: true }; };
 context.handleTelegramWebhook = update => {
@@ -106,6 +117,9 @@ function reset() {
   forceUpdateFalse = false;
   digestQueue = [];
   hashCalls = 0;
+  fetchHandler = null;
+  fetchRequests = [];
+  otpAdminNotifications = 0;
 }
 function post(body, key) {
   return context.doPost({ parameter: key === undefined ? {} : { tg_key: key }, postData: { contents: body } });
@@ -122,7 +136,7 @@ function activeSession(overrides = {}) {
     token: 'tok-row', no_hp: '628123456789', member_id: '', otp: "'123456",
     otp_expires_at: '2099-01-01T00:00:00.000Z', otp_used: 0,
     session_expires_at: '', created_at: '2026-07-20T00:00:00.000Z',
-    otp_failed_attempts: 0, otp_locked_at: '', ...overrides,
+    otp_failed_attempts: 0, otp_locked_at: '', otp_plain: "'123456", ...overrides,
   };
 }
 function activeMember(overrides = {}) {
@@ -185,6 +199,11 @@ assert.strictEqual(context.authRequestOtp({ no_hp: '08123456789', nama: 'Test' }
 assert.strictEqual(sheets.Sessions.at(-1).otp_failed_attempts, 0); assert.strictEqual(sheets.Sessions.at(-1).otp_locked_at, '');
 reset(); sheets.Sessions = [activeSession()]; sheets.Members = [activeMember()]; sheets.MemberAddresses = [];
 let good = context.authVerifyOtp({ no_hp: '08123456789', otp: '123456' }); assert.strictEqual(good.ok, true);
+assert.strictEqual(good.data.token, 'session-token-sentinel');
+assert(sheets.Sessions[0].token.startsWith('sha256$'), 'new bearer token must be hashed at rest');
+assert(!sheets.Sessions[0].token.includes(good.data.token), 'raw bearer token must not remain in Sessions');
+assert.strictEqual(sheets.Sessions[0].otp_plain, '', 'plaintext OTP must be cleared after successful verification');
+assert(context.requireSession(good.data.token), 'hashed session must accept the raw browser token');
 assert.strictEqual(context.authVerifyOtp({ no_hp: '08123456789', otp: '123456' }).code, 'OTP_INVALID');
 reset(); sheets.Sessions = [activeSession({ otp_expires_at: '2020-01-01T00:00:00.000Z' })];
 assert.strictEqual(context.authVerifyOtp({ no_hp: '08123456789', otp: '123456' }).code, 'OTP_INVALID');
@@ -199,6 +218,53 @@ sheets.Members = [activeMember({ status: '' })]; assert.strictEqual(context.requ
 sheets.Members = []; assert.strictEqual(context.requireSession('token-sensitive'), null);
 assert(!logs.join('\n').includes('token-sensitive'));
 assert.strictEqual(context.requireSession('missing-token'), null);
+
+// New OTP rows are hashed, resend rotates the OTP, and the global window is enforced.
+reset(); digestQueue = [signedBytes(654321)];
+assert.strictEqual(context.authRequestOtp({ no_hp: '08123456789', nama: 'Test' }).ok, true);
+assert(sheets.Sessions[0].token.startsWith('otp_'), 'pending OTP row must not be a bearer session');
+assert(sheets.Sessions[0].otp.startsWith('sha256$'), 'OTP must be hashed at rest');
+assert(!sheets.Sessions[0].otp.includes('654321'));
+assert.strictEqual(sheets.Sessions[0].otp_plain, "'654321", 'active OTP must be visible as text for private-sheet troubleshooting');
+properties.OTP_GLOBAL_RATE_STATE = JSON.stringify({ window_start: Date.now(), count: 40 });
+assert.strictEqual(context.authRequestOtp({ no_hp: '08111111111', nama: 'Other' }).code, 'OTP_GLOBAL_LIMIT');
+properties.OTP_GLOBAL_RATE_STATE = '{broken';
+assert.strictEqual(context.authRequestOtp({ no_hp: '08222222222', nama: 'Other' }).code, 'OTP_RATE_LIMIT_UNAVAILABLE');
+
+// Fonnte sends directly with a Script Property token and never logs secrets.
+reset(); properties.FONNTE_API_TOKEN = 'fonnte-token-sensitive';
+sheets.MessageTemplates = [{ kode: 'OTP', isi: 'Halo {NAMA}, OTP {OTP}' }];
+fetchHandler = () => ({ getResponseCode: () => 200, getContentText: () => JSON.stringify({ status: true }) });
+let fonnte = context.sendOtpViaFonnte('628123456789', 'Name Sensitive', '123456');
+assert.strictEqual(fonnte.ok, true);
+assert.strictEqual(fetchRequests[0].url, 'https://api.fonnte.com/send');
+assert.strictEqual(fetchRequests[0].options.headers.Authorization, 'fonnte-token-sensitive');
+assert(!fetchRequests[0].options.headers.Authorization.startsWith('Bearer '));
+assert.strictEqual(fetchRequests[0].options.payload.target, '628123456789');
+assert.strictEqual(fetchRequests[0].options.payload.countryCode, '0');
+assert.strictEqual(fetchRequests[0].options.payload.connectOnly, true);
+for (const secret of ['fonnte-token-sensitive', '628123456789', 'Name Sensitive', '123456']) assert(!logs.join('\n').includes(secret));
+reset(); assert.strictEqual(context.sendOtpViaFonnte('628123456789', 'Test', '123456').code, 'FONNTE_NOT_CONFIGURED');
+reset(); properties.FONNTE_API_TOKEN = 'token'; fetchHandler = () => ({ getResponseCode: () => 200, getContentText: () => '{bad' });
+assert.strictEqual(context.sendOtpViaFonnte('628123456789', 'Test', '123456').code, 'FONNTE_RESPONSE_INVALID');
+reset(); properties.FONNTE_API_TOKEN = 'token'; fetchHandler = () => ({ getResponseCode: () => 429, getContentText: () => '{}' });
+assert.strictEqual(context.sendOtpViaFonnte('628123456789', 'Test', '123456').code, 'FONNTE_HTTP_ERROR');
+reset(); properties.FONNTE_API_TOKEN = 'token'; fetchHandler = () => ({ getResponseCode: () => 200, getContentText: () => JSON.stringify({ status: false, reason: 'quota' }) });
+assert.strictEqual(context.sendOtpViaFonnte('628123456789', 'Test', '123456').code, 'FONNTE_API_ERROR');
+digestQueue = [signedBytes(222222)];
+assert.strictEqual(context.authRequestOtp({ no_hp: '08123456789', nama: 'Fallback' }).ok, true);
+assert.strictEqual(otpAdminNotifications, 1, 'Telegram admin fallback must remain active when Fonnte rejects delivery');
+
+// Midtrans demo account remains local/static and must not consume Fonnte or Telegram delivery.
+reset(); sheets.Settings = [
+  { key: 'DEMO_PHONE', value: '08111111111' },
+  { key: 'DEMO_OTP', value: '112233' },
+];
+let demoRequest = context.authRequestOtp({ no_hp: '08111111111', nama: 'Midtrans Reviewer' });
+assert.strictEqual(demoRequest.ok, true);
+assert(demoRequest.data.message.includes('112233'));
+assert.strictEqual(fetchRequests.length, 0);
+assert.strictEqual(otpAdminNotifications, 0);
 
 // OTP notification may carry secrets to admins, but must never copy them into logs.
 reset();

@@ -138,10 +138,12 @@ Harga 1 item = Products.harga (dasar) + ProductVariants.harga (selisih varian, 0
 - `tipe`: `TAMBAH | PAKAI | KOREKSI`
 
 ### 12. Sessions
-`token | no_hp | member_id | otp | otp_expires_at | otp_used | session_expires_at | created_at | otp_failed_attempts | otp_locked_at`
+`token | no_hp | member_id | otp | otp_expires_at | otp_used | session_expires_at | created_at | otp_failed_attempts | otp_locked_at | otp_plain`
 
 - `otp_failed_attempts`: jumlah kegagalan verifikasi untuk row OTP tersebut; default `0`.
 - `otp_locked_at`: timestamp WIB saat OTP dikunci setelah lima kegagalan; kosong bila belum dikunci.
+- `otp`: hash SHA-256 ber-pepper untuk verifikasi OTP baru; row legacy plaintext tetap dibaca selama masa kompatibilitas.
+- `otp_plain`: OTP asli sementara untuk troubleshooting operasional pada Spreadsheet private; wajib dikosongkan setelah verifikasi berhasil.
 - Error `OTP_LOCKED`: OTP tidak dapat digunakan dan pengguna harus meminta OTP baru.
 
 ### 13. MessageTemplates
@@ -236,6 +238,12 @@ Plus jalur webhook Telegram melalui capability query `tg_key` yang dicocokkan de
 Script Property `TELEGRAM_WEBHOOK_KEY` atau `TELEGRAM_WEBHOOK_KEY_NEXT` selama rotasi.
 `TELEGRAM_SECRET` tetap boleh dikirim sebagai header resmi Telegram, tetapi header
 tersebut tidak dianggap terverifikasi oleh GAS.
+
+Pengiriman OTP customer memakai Fonnte `POST https://api.fonnte.com/send` dengan
+Script Property `FONNTE_API_TOKEN` sebagai header `Authorization` tanpa prefix
+`Bearer`. Token dilarang disimpan di Spreadsheet, log, response API, atau repository.
+Telegram admin tetap menerima notifikasi sebagai fallback operasional. Kegagalan
+Fonnte tidak membatalkan pembuatan OTP dan tidak boleh mencatat response mentah.
 
 ## 3A. Aturan PromoCodes (Fase 7.11-A)
 - Maksimal satu kode per order; tidak ada stacking kode.
