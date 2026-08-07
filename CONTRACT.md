@@ -244,6 +244,11 @@ Script Property `FONNTE_API_TOKEN` sebagai header `Authorization` tanpa prefix
 `Bearer`. Token dilarang disimpan di Spreadsheet, log, response API, atau repository.
 Telegram admin tetap menerima notifikasi sebagai fallback operasional. Kegagalan
 Fonnte tidak membatalkan pembuatan OTP dan tidak boleh mencatat response mentah.
+Status device dipantau oleh trigger `monitorFonnteDeviceStatus` setiap lima menit
+melalui `POST https://api.fonnte.com/device`. Script Property
+`FONNTE_LAST_DEVICE_STATUS` hanya menyimpan `connect` atau `disconnect` untuk
+deduplikasi. Telegram menerima alert ketika device terputus dan ketika tersambung
+kembali; status yang tidak berubah tidak boleh menghasilkan spam notifikasi.
 
 ## 3A. Aturan PromoCodes (Fase 7.11-A)
 - Maksimal satu kode per order; tidak ada stacking kode.

@@ -19,6 +19,7 @@ let hashCalls = 0;
 let fetchHandler = null;
 let fetchRequests = [];
 let otpAdminNotifications = 0;
+let projectTriggers = [];
 
 const scriptProperties = {
   getProperty(key) { return properties[key] || ''; },
@@ -42,6 +43,15 @@ const context = {
   PropertiesService: { getScriptProperties: () => scriptProperties },
   CacheService: { getScriptCache: () => { if (cacheUnavailable) throw new Error('cache unavailable'); return cache; } },
   LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
+  ScriptApp: {
+    getProjectTriggers: () => projectTriggers,
+    newTrigger(handler) {
+      return {
+        timeBased() { return this; }, everyMinutes(minutes) { this.minutes = minutes; return this; },
+        create() { projectTriggers.push({ getHandlerFunction: () => handler, minutes: this.minutes }); return this; },
+      };
+    },
+  },
   HtmlService: { createHtmlOutput: text => ({ kind: 'html', text }) },
   ContentService: {
     MimeType: { JSON: 'json' },
@@ -120,6 +130,7 @@ function reset() {
   fetchHandler = null;
   fetchRequests = [];
   otpAdminNotifications = 0;
+  projectTriggers = [];
 }
 function post(body, key) {
   return context.doPost({ parameter: key === undefined ? {} : { tg_key: key }, postData: { contents: body } });
@@ -250,10 +261,33 @@ assert.strictEqual(context.sendOtpViaFonnte('628123456789', 'Test', '123456').co
 reset(); properties.FONNTE_API_TOKEN = 'token'; fetchHandler = () => ({ getResponseCode: () => 429, getContentText: () => '{}' });
 assert.strictEqual(context.sendOtpViaFonnte('628123456789', 'Test', '123456').code, 'FONNTE_HTTP_ERROR');
 reset(); properties.FONNTE_API_TOKEN = 'token'; fetchHandler = () => ({ getResponseCode: () => 200, getContentText: () => JSON.stringify({ status: false, reason: 'quota' }) });
-assert.strictEqual(context.sendOtpViaFonnte('628123456789', 'Test', '123456').code, 'FONNTE_API_ERROR');
+assert.strictEqual(context.sendOtpViaFonnte('628123456789', 'Test', '123456').code, 'FONNTE_QUOTA_EXHAUSTED');
 digestQueue = [signedBytes(222222)];
 assert.strictEqual(context.authRequestOtp({ no_hp: '08123456789', nama: 'Fallback' }).ok, true);
 assert.strictEqual(otpAdminNotifications, 1, 'Telegram admin fallback must remain active when Fonnte rejects delivery');
+
+// Disconnect/reconnect alerts are classified and deduplicated.
+reset(); let deviceAlerts = []; context.tgSendToAdmins = text => { deviceAlerts.push(text); return [{ ok: true }]; };
+assert.strictEqual(context.fonnteClassifyFailure({ reason: 'device disconnected' }), 'FONNTE_DEVICE_DISCONNECTED');
+assert.strictEqual(context.fonnteClassifyFailure({ reason: 'token invalid' }), 'FONNTE_TOKEN_INVALID');
+assert.strictEqual(context.fonnteClassifyFailure({ reason: 'insufficient quota' }), 'FONNTE_QUOTA_EXHAUSTED');
+assert.strictEqual(context.fonnteRecordDeviceStatus('disconnect', 'test').changed, true);
+assert.strictEqual(deviceAlerts.length, 1);
+assert.strictEqual(context.fonnteRecordDeviceStatus('disconnect', 'test').changed, false);
+assert.strictEqual(deviceAlerts.length, 1, 'unchanged disconnect must not spam Telegram');
+assert.strictEqual(context.fonnteRecordDeviceStatus('connect', 'test').changed, true);
+assert.strictEqual(deviceAlerts.length, 2); assert(deviceAlerts[1].includes('tersambung kembali'));
+
+// Device profile monitor and five-minute trigger setup.
+reset(); context.tgSendToAdmins = text => { deviceAlerts.push(text); return [{ ok: true }]; };
+properties.FONNTE_API_TOKEN = 'token';
+fetchHandler = (url) => ({ getResponseCode: () => 200, getContentText: () => JSON.stringify({ status: true, device_status: url.endsWith('/device') ? 'disconnect' : 'connect' }) });
+let monitored = context.monitorFonnteDeviceStatus(); assert.strictEqual(monitored.status, 'disconnect');
+assert.strictEqual(properties.FONNTE_LAST_DEVICE_STATUS, 'disconnect');
+assert.strictEqual(context.setupFonnteMonitorTrigger().created, true);
+assert.strictEqual(projectTriggers[0].minutes, 5);
+assert.strictEqual(context.setupFonnteMonitorTrigger().created, false);
+assert.strictEqual(projectTriggers.length, 1);
 
 // Midtrans demo account remains local/static and must not consume Fonnte or Telegram delivery.
 reset(); sheets.Settings = [
