@@ -274,10 +274,10 @@ function authRequestOtp(payload) {
     return lockResult;
   }
 
-  // Setelah lock release: Fonnte ke customer dan Telegram sebagai fallback admin.
+  // Setelah lock release: JalurPesan ke customer dan Telegram sebagai fallback admin.
   if (!isDemoAccount) {
-    var fonnteResult = sendOtpViaFonnte(noHp, nama, otp);
-    sendOtpToAdminTelegram(noHp, nama, otp, isResend, fonnteResult);
+    var jalurPesanResult = sendOtpViaJalurPesan(noHp, nama, otp);
+    sendOtpToAdminTelegram(noHp, nama, otp, isResend, jalurPesanResult);
   }
 
   var otpValidMinutesDisplay = sheetParseInteger(getSetting('OTP_VALID_MINUTES'), { min: 1, max: 1440 });
@@ -651,151 +651,65 @@ function authUpdateProfile(payload, token) {
 }
 
 // ============================================================
-// 5. sendOtpViaFonnte(no_hp, nama, otp)
+// 5. sendOtpViaJalurPesan(no_hp, nama, otp)
 // ============================================================
-var FONNTE_DEVICE_STATUS_PROPERTY = 'FONNTE_LAST_DEVICE_STATUS';
 
-function fonnteClassifyFailure(body) {
-  var reason = String(body && (body.reason || body.detail) || '').trim().toLowerCase();
-  if (reason.indexOf('disconnect') !== -1 || reason.indexOf('not connected') !== -1) return 'FONNTE_DEVICE_DISCONNECTED';
-  if (reason.indexOf('token') !== -1 || reason.indexOf('unknown user') !== -1) return 'FONNTE_TOKEN_INVALID';
-  if (reason.indexOf('quota') !== -1) return 'FONNTE_QUOTA_EXHAUSTED';
-  if (reason.indexOf('target') !== -1 || reason.indexOf('number') !== -1) return 'FONNTE_TARGET_INVALID';
-  return 'FONNTE_API_ERROR';
+function jalurPesanBaseUrl() {
+  var baseUrl = String(PropertiesService.getScriptProperties().getProperty('JALURPESAN_BASE_URL') || '').trim();
+  return /^https:\/\/[^\s]+$/i.test(baseUrl) ? baseUrl.replace(/\/+$/, '') : '';
 }
 
-function fonnteRecordDeviceStatus(status, source) {
-  status = String(status || '').trim().toLowerCase();
-  if (status !== 'connect' && status !== 'disconnect') return { ok: false, code: 'FONNTE_STATUS_INVALID' };
-  var props = PropertiesService.getScriptProperties();
-  var previous = String(props.getProperty(FONNTE_DEVICE_STATUS_PROPERTY) || '').trim().toLowerCase();
-  if (previous === status) return { ok: true, changed: false, status: status };
-  props.setProperty(FONNTE_DEVICE_STATUS_PROPERTY, status);
-
-  var shouldNotify = status === 'disconnect' || previous === 'disconnect';
-  if (shouldNotify) {
-    var message = status === 'disconnect'
-      ? '🔴 <b>WhatsApp Fonnte terputus</b>\nOTP otomatis tidak dapat dikirim. Sambungkan ulang device Fonnte; sementara gunakan tombol WhatsApp manual di notifikasi OTP.'
-      : '🟢 <b>WhatsApp Fonnte tersambung kembali</b>\nPengiriman OTP otomatis kembali tersedia.';
-    try { tgSendToAdmins(message); }
-    catch (_) {
-      safeLog('ERROR', 'FONNTE_STATUS_ALERT_FAILED', '', {
-        operation: 'fonnteRecordDeviceStatus', stage: 'telegram', error_code: 'TELEGRAM_NOTIFICATION_FAILED', retryable: true
-      });
-    }
-  }
-  safeLog('ACTIVITY', status === 'disconnect' ? 'FONNTE_DEVICE_DISCONNECTED' : 'FONNTE_DEVICE_CONNECTED', '', {
-    operation: 'fonnteRecordDeviceStatus', stage: String(source || 'unknown'), code: status.toUpperCase(), retryable: false
-  });
-  return { ok: true, changed: true, status: status };
-}
-
-function fonnteFetchDeviceStatus() {
-  var token = String(PropertiesService.getScriptProperties().getProperty('FONNTE_API_TOKEN') || '').trim();
-  if (!token) return { ok: false, code: 'FONNTE_NOT_CONFIGURED' };
-  var response;
-  try {
-    response = UrlFetchApp.fetch('https://api.fonnte.com/device', {
-      method: 'post', headers: { Authorization: token }, muteHttpExceptions: true
+function sendOtpViaJalurPesan(no_hp, nama, otp) {
+  var deviceKey = String(PropertiesService.getScriptProperties().getProperty('JALURPESAN_DEVICE_KEY') || '').trim();
+  var baseUrl = jalurPesanBaseUrl();
+  if (!baseUrl || !deviceKey) {
+    safeLog('ERROR', 'JALURPESAN_NOT_CONFIGURED', '', {
+      operation: 'sendOtpViaJalurPesan', stage: 'config', error_code: 'JALURPESAN_NOT_CONFIGURED', retryable: false
     });
-  } catch (_) {
-    return { ok: false, code: 'FONNTE_NETWORK_ERROR', retryable: true };
-  }
-  var httpCode = Number(response.getResponseCode());
-  if (httpCode < 200 || httpCode >= 300) return { ok: false, code: 'FONNTE_HTTP_ERROR', retryable: httpCode >= 500 };
-  var body;
-  try { body = JSON.parse(response.getContentText() || '{}'); }
-  catch (_) { return { ok: false, code: 'FONNTE_RESPONSE_INVALID', retryable: true }; }
-  if (!body || body.status !== true) return { ok: false, code: fonnteClassifyFailure(body) };
-  var status = String(body.device_status || '').trim().toLowerCase();
-  if (status !== 'connect' && status !== 'disconnect') return { ok: false, code: 'FONNTE_STATUS_INVALID' };
-  return { ok: true, status: status };
-}
-
-function monitorFonnteDeviceStatus() {
-  var result = fonnteFetchDeviceStatus();
-  if (!result.ok) {
-    safeLog('ERROR', 'FONNTE_STATUS_CHECK_FAILED', '', {
-      operation: 'monitorFonnteDeviceStatus', stage: 'check', error_code: result.code, retryable: result.retryable === true
-    });
-    return result;
-  }
-  return fonnteRecordDeviceStatus(result.status, 'monitor');
-}
-
-function setupFonnteMonitorTrigger() {
-  var handler = 'monitorFonnteDeviceStatus';
-  var triggers = ScriptApp.getProjectTriggers();
-  for (var i = 0; i < triggers.length; i++) {
-    if (triggers[i].getHandlerFunction() === handler) return { ok: true, created: false };
-  }
-  ScriptApp.newTrigger(handler).timeBased().everyMinutes(5).create();
-  return { ok: true, created: true };
-}
-
-function sendOtpViaFonnte(no_hp, nama, otp) {
-  var token = String(PropertiesService.getScriptProperties().getProperty('FONNTE_API_TOKEN') || '').trim();
-  if (!token) {
-    safeLog('ERROR', 'FONNTE_NOT_CONFIGURED', '', {
-      operation: 'sendOtpViaFonnte', stage: 'config', error_code: 'FONNTE_NOT_CONFIGURED', retryable: false
-    });
-    return { ok: false, code: 'FONNTE_NOT_CONFIGURED' };
+    return { ok: false, code: 'JALURPESAN_NOT_CONFIGURED' };
   }
 
   var displayNama = nama || 'Customer';
   var message = fillTemplate('OTP', { NAMA: displayNama, OTP: otp });
   var response;
   try {
-    response = UrlFetchApp.fetch('https://api.fonnte.com/send', {
+    response = UrlFetchApp.fetch(baseUrl + '/api/v1/messages', {
       method: 'post',
-      headers: { Authorization: token },
-      payload: {
-        target: String(no_hp),
-        message: message,
-        countryCode: '0',
-        connectOnly: true
-      },
+      headers: { Authorization: 'Bearer ' + deviceKey },
+      contentType: 'application/json',
+      payload: JSON.stringify({ to: String(no_hp), message: message }),
       muteHttpExceptions: true
     });
   } catch (_) {
-    safeLog('ERROR', 'FONNTE_NETWORK_FAILED', '', {
-      operation: 'sendOtpViaFonnte', stage: 'network', error_code: 'FONNTE_NETWORK_ERROR', retryable: true
+    safeLog('ERROR', 'JALURPESAN_NETWORK_FAILED', '', {
+      operation: 'sendOtpViaJalurPesan', stage: 'network', error_code: 'JALURPESAN_NETWORK_ERROR', retryable: true
     });
-    return { ok: false, code: 'FONNTE_NETWORK_ERROR', retryable: true };
+    return { ok: false, code: 'JALURPESAN_NETWORK_ERROR', retryable: true };
   }
 
   var httpCode = Number(response.getResponseCode());
   if (httpCode < 200 || httpCode >= 300) {
-    safeLog('ERROR', 'FONNTE_HTTP_FAILED', '', {
-      operation: 'sendOtpViaFonnte', stage: 'http', error_code: 'FONNTE_HTTP_ERROR', retryable: httpCode >= 500, http_status: httpCode
+    safeLog('ERROR', 'JALURPESAN_HTTP_FAILED', '', {
+      operation: 'sendOtpViaJalurPesan', stage: 'http', error_code: 'JALURPESAN_HTTP_ERROR', retryable: httpCode >= 500, http_status: httpCode
     });
-    return { ok: false, code: 'FONNTE_HTTP_ERROR', retryable: httpCode >= 500 };
+    return { ok: false, code: 'JALURPESAN_HTTP_ERROR', retryable: httpCode >= 500, http_status: httpCode };
   }
 
-  var body;
-  try { body = JSON.parse(response.getContentText() || '{}'); }
-  catch (_) {
-    safeLog('ERROR', 'FONNTE_RESPONSE_INVALID', '', {
-      operation: 'sendOtpViaFonnte', stage: 'response', error_code: 'FONNTE_RESPONSE_INVALID', retryable: true
-    });
-    return { ok: false, code: 'FONNTE_RESPONSE_INVALID', retryable: true };
-  }
-
-  var accepted = body && (body.status === true || body.Status === true);
-  if (!accepted) {
-    var failureCode = fonnteClassifyFailure(body);
-    if (failureCode === 'FONNTE_DEVICE_DISCONNECTED') fonnteRecordDeviceStatus('disconnect', 'send');
-    safeLog('ERROR', 'FONNTE_API_FAILED', '', {
-      operation: 'sendOtpViaFonnte', stage: 'api', error_code: failureCode, retryable: false
-    });
-    return { ok: false, code: failureCode };
-  }
-
-  fonnteRecordDeviceStatus('connect', 'send');
-  safeLog('NOTIF', 'FONNTE_OTP_QUEUED', '', {
-    operation: 'sendOtpViaFonnte', stage: 'complete', error_code: '', retryable: false
+  safeLog('NOTIF', 'JALURPESAN_OTP_QUEUED', '', {
+    operation: 'sendOtpViaJalurPesan', stage: 'complete', error_code: '', retryable: false
   });
   return { ok: true };
+}
+
+/**
+ * Tes sementara JalurPesan langsung dari Apps Script editor.
+ * Set Script Property JALURPESAN_TEST_PHONE ke nomor tujuan format 62..., lalu jalankan fungsi ini.
+ * @return {Object} hasil pengiriman yang aman untuk dilihat di Execution log
+ */
+function testJalurPesanSend() {
+  var testPhone = normalizePhone(PropertiesService.getScriptProperties().getProperty('JALURPESAN_TEST_PHONE') || '');
+  if (!testPhone) return { ok: false, code: 'JALURPESAN_TEST_PHONE_INVALID' };
+  return sendOtpViaJalurPesan(testPhone, 'Tes', '123456');
 }
 
 // ============================================================
@@ -809,20 +723,18 @@ function sendOtpViaFonnte(no_hp, nama, otp) {
  * @param {string} nama  — nama customer (bisa kosong)
  * @param {string} otp   — OTP 6 digit
  */
-function sendOtpToAdminTelegram(no_hp, nama, otp, isResend, fonnteResult) {
+function sendOtpToAdminTelegram(no_hp, nama, otp, isResend, jalurPesanResult) {
   var displayNama = nama || 'Customer';
   var statusText = isResend ? ' (ulang)' : '';
-  var fonnteText = fonnteResult && fonnteResult.ok
-    ? '\nFonnte: masuk antrean pengiriman otomatis'
-    : (fonnteResult && fonnteResult.code === 'FONNTE_DEVICE_DISCONNECTED'
-      ? '\nFonnte: device WhatsApp terputus, gunakan tombol manual'
-      : '\nFonnte: gagal/tidak aktif, gunakan tombol manual');
+  var jalurPesanText = jalurPesanResult && jalurPesanResult.ok
+    ? '\nJalurPesan: masuk antrean pengiriman otomatis'
+    : '\nJalurPesan: gagal/tidak aktif, gunakan tombol manual';
 
   // Susun pesan untuk admin
   var pesan = '🔐 <b>OTP Request</b>' + statusText + '\n'
     + 'Nama: ' + displayNama + '\n'
     + 'No HP: ' + no_hp + '\n'
-    + 'OTP: <code>' + otp + '</code>' + fonnteText;
+    + 'OTP: <code>' + otp + '</code>' + jalurPesanText;
 
   // Susun teks WhatsApp dari template OTP
   var waText = fillTemplate('OTP', { NAMA: displayNama, OTP: otp });

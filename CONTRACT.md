@@ -239,16 +239,16 @@ Script Property `TELEGRAM_WEBHOOK_KEY` atau `TELEGRAM_WEBHOOK_KEY_NEXT` selama r
 `TELEGRAM_SECRET` tetap boleh dikirim sebagai header resmi Telegram, tetapi header
 tersebut tidak dianggap terverifikasi oleh GAS.
 
-Pengiriman OTP customer memakai Fonnte `POST https://api.fonnte.com/send` dengan
-Script Property `FONNTE_API_TOKEN` sebagai header `Authorization` tanpa prefix
-`Bearer`. Token dilarang disimpan di Spreadsheet, log, response API, atau repository.
-Telegram admin tetap menerima notifikasi sebagai fallback operasional. Kegagalan
-Fonnte tidak membatalkan pembuatan OTP dan tidak boleh mencatat response mentah.
-Status device dipantau oleh trigger `monitorFonnteDeviceStatus` setiap lima menit
-melalui `POST https://api.fonnte.com/device`. Script Property
-`FONNTE_LAST_DEVICE_STATUS` hanya menyimpan `connect` atau `disconnect` untuk
-deduplikasi. Telegram menerima alert ketika device terputus dan ketika tersambung
-kembali; status yang tidak berubah tidak boleh menghasilkan spam notifikasi.
+Pengiriman OTP customer memakai JalurPesan `POST {JALURPESAN_BASE_URL}/api/v1/messages`
+dengan Script Property `JALURPESAN_DEVICE_KEY` sebagai header `Authorization: Bearer <device-key>`.
+Body JSON adalah `{ "to": "62...", "message": "..." }`. Base URL dan device key dilarang
+disimpan di Spreadsheet, log, response API, atau repository. Telegram admin tetap menerima
+notifikasi sebagai fallback operasional. Kegagalan JalurPesan tidak membatalkan pembuatan OTP
+dan tidak boleh mencatat response mentah.
+
+`JALURPESAN_BASE_URL` harus berupa URL HTTPS server API, bukan WhatsApp ID device
+(`...@s.whatsapp.net`). Untuk tes manual dari Apps Script editor, set juga
+`JALURPESAN_TEST_PHONE` dalam format `62...`, lalu jalankan `testJalurPesanSend()`.
 
 ## 3A. Aturan PromoCodes (Fase 7.11-A)
 - Maksimal satu kode per order; tidak ada stacking kode.

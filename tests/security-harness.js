@@ -242,54 +242,29 @@ assert.strictEqual(context.authRequestOtp({ no_hp: '08111111111', nama: 'Other' 
 properties.OTP_GLOBAL_RATE_STATE = '{broken';
 assert.strictEqual(context.authRequestOtp({ no_hp: '08222222222', nama: 'Other' }).code, 'OTP_RATE_LIMIT_UNAVAILABLE');
 
-// Fonnte sends directly with a Script Property token and never logs secrets.
-reset(); properties.FONNTE_API_TOKEN = 'fonnte-token-sensitive';
+// JalurPesan sends JSON with a bearer device key and never logs secrets.
+reset(); properties.JALURPESAN_BASE_URL = 'https://jalurpesan.example/'; properties.JALURPESAN_DEVICE_KEY = 'jalurpesan-device-key-sensitive';
 sheets.MessageTemplates = [{ kode: 'OTP', isi: 'Halo {NAMA}, OTP {OTP}' }];
-fetchHandler = () => ({ getResponseCode: () => 200, getContentText: () => JSON.stringify({ status: true }) });
-let fonnte = context.sendOtpViaFonnte('628123456789', 'Name Sensitive', '123456');
-assert.strictEqual(fonnte.ok, true);
-assert.strictEqual(fetchRequests[0].url, 'https://api.fonnte.com/send');
-assert.strictEqual(fetchRequests[0].options.headers.Authorization, 'fonnte-token-sensitive');
-assert(!fetchRequests[0].options.headers.Authorization.startsWith('Bearer '));
-assert.strictEqual(fetchRequests[0].options.payload.target, '628123456789');
-assert.strictEqual(fetchRequests[0].options.payload.countryCode, '0');
-assert.strictEqual(fetchRequests[0].options.payload.connectOnly, true);
-for (const secret of ['fonnte-token-sensitive', '628123456789', 'Name Sensitive', '123456']) assert(!logs.join('\n').includes(secret));
-reset(); assert.strictEqual(context.sendOtpViaFonnte('628123456789', 'Test', '123456').code, 'FONNTE_NOT_CONFIGURED');
-reset(); properties.FONNTE_API_TOKEN = 'token'; fetchHandler = () => ({ getResponseCode: () => 200, getContentText: () => '{bad' });
-assert.strictEqual(context.sendOtpViaFonnte('628123456789', 'Test', '123456').code, 'FONNTE_RESPONSE_INVALID');
-reset(); properties.FONNTE_API_TOKEN = 'token'; fetchHandler = () => ({ getResponseCode: () => 429, getContentText: () => '{}' });
-assert.strictEqual(context.sendOtpViaFonnte('628123456789', 'Test', '123456').code, 'FONNTE_HTTP_ERROR');
-reset(); properties.FONNTE_API_TOKEN = 'token'; fetchHandler = () => ({ getResponseCode: () => 200, getContentText: () => JSON.stringify({ status: false, reason: 'quota' }) });
-assert.strictEqual(context.sendOtpViaFonnte('628123456789', 'Test', '123456').code, 'FONNTE_QUOTA_EXHAUSTED');
+fetchHandler = () => ({ getResponseCode: () => 200, getContentText: () => '{bad-but-irrelevant' });
+let jalurPesan = context.sendOtpViaJalurPesan('628123456789', 'Name Sensitive', '123456');
+assert.strictEqual(jalurPesan.ok, true);
+assert.strictEqual(fetchRequests[0].url, 'https://jalurpesan.example/api/v1/messages');
+assert.strictEqual(fetchRequests[0].options.headers.Authorization, 'Bearer jalurpesan-device-key-sensitive');
+assert.strictEqual(fetchRequests[0].options.contentType, 'application/json');
+assert.deepStrictEqual(JSON.parse(fetchRequests[0].options.payload), { to: '628123456789', message: 'Halo Name Sensitive, OTP 123456' });
+for (const secret of ['jalurpesan-device-key-sensitive', '628123456789', 'Name Sensitive', '123456']) assert(!logs.join('\n').includes(secret));
+reset(); assert.strictEqual(context.sendOtpViaJalurPesan('628123456789', 'Test', '123456').code, 'JALURPESAN_NOT_CONFIGURED');
+reset(); properties.JALURPESAN_BASE_URL = 'https://jalurpesan.example'; properties.JALURPESAN_DEVICE_KEY = 'token'; fetchHandler = () => ({ getResponseCode: () => 429, getContentText: () => '{}' });
+assert.strictEqual(context.sendOtpViaJalurPesan('628123456789', 'Test', '123456').code, 'JALURPESAN_HTTP_ERROR');
+assert.strictEqual(context.sendOtpViaJalurPesan('628123456789', 'Test', '123456').http_status, 429);
+reset(); properties.JALURPESAN_TEST_PHONE = '08123456789'; properties.JALURPESAN_BASE_URL = 'https://jalurpesan.example'; properties.JALURPESAN_DEVICE_KEY = 'token';
+fetchHandler = () => ({ getResponseCode: () => 200, getContentText: () => '{}' });
+assert.strictEqual(context.testJalurPesanSend().ok, true);
 digestQueue = [signedBytes(222222)];
 assert.strictEqual(context.authRequestOtp({ no_hp: '08123456789', nama: 'Fallback' }).ok, true);
-assert.strictEqual(otpAdminNotifications, 1, 'Telegram admin fallback must remain active when Fonnte rejects delivery');
+assert.strictEqual(otpAdminNotifications, 1, 'Telegram admin fallback must remain active when JalurPesan rejects delivery');
 
-// Disconnect/reconnect alerts are classified and deduplicated.
-reset(); let deviceAlerts = []; context.tgSendToAdmins = text => { deviceAlerts.push(text); return [{ ok: true }]; };
-assert.strictEqual(context.fonnteClassifyFailure({ reason: 'device disconnected' }), 'FONNTE_DEVICE_DISCONNECTED');
-assert.strictEqual(context.fonnteClassifyFailure({ reason: 'token invalid' }), 'FONNTE_TOKEN_INVALID');
-assert.strictEqual(context.fonnteClassifyFailure({ reason: 'insufficient quota' }), 'FONNTE_QUOTA_EXHAUSTED');
-assert.strictEqual(context.fonnteRecordDeviceStatus('disconnect', 'test').changed, true);
-assert.strictEqual(deviceAlerts.length, 1);
-assert.strictEqual(context.fonnteRecordDeviceStatus('disconnect', 'test').changed, false);
-assert.strictEqual(deviceAlerts.length, 1, 'unchanged disconnect must not spam Telegram');
-assert.strictEqual(context.fonnteRecordDeviceStatus('connect', 'test').changed, true);
-assert.strictEqual(deviceAlerts.length, 2); assert(deviceAlerts[1].includes('tersambung kembali'));
-
-// Device profile monitor and five-minute trigger setup.
-reset(); context.tgSendToAdmins = text => { deviceAlerts.push(text); return [{ ok: true }]; };
-properties.FONNTE_API_TOKEN = 'token';
-fetchHandler = (url) => ({ getResponseCode: () => 200, getContentText: () => JSON.stringify({ status: true, device_status: url.endsWith('/device') ? 'disconnect' : 'connect' }) });
-let monitored = context.monitorFonnteDeviceStatus(); assert.strictEqual(monitored.status, 'disconnect');
-assert.strictEqual(properties.FONNTE_LAST_DEVICE_STATUS, 'disconnect');
-assert.strictEqual(context.setupFonnteMonitorTrigger().created, true);
-assert.strictEqual(projectTriggers[0].minutes, 5);
-assert.strictEqual(context.setupFonnteMonitorTrigger().created, false);
-assert.strictEqual(projectTriggers.length, 1);
-
-// Midtrans demo account remains local/static and must not consume Fonnte or Telegram delivery.
+// Midtrans demo account remains local/static and must not consume JalurPesan or Telegram delivery.
 reset(); sheets.Settings = [
   { key: 'DEMO_PHONE', value: '08111111111' },
   { key: 'DEMO_OTP', value: '112233' },
