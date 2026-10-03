@@ -10,7 +10,7 @@ const cache = new Map();
 const properties = new Map();
 const SCRIPTS = ['Schema.gs','Util.gs','Lock.gs','Auth.gs','Address.gs','Catalog.gs',
   'Order.gs','Point.gs','Promo.gs','Review.gs','Variants.gs','Addons.gs',
-  'Campaigns.gs','Telegram.gs','Router.gs'];
+  'Campaigns.gs','Telegram.gs','Router.gs','Phase8DReadinessAudit.gs'];
 const source = SCRIPTS.map(name => fs.readFileSync(path.join(__dirname, '..', 'backend', name), 'utf8')).join('\n');
 
 function qi(s) { return '"' + String(s).replaceAll('"', '""') + '"'; }

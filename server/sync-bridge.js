@@ -28,4 +28,5 @@ function call(op, details = {}) {
 
 function query(sql, params) { return call('query', { sql, params }); }
 function fetchSync(url, options) { return call('fetch', { url, options }); }
-module.exports = { query, fetchSync };
+function close() { port1.close(); return worker.terminate(); }
+module.exports = { query, fetchSync, close };
