@@ -1,5 +1,7 @@
 # Samijaya Launch Readiness
 
+Untuk migrasi Node/PostgreSQL di Mi8, gunakan [MI8-OPERATIONS.md](MI8-OPERATIONS.md) bersama gate di bawah. Status lama tidak otomatis menjadi `PASS` untuk arsitektur baru. Audit ekspor 2026-10-03 menemukan `ProductAddons.addon_id` duplikat; verifikasi data akhir tetap `FAIL` sampai direkonsiliasi dan ekspor final diuji ulang.
+
 Gate terpusat Fase 8-D. Status sah: `PASS`, `FAIL`, `NOT TESTED`, `NOT APPLICABLE`, `ACCEPTED RISK`. `PASS` wajib memiliki evidence bertanggal, owner, dan rollback.
 
 Audit schema 8-B pernah menghasilkan `ok: true`, tetapi statusnya **REVERIFY REQUIRED** karena registry dan workbook kemudian menghapus requirement `Banners`. Release source terbaru wajib diaudit ulang. Header yang tersedia membuktikan hasil migration tersedia, bukan waktu atau aktor eksekusi.
