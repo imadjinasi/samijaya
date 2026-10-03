@@ -145,7 +145,8 @@ function context() {
   vm.runInContext(source,ctx,{filename:'samijaya-gas.js',timeout:1000});
   const readSetting = ctx.getSetting;
   const secretKeys = new Set(['TELEGRAM_BOT_TOKEN','TELEGRAM_SECRET','ADMIN_PASSWORD_HASH','ADMIN_CHAT_IDS']);
-  ctx.getSetting = key => secretKeys.has(key) ? (process.env[key] || null) : readSetting(key);
+  ctx.getSetting = key => key === 'DEMO_OTP' ? (process.env.DEMO_OTP || readSetting(key)) :
+    secretKeys.has(key) ? (process.env[key] || null) : readSetting(key);
   return ctx;
 }
 function invalidateForAdmin(table, settingKey) {

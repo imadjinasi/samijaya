@@ -32,11 +32,12 @@ Never print `prod.env` or tunnel token in a command, log, issue, or chat. Use a 
 2. Copy the current production Spreadsheet and export a fresh XLSX. Retain the copy, original export, checksum, and pre-cutover PostgreSQL dump as rollback evidence.
 3. Import all 21 business sheets into a new database in one transaction. Preserve the original rows in the export. Check manifest counts against actual table counts; reconcile Members, Sessions, Products, ProductVariants, ProductAddons, Orders, OrderItems, OrderItemAddons, PointHistory, PromoCodes, and PromoUsage.
 4. Check duplicate primary IDs and orphan references. Do not alter an ambiguous production row without a documented decision. In particular, the 2026-10-03 export had duplicate `ProductAddons.addon_id` values on sheet rows 2–4.
-5. Run action tests against a separate database using a synthetic member and session. Cover order creation and replay, admin status transitions, reviews and points, and negative cases. Keep outbound Telegram and JalurPesan calls disabled in the test process.
-6. Verify secrets by presence only, start the production Node process, and check loopback health, readiness, frontend, admin, and API.
-7. Start the dedicated tunnel manually. Confirm its connector health and metrics on `20242`, then public HTTPS paths. Confirm RuangHadir public health and metrics on `20241`.
-8. Register the new Telegram webhook only after the public route and capability key checks pass. Verify webhook state without logging the capability URL. Test OTP only with a designated test phone.
-9. Record release commit, database dump checksum, tunnel state, public smoke results, and rollback decision. Add safe boot integration only after acceptance.
+5. Move secret Settings values into `prod.env`, including `DEMO_OTP`, then run `migrations/redact_secret_settings.sql` on the target database. Verify the targeted database values are blank and the required environment variables are present without printing values. Keep the untouched workbook export as the rollback source.
+6. Run action tests against a separate database using a synthetic member and session. Cover order creation and replay, admin status transitions, reviews and points, and negative cases. Keep outbound Telegram and JalurPesan calls disabled in the test process.
+7. Verify secrets by presence only, start the production Node process, and check loopback health, readiness, frontend, admin, and API.
+8. Start the dedicated tunnel manually. Confirm its connector health and metrics on `20242`, then public HTTPS paths. Confirm RuangHadir public health and metrics on `20241`.
+9. Register the new Telegram webhook only after the public route and capability key checks pass. Verify webhook state without logging the capability URL. Test OTP only with a designated test phone.
+10. Record release commit, database dump checksum, tunnel state, public smoke results, and rollback decision. Add safe boot integration only after acceptance.
 
 ## Rollback
 

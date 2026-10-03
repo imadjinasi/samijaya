@@ -23,7 +23,7 @@ const ID_FIELDS = {Products:'product_id',Categories:'kategori_id',ProductVariant
   Holidays:'tanggal',PromoCodes:'promo_id',Campaigns:'campaign_id',MessageTemplates:'kode'};
 const ID_PREFIX = {Products:'prd',Categories:'cat',ProductVariants:'var',ProductAddons:'addon',
   PickupLocations:'loc',DeliverySlots:'slot',PromoCodes:'promo',Campaigns:'camp'};
-const SETTINGS_SECRET = /TOKEN|SECRET|PASSWORD|KEY|CHAT_IDS|PEPPER|DEVICE|SPREADSHEET/i;
+const SETTINGS_SECRET = /TOKEN|SECRET|PASSWORD|KEY|CHAT_IDS|PEPPER|DEVICE|SPREADSHEET|^DEMO_OTP$/i;
 const html=fs.readFileSync(path.join(__dirname,'admin.html'));
 const clientScript=fs.readFileSync(path.join(__dirname,'admin-client.js'));
 
