@@ -12,13 +12,17 @@ This runbook applies to the Node/PostgreSQL deployment. The legacy Apps Script a
 - Dedicated Cloudflare tunnel: `/etc/mi8vps/cloudflared-samijaya.token` (mode `600`), metrics `127.0.0.1:20242`, log `/var/log/cloudflared-samijaya.log`.
 - RuangHadir uses port `3000` and cloudflared metrics `20241`; inspect it after host changes.
 
-Enter Ubuntu from `ssh mi8vps-root` with:
+## Administration
+
+Use `ssh mi8vps` for normal application administration. This alias reaches the Ubuntu chroot directly over Tailscale as the non-root `admsamijaya` user. Use `sftp mi8vps` or `scp ... mi8vps:...` for file transfer. Keep application paths under `/srv/samijaya`; do not create `/var/www` aliases.
+
+Use `ssh mi8vps-root` only for privileged Android, chroot, PostgreSQL, process, and secret-file maintenance. From its Termux prompt, enter Ubuntu with:
 
 ```sh
 chroot /data/local/ubuntu26 /usr/bin/env -i HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /bin/bash -l
 ```
 
-The prompt changes to `root@localhost:/#`. Do not run `chroot` again from there.
+The prompt changes to `root@localhost:/#`. Do not run `chroot` again from there. `admsamijaya` has no functional `sudo` because `/data` is mounted `nosuid`; do not remount it. The older Cloudflare SSH hostnames under `ruanghadir.my.id` have been retired. Cloudflare tunnels provide public application ingress, not host administration.
 
 ## Start and stop
 
