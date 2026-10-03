@@ -86,10 +86,11 @@ function withTransaction(fn) {
     return result;
   } catch(e) {try{query('ROLLBACK');}catch(_){} throw e;}
 }
-function tableList(table, search) {
+function tableList(table, search, statusFilter) {
   if(!Object.hasOwn(TABLES,table)) throw new Error('TABLE_NOT_ALLOWED');
   const rows=query(`SELECT * FROM ${tableName(table)} ORDER BY source_row DESC LIMIT 1000`).rows;
   let filtered=table==='Settings'?rows.filter(r=>!SETTINGS_SECRET.test(r.key)):rows;
+  if(table==='Orders' && statusFilter) filtered=filtered.filter(r=>r.status===statusFilter);
   if(table==='Logs') filtered=filtered.map(({source_row,timestamp,tipe,ref_id,pesan})=>({source_row,timestamp,tipe,ref_id,pesan}));
   const term=String(search||'').toLowerCase().slice(0,80);
   if(term) filtered=filtered.filter(r=>Object.values(r).some(v=>String(v||'').toLowerCase().includes(term)));
@@ -210,7 +211,8 @@ async function handle(req,res,url) {
   if(op==='session') return reply(res,200,{ok:true});
   try {
     if(op==='dashboard') return reply(res,200,dashboard());
-    if(op==='table') return reply(res,200,tableList(String(request.table||''),request.search));
+    if(op==='table') return reply(res,200,tableList(String(request.table||''),request.search,
+      String(request.status||'').slice(0,20)));
     if(op==='order') return reply(res,200,orderDetails(String(request.order_id||'')));
     if(op==='save') return reply(res,200,save(String(request.table||''),request.source_row,request.values));
     if(op==='status') return reply(res,200,status(String(request.order_id||''),String(request.status||''),String(request.reason||'')));

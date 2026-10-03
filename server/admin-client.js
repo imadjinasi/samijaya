@@ -78,19 +78,29 @@ async function showOrder(orderId) {
     root.append(el('h3','Add-on'),rowTable(data.addons,['order_item_ref','nama_addon_snapshot','harga_snapshot']));
     if(!['SELESAI','BATAL'].includes(data.order.status)) {
       const form=el('form');form.append(el('h3','Ubah status'));
-      const select=el('select');['DIPROSES','SIAP','DIANTAR','SELESAI','BATAL'].forEach(x=>{const opt=el('option',x);opt.value=x;select.append(opt);});select.name='status';form.append(select);
+      const allowed={MENUNGGU:['DIPROSES','BATAL'],DIPROSES:['SIAP','BATAL'],
+        SIAP:['SELESAI','DIANTAR','BATAL'],DIANTAR:['SELESAI','BATAL']};
+      const choices=(allowed[data.order.status]||[]).filter(x=>x!=='DIANTAR'||data.order.metode_kirim==='DIANTAR');
+      const select=el('select');choices.forEach(x=>{const opt=el('option',x);opt.value=x;select.append(opt);});select.name='status';form.append(select);
       const reason=el('textarea');reason.name='reason';reason.placeholder='Alasan pembatalan jika status BATAL';form.append(reason);
       const button=el('button','Simpan status');button.type='submit';form.append(button);
       form.addEventListener('submit',async e=>{e.preventDefault();button.disabled=true;message('Memproses…');
+        if(select.value==='BATAL'&&!reason.value.trim()){message('Isi alasan pembatalan.');button.disabled=false;return;}
         try {await api('status',{order_id:orderId,status:select.value,reason:reason.value});await showOrder(orderId);}
         catch(err){message('Gagal: '+err.message);}finally{button.disabled=false;}});root.append(form);
     }
   } catch(err){message('Gagal memuat pesanan: '+err.message);}
 }
-async function tableView(table,search='') {
-  const data=await api('table',{table,search});currentData=data;
+async function tableView(table,search='',status='') {
+  const data=await api('table',{table,search,status});currentData=data;
   const root=clear($('content')),bar=el('div','','toolbar'),input=el('input');input.type='search';input.placeholder='Cari data';input.value=search;
-  let timer;input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(()=>tableView(table,input.value),250);});bar.append(input);
+  let timer;input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(()=>tableView(table,input.value,status),250);});bar.append(input);
+  if(table==='Orders') {
+    const filter=el('select');['','MENUNGGU','DIPROSES','SIAP','DIANTAR','SELESAI','BATAL'].forEach(value=>{
+      const option=el('option',value||'Semua status');option.value=value;option.selected=value===status;filter.append(option);
+    });
+    filter.addEventListener('change',()=>tableView(table,input.value,filter.value));bar.append(filter);
+  }
   if(data.insertable){const add=el('button','Tambah');add.addEventListener('click',()=>showEditor({},true));bar.append(add);}
   root.append(bar);
   const preferred={Orders:['order_id','nama','tgl_antar','metode_kirim','total','status','created_at'],
