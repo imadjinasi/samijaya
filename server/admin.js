@@ -26,6 +26,7 @@ const ID_PREFIX = {Products:'prd',Categories:'cat',ProductVariants:'var',Product
 const SETTINGS_SECRET = /TOKEN|SECRET|PASSWORD|KEY|CHAT_IDS|PEPPER|DEVICE|SPREADSHEET|^DEMO_OTP$/i;
 const html=fs.readFileSync(path.join(__dirname,'admin.html'));
 const clientScript=fs.readFileSync(path.join(__dirname,'admin-client.js'));
+const stylesheet=fs.readFileSync(path.join(__dirname,'admin.css'));
 
 function reply(res,status,value,headers={}) {
   const body=JSON.stringify(value);
@@ -187,6 +188,10 @@ async function handle(req,res,url) {
   if(req.method==='GET' && url.pathname==='/admin/app.js') {
     res.writeHead(200,{'Content-Type':'text/javascript; charset=utf-8','Content-Length':clientScript.length,'Cache-Control':'no-store'});
     return res.end(clientScript);
+  }
+  if(req.method==='GET' && url.pathname==='/admin/style.css') {
+    res.writeHead(200,{'Content-Type':'text/css; charset=utf-8','Content-Length':stylesheet.length,'Cache-Control':'no-store'});
+    return res.end(stylesheet);
   }
   if(req.method!=='POST'||url.pathname!=='/admin/api') return error(res,404,'NOT_FOUND');
   if(!sameOrigin(req)) return error(res,403,'ORIGIN_REJECTED');
