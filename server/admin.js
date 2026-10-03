@@ -15,7 +15,8 @@ const TABLES = {
   DeliverySlots: ['jam_mulai','jam_selesai','kuota','status'],
   Holidays: ['tanggal','keterangan'],
   PromoCodes: '*', Campaigns: '*', MessageTemplates: ['isi','keterangan'],
-  Members: null, MemberAddresses: null, Reviews: ['status'],
+  Members: ['nama','email','tgl_lahir','jenis_kelamin','status'],
+  MemberAddresses: ['label','detail','alamat_snapshot','latitude','longitude','status'], Reviews: ['status'],
   Settings: ['value','keterangan'], Logs: null, PointHistory: null, PromoUsage: null
 };
 const ID_FIELDS = {Products:'product_id',Categories:'kategori_id',ProductVariants:'variant_id',
@@ -121,9 +122,9 @@ function permittedFields(table) {
   const allowed=TABLES[table];
   if(allowed==='*') {
     const id=ID_FIELDS[table];
-    return columns(table).filter(k=>k!==id && !['created_at','updated_at'].includes(k));
+    return columns(table).filter(k=>k!==id && !['source_row','created_at','updated_at'].includes(k));
   }
-  return allowed||[];
+  return (allowed||[]).filter(k=>k!==ID_FIELDS[table]);
 }
 function save(table, sourceRow, input) {
   if(!Object.hasOwn(TABLES,table)||TABLES[table]===null||!input||typeof input!=='object'||Array.isArray(input)) return {ok:false,code:'BAD_REQUEST'};
@@ -182,7 +183,7 @@ async function readJson(req) {
 async function handle(req,res,url) {
   if(req.method==='GET' && url.pathname==='/admin') {
     res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Content-Length':html.length,
-      'Cache-Control':'no-store','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'self'; style-src 'self'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'"});
+      'Cache-Control':'no-store','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; base-uri 'none'; frame-ancestors 'none'"});
     return res.end(html);
   }
   if(req.method==='GET' && url.pathname==='/admin/app.js') {

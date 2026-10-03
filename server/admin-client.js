@@ -1,127 +1,53 @@
 'use strict';
 const $=id=>document.getElementById(id);
 const groups={
-  'Dashboard':['Dashboard'],
-  'Pesanan':['Orders','OrderItems','OrderItemAddons'],
-  'Katalog':['Products','Categories','ProductVariants','ProductAddons'],
+  'Hari ini':['Dashboard','Orders'],
+  'Menu & harga':['Products','Categories','ProductVariants','ProductAddons'],
   'Operasional':['PickupLocations','DeliverySlots','Holidays','Settings'],
-  'Pemasaran':['PromoCodes','Campaigns','MessageTemplates'],
-  'Lainnya':['Members','MemberAddresses','Reviews','PointHistory','PromoUsage','Logs']
+  'Promosi':['PromoCodes','Campaigns','MessageTemplates'],
+  'Pelanggan':['Members','MemberAddresses','Reviews'],
+  'Riwayat':['PointHistory','PromoUsage','Logs','OrderItems','OrderItemAddons']
 };
-const idFields={Products:'product_id',Categories:'kategori_id',ProductVariants:'variant_id',
-  ProductAddons:'addon_id',PickupLocations:'lokasi_id',DeliverySlots:'slot_id',Holidays:'tanggal',
-  PromoCodes:'promo_id',Campaigns:'campaign_id',MessageTemplates:'kode'};
+const names={Dashboard:'Ringkasan toko',Orders:'Pesanan',OrderItems:'Rincian pesanan',OrderItemAddons:'Tambahan pesanan',Products:'Produk',Categories:'Kategori menu',ProductVariants:'Pilihan produk',ProductAddons:'Tambahan menu',PickupLocations:'Lokasi ambil',DeliverySlots:'Jadwal antar',Holidays:'Hari libur',Settings:'Pengaturan toko',PromoCodes:'Kode promo',Campaigns:'Kampanye',MessageTemplates:'Pesan otomatis',Members:'Pelanggan',MemberAddresses:'Alamat pelanggan',Reviews:'Ulasan',PointHistory:'Riwayat poin',PromoUsage:'Pemakaian promo',Logs:'Aktivitas admin'};
+const hints={Dashboard:'Lihat pesanan dan kegiatan toko hari ini.',Orders:'Buka pesanan untuk melihat rincian dan mengubah tahap pengerjaan.',Products:'Atur nama, harga, foto, dan ketersediaan produk.',Categories:'Kelompokkan produk yang tampil di menu.',ProductVariants:'Atur pilihan seperti ukuran atau varian rasa.',ProductAddons:'Atur tambahan yang bisa dipilih pembeli.',PickupLocations:'Atur lokasi pengambilan pesanan.',DeliverySlots:'Atur jam dan kuota pengantaran.',Holidays:'Atur tanggal toko tidak beroperasi.',Settings:'Ubah pengaturan toko yang tersedia.',PromoCodes:'Atur kode dan ketentuan promo.',Campaigns:'Atur kampanye yang tampil di toko.',MessageTemplates:'Ubah isi pesan otomatis.',Members:'Perbarui profil pelanggan; nomor, poin, dan belanja dijaga oleh sistem.',MemberAddresses:'Perbarui informasi alamat pelanggan.',Reviews:'Tinjau dan atur tampilan ulasan.',PointHistory:'Catatan perubahan poin pelanggan.',PromoUsage:'Catatan penggunaan promo.',Logs:'Jejak aktivitas admin.',OrderItems:'Rincian barang pada setiap pesanan.',OrderItemAddons:'Catatan tambahan pada setiap pesanan.'};
+const labels={source_row:'Nomor baris',product_id:'Kode produk',kategori_id:'Kode kategori',variant_id:'Kode pilihan',addon_id:'Kode tambahan',lokasi_id:'Kode lokasi',slot_id:'Kode jadwal',promo_id:'Kode promo',campaign_id:'Kode kampanye',member_id:'Kode pelanggan',address_id:'Kode alamat',order_id:'Nomor pesanan',order_item_ref:'Item pesanan',nama:'Nama',nama_axis:'Jenis pilihan',nama_varian:'Nama pilihan',nama_addon:'Nama tambahan',nama_snapshot:'Nama produk',variant_nama_snapshot:'Pilihan',nama_axis_snapshot:'Jenis pilihan',harga:'Harga',harga_snapshot:'Harga saat dipesan',qty:'Jumlah',subtotal:'Subtotal',total:'Total',ongkir:'Ongkir',foto_file_id:'Foto produk',kategori_id:'Kategori',deskripsi:'Deskripsi',badge_promo:'Label promo',tersedia:'Tersedia',urutan:'Urutan tampil',status:'Status',aktif:'Aktif',alamat:'Alamat',alamat_snapshot:'Alamat pengiriman',detail:'Detail alamat',label:'Label alamat',latitude:'Lintang',longitude:'Bujur',jam_buka:'Jam buka',jam_tutup:'Jam tutup',jam_mulai:'Mulai',jam_selesai:'Selesai',kuota:'Kuota',tanggal:'Tanggal',keterangan:'Keterangan',key:'Pengaturan',value:'Nilai',kode:'Kode',isi:'Isi pesan',email:'Email',no_hp:'Nomor WhatsApp',tgl_lahir:'Tanggal lahir',jenis_kelamin:'Jenis kelamin',total_poin:'Saldo poin',total_belanja:'Total belanja',rating:'Nilai',ulasan:'Ulasan',tgl_antar:'Tanggal antar',metode_kirim:'Cara menerima',metode_bayar:'Cara bayar',promo_code:'Kode promo',poin_dipakai:'Poin dipakai',catatan_customer:'Catatan pelanggan',catatan_admin:'Catatan toko',cancel_reason:'Alasan batal',created_at:'Dibuat',timestamp:'Waktu',tipe:'Jenis',ref_id:'Referensi',pesan:'Aktivitas'};
+const idFields={Products:'product_id',Categories:'kategori_id',ProductVariants:'variant_id',ProductAddons:'addon_id',PickupLocations:'lokasi_id',DeliverySlots:'slot_id',Holidays:'tanggal',PromoCodes:'promo_id',Campaigns:'campaign_id',MessageTemplates:'kode'};
+const manualIds=new Set(['Holidays','MessageTemplates']);
 let current='Dashboard',currentData=null;
-
-function el(tag,text='',className='') {const node=document.createElement(tag);if(text!==undefined)node.textContent=String(text);if(className)node.className=className;return node;}
-function clear(node) {node.replaceChildren();return node;}
-async function api(op,extra={}) {
-  const response=await fetch('/admin/api',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({op,...extra})});
-  const data=await response.json();
-  if(!response.ok||!data.ok) throw new Error(data.code||'REQUEST_FAILED');
-  return data.data||{};
-}
-function showApp(yes) {$('login').style.display=yes?'none':'block';$('app').style.display=yes?'block':'none';}
-function message(text,target='drawer-message') {$(target).textContent=text;}
-function openDrawer(title) {$('drawer-title').textContent=title;clear($('drawer-content'));message('');$('drawer').style.display='block';}
-function closeDrawer() {$('drawer').style.display='none';}
-function rowTable(rows,cols,onClick) {
-  const wrap=el('div','','card scroll'),table=el('table'),thead=el('thead'),tr=el('tr');
-  cols.forEach(c=>tr.append(el('th',c)));thead.append(tr);table.append(thead);
-  const body=el('tbody');
-  rows.forEach(row=>{const line=el('tr');if(onClick){line.tabIndex=0;line.style.cursor='pointer';line.addEventListener('click',()=>onClick(row));line.addEventListener('keydown',e=>{if(e.key==='Enter')onClick(row);});}
-    cols.forEach(c=>{let value=row[c];if(typeof value==='object')value=JSON.stringify(value);line.append(el('td',value??''));});body.append(line);});
-  table.append(body);wrap.append(table);return wrap;
-}
-function card(label,value) {const box=el('div','','card metric');box.append(el('strong',value),el('span',label));return box;}
-async function dashboard() {
-  const data=await api('dashboard');const root=clear($('content'));
-  const metrics=el('div','','metrics');
-  [['Pesanan hari ini',data.today_orders],['Pendapatan hari ini','Rp '+Number(data.today_revenue).toLocaleString('id-ID')],
-    ['Pesanan aktif',data.active_orders],['Member',data.members],['Produk aktif',data.active_products]]
-    .forEach(([label,value])=>metrics.append(card(label,value)));
-  root.append(metrics,el('h2','Pesanan terbaru'));
-  root.append(rowTable(data.recent_orders,['order_id','nama','total','status','created_at','metode_kirim'],r=>showOrder(r.order_id)));
-}
-function fieldInput(name,value,editable) {
-  const label=el('label',name);const multiline=String(value??'').length>100||/json|deskripsi|isi|alamat|catatan|ulasan/i.test(name);
-  const input=el(multiline?'textarea':'input');input.name=name;input.value=value??'';input.disabled=!editable;label.append(input);return label;
-}
-function showEditor(row,create=false) {
-  const data=currentData, table=data.table;
-  openDrawer((create?'Tambah ':'Edit ')+table);
-  const form=el('form');
-  if(create && idFields[table]) form.append(fieldInput(idFields[table],row[idFields[table]]||'',true));
-  if(!create && idFields[table]) form.append(fieldInput(idFields[table],row[idFields[table]]||'',false));
-  for(const name of data.write_fields) form.append(fieldInput(name,row[name]??'',true));
-  const actions=el('div','','actions'),save=el('button','Simpan');save.type='submit';actions.append(save);form.append(actions);
-  form.addEventListener('submit',async e=>{e.preventDefault();save.disabled=true;message('Menyimpan…');
-    const values=Object.fromEntries(new FormData(form).entries());
-    try {await api('save',{table,source_row:create?null:row.source_row,values});closeDrawer();await tableView(table);} catch(err){message('Gagal: '+err.message);}
-    finally{save.disabled=false;}});
-  $('drawer-content').append(form);
-}
-function showReadOnly(row) {
-  openDrawer(current+' — detail');
-  const dl=el('div');for(const [name,value] of Object.entries(row)) {const label=el('strong',name),v=el('pre',value??'');dl.append(label,v);}
-  $('drawer-content').append(dl);
-}
-async function showOrder(orderId) {
-  openDrawer('Pesanan '+orderId);
-  try {
-    const data=await api('order',{order_id:orderId});const root=$('drawer-content');
-    const summary=el('div');
-    const keys=['order_id','nama','no_hp','tgl_antar','metode_kirim','metode_bayar','status','subtotal','ongkir','total','promo_code','poin_dipakai','alamat_snapshot','catatan_customer','catatan_admin','cancel_reason','created_at'];
-    keys.forEach(k=>{if(data.order[k]!==undefined&&data.order[k]!=='')summary.append(el('strong',k),el('pre',data.order[k]));});
-    root.append(summary,el('h3','Item'));
-    root.append(rowTable(data.items,['product_id','nama_snapshot','variant_nama_snapshot','nama_axis_snapshot','harga_snapshot','qty','subtotal']));
-    root.append(el('h3','Add-on'),rowTable(data.addons,['order_item_ref','nama_addon_snapshot','harga_snapshot']));
-    if(!['SELESAI','BATAL'].includes(data.order.status)) {
-      const form=el('form');form.append(el('h3','Ubah status'));
-      const allowed={MENUNGGU:['DIPROSES','BATAL'],DIPROSES:['SIAP','BATAL'],
-        SIAP:['SELESAI','DIANTAR','BATAL'],DIANTAR:['SELESAI','BATAL']};
-      const choices=(allowed[data.order.status]||[]).filter(x=>x!=='DIANTAR'||data.order.metode_kirim==='DIANTAR');
-      const select=el('select');choices.forEach(x=>{const opt=el('option',x);opt.value=x;select.append(opt);});select.name='status';form.append(select);
-      const reason=el('textarea');reason.name='reason';reason.placeholder='Alasan pembatalan jika status BATAL';form.append(reason);
-      const button=el('button','Simpan status');button.type='submit';form.append(button);
-      form.addEventListener('submit',async e=>{e.preventDefault();button.disabled=true;message('Memproses…');
-        if(select.value==='BATAL'&&!reason.value.trim()){message('Isi alasan pembatalan.');button.disabled=false;return;}
-        try {await api('status',{order_id:orderId,status:select.value,reason:reason.value});await showOrder(orderId);}
-        catch(err){message('Gagal: '+err.message);}finally{button.disabled=false;}});root.append(form);
-    }
-  } catch(err){message('Gagal memuat pesanan: '+err.message);}
-}
-async function tableView(table,search='',status='') {
-  const data=await api('table',{table,search,status});currentData=data;
-  const root=clear($('content')),bar=el('div','','toolbar'),input=el('input');input.type='search';input.placeholder='Cari data';input.value=search;
-  let timer;input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(()=>tableView(table,input.value,status),250);});bar.append(input);
-  if(table==='Orders') {
-    const filter=el('select');['','MENUNGGU','DIPROSES','SIAP','DIANTAR','SELESAI','BATAL'].forEach(value=>{
-      const option=el('option',value||'Semua status');option.value=value;option.selected=value===status;filter.append(option);
-    });
-    filter.addEventListener('change',()=>tableView(table,input.value,filter.value));bar.append(filter);
-  }
-  if(data.insertable){const add=el('button','Tambah');add.addEventListener('click',()=>showEditor({},true));bar.append(add);}
-  root.append(bar);
-  const preferred={Orders:['order_id','nama','tgl_antar','metode_kirim','total','status','created_at'],
-    Products:['product_id','nama','harga','kategori_id','tersedia','status'],Members:['member_id','nama','no_hp','total_poin','status'],
-    Settings:['key','value','keterangan'],Logs:['timestamp','tipe','ref_id','pesan']};
-  const cols=preferred[table]||['source_row',...data.columns.slice(0,7)];
-  root.append(rowTable(data.rows,cols,r=>table==='Orders'?showOrder(r.order_id):data.editable?showEditor(r):showReadOnly(r)));
-  root.append(el('p',`${data.rows.length} baris ditampilkan`));
-}
-async function navigate(name) {
-  current=name;$('page-title').textContent=name;$('subtitle').textContent=name==='Dashboard'?'Ringkasan operasional':'Data '+name;
-  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));
-  clear($('content')).append(el('p','Memuat…'));
-  try{if(name==='Dashboard')await dashboard();else await tableView(name);}catch(err){clear($('content')).append(el('p','Gagal memuat: '+err.message));}
-}
-for(const [group,names] of Object.entries(groups)) {
-  $('nav').append(el('h2',group));for(const name of names){const b=el('button',name);b.dataset.page=name;b.addEventListener('click',()=>navigate(name));$('nav').append(b);}
-}
-$('close-drawer').addEventListener('click',closeDrawer);
-$('logout').addEventListener('click',async()=>{try{await api('logout');}catch(_){}showApp(false);});
-$('login-form').addEventListener('submit',async e=>{e.preventDefault();message('','login-message');
-  try{await api('login',{password:$('password').value});$('password').value='';showApp(true);navigate('Dashboard');}
-  catch(err){message(err.message==='RATE_LIMITED'?'Terlalu banyak percobaan. Coba nanti.':'Kata sandi salah atau layanan belum siap.','login-message');}});
-api('session').then(()=>{showApp(true);navigate('Dashboard');}).catch(()=>showApp(false));
+function el(tag,value='',className=''){const n=document.createElement(tag);n.textContent=String(value??'');if(className)n.className=className;return n;}
+function clear(n){n.replaceChildren();return n;}
+function display(value){if(value==null)return '';if(typeof value==='object')return JSON.stringify(value);return String(value);}
+function label(k){return labels[k]||k.replaceAll('_',' ');}
+function friendlyError(code){return ({BAD_REQUEST:'Data belum lengkap.',NO_FIELDS:'Isi setidaknya satu kolom.',ROW_NOT_FOUND:'Data tidak ditemukan. Muat ulang halaman.',INSERT_NOT_ALLOWED:'Data ini tidak dapat ditambah di sini.',ID_REQUIRED:'Isi kode atau tanggalnya.',ID_INVALID:'Kode hanya boleh berisi huruf, angka, garis bawah, atau tanda hubung.',STATUS_INVALID:'Status tidak tersedia.',SETTING_PROTECTED:'Pengaturan ini dilindungi.',ADMIN_OPERATION_FAILED:'Penyimpanan gagal. Periksa isian atau coba lagi.',UNAUTHORIZED:'Sesi berakhir. Masuk kembali.'})[code]||'Terjadi kendala ('+code+').';}
+async function api(op,extra={}){const r=await fetch('/admin/api',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({op,...extra})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.code||'REQUEST_FAILED');return d.data||{};}
+function showApp(yes){$('login').style.display=yes?'none':'block';$('app').style.display=yes?'block':'none';}
+function message(value,target='drawer-message'){$(target).textContent=value;}
+function openDrawer(title){$('drawer-title').textContent=title;clear($('drawer-content'));message('');$('drawer').style.display='block';$('drawer-backdrop').style.display='block';$('close-drawer').focus();}
+function closeDrawer(){$('drawer').style.display='none';$('drawer-backdrop').style.display='none';}
+function statusTone(value){const v=String(value||'').toLowerCase();return ['aktif','tersedia','selesai','siap'].includes(v)?'good':['batal','dihapus','hidden','nonaktif'].includes(v)?'bad':'warn';}
+function rowTable(rows,cols,action,actionLabel){const wrap=el('div','','card scroll');if(!rows.length){wrap.append(el('p','Belum ada data yang ditampilkan.','empty'));return wrap;}
+  const table=el('table'),head=el('thead'),header=el('tr');cols.forEach(k=>header.append(el('th',label(k))));if(action)header.append(el('th','Aksi'));head.append(header);table.append(head);
+  const body=el('tbody');rows.forEach(row=>{const tr=el('tr');cols.forEach(k=>{const cell=el('td');if(k==='status'){const pill=el('span',display(row[k]),'status-pill');pill.dataset.tone=statusTone(row[k]);cell.append(pill);}else cell.textContent=display(row[k]);cell.title=display(row[k]);tr.append(cell);});if(action){const cell=el('td'),button=el('button',actionLabel,'table-action');button.type='button';button.addEventListener('click',()=>action(row));cell.append(button);tr.append(cell);}body.append(tr);});table.append(body);wrap.append(table);return wrap;}
+function section(title,caption=''){const head=el('div','','section-head');head.append(el('h2',title));if(caption)head.append(el('p',caption));return head;}
+function card(labelText,value){const box=el('div','','card metric');box.append(el('strong',value),el('span',labelText));return box;}
+async function dashboard(){const data=await api('dashboard'),root=clear($('content')),metrics=el('div','','metrics');[['Pesanan hari ini',data.today_orders],['Pendapatan selesai hari ini','Rp '+Number(data.today_revenue).toLocaleString('id-ID')],['Pesanan aktif',data.active_orders],['Pelanggan',data.members],['Produk aktif',data.active_products]].forEach(([a,b])=>metrics.append(card(a,b)));root.append(metrics,section('Pesanan terbaru','Buka pesanan untuk melihat rincian dan mengubah tahapnya.'),rowTable(data.recent_orders,['order_id','nama','total','status','created_at','metode_kirim'],r=>showOrder(r.order_id),'Lihat pesanan'));}
+function fieldInput(name,value,editable){const wrap=el('label',label(name));let input;const raw=display(value);if(name==='status'&&['Reviews','Members'].includes(current)){input=el('select');const values=current==='Reviews'?['aktif','hidden','dihapus']:['aktif','nonaktif'];values.forEach(x=>{const o=el('option',x);o.value=x;input.append(o);});input.value=raw||values[0];}
+  else{const multi=raw.length>100||/json|deskripsi|isi|alamat|catatan|ulasan|detail/i.test(name);input=el(multi?'textarea':'input');input.value=raw;if(name==='email')input.type='email';if(name==='tanggal'&&current==='Holidays')input.placeholder='YYYY-MM-DD';}
+  input.name=name;input.disabled=!editable;wrap.append(input);return wrap;}
+async function referenceChoices(form,name,table,title){const input=form.elements.namedItem(name);if(!input)return;try{const data=await api('table',{table});const select=el('select');select.name=name;const none=el('option','Pilih '+title);none.value='';select.append(none);data.rows.forEach(row=>{const key=table==='Categories'?'kategori_id':'product_id',option=el('option',display(row.nama||row[key]));option.value=display(row[key]);select.append(option);});select.value=input.value;input.replaceWith(select);}catch(_){/* Keep the text field if the reference list is unavailable. */}}
+function showEditor(row,create=false){const data=currentData,table=data.table;openDrawer((create?'Tambah ':'Ubah ')+names[table]);const form=el('form');if(create&&manualIds.has(table))form.append(fieldInput(idFields[table],row[idFields[table]]||'',true));if(!create){const key=idFields[table]||Object.keys(row).find(k=>/_id$|^key$/.test(k));if(key)form.append(fieldInput(key,row[key],false));}
+  data.write_fields.forEach(name=>form.append(fieldInput(name,row[name]??'',true)));const actions=el('div','','actions'),cancel=el('button','Batal','secondary'),save=el('button','Simpan perubahan');cancel.type='button';cancel.addEventListener('click',closeDrawer);save.type='submit';actions.append(cancel,save);form.append(actions);
+  form.addEventListener('submit',async e=>{e.preventDefault();save.disabled=true;message('Menyimpan perubahan…');const values=Object.fromEntries(new FormData(form).entries());try{await api('save',{table,source_row:create?null:row.source_row,values});closeDrawer();await tableView(table);}catch(err){message(friendlyError(err.message));}finally{save.disabled=false;}});$('drawer-content').append(form);if(table==='Products')referenceChoices(form,'kategori_id','Categories','kategori');if(['ProductVariants','ProductAddons'].includes(table))referenceChoices(form,'product_id','Products','produk');}
+function detailList(row){const list=el('div','','detail-list');Object.entries(row).forEach(([key,value])=>{const item=el('div','','detail-field');item.append(el('strong',label(key)),el('span',display(value)));list.append(item);});return list;}
+function showReadOnly(row){openDrawer('Detail '+names[current]);$('drawer-content').append(detailList(row));}
+async function showOrder(orderId){openDrawer('Pesanan '+orderId);try{const data=await api('order',{order_id:orderId}),root=$('drawer-content');const keys=['order_id','nama','no_hp','tgl_antar','metode_kirim','metode_bayar','status','subtotal','ongkir','total','promo_code','poin_dipakai','alamat_snapshot','catatan_customer','catatan_admin','cancel_reason','created_at'];root.append(detailList(Object.fromEntries(keys.filter(k=>data.order[k]!==undefined&&data.order[k]!=='').map(k=>[k,data.order[k]]))),section('Isi pesanan'),rowTable(data.items,['product_id','nama_snapshot','variant_nama_snapshot','harga_snapshot','qty','subtotal']),section('Tambahan'),rowTable(data.addons,['order_item_ref','nama_addon_snapshot','harga_snapshot']));
+  if(!['SELESAI','BATAL'].includes(data.order.status)){const allowed={MENUNGGU:['DIPROSES','BATAL'],DIPROSES:['SIAP','BATAL'],SIAP:['SELESAI','DIANTAR','BATAL'],DIANTAR:['SELESAI','BATAL']};const choices=(allowed[data.order.status]||[]).filter(x=>x!=='DIANTAR'||data.order.metode_kirim==='DIANTAR');if(choices.length){const form=el('form','','order-status');form.append(el('h3','Ubah tahap pesanan'));const select=el('select');choices.forEach(x=>{const opt=el('option',x);opt.value=x;select.append(opt);});const reason=el('textarea');reason.placeholder='Alasan pembatalan jika memilih BATAL';const button=el('button','Simpan tahap');button.type='submit';form.append(select,reason,button);form.addEventListener('submit',async e=>{e.preventDefault();if(select.value==='BATAL'&&!reason.value.trim()){message('Isi alasan pembatalan.');return;}button.disabled=true;message('Menyimpan tahap…');try{await api('status',{order_id:orderId,status:select.value,reason:reason.value});await showOrder(orderId);}catch(err){message(friendlyError(err.message));}finally{button.disabled=false;}});root.append(form);}}}catch(err){message('Gagal memuat pesanan: '+friendlyError(err.message));}}
+async function tableView(table,search='',status=''){const data=await api('table',{table,search,status});currentData=data;const root=clear($('content')),bar=el('div','','toolbar'),input=el('input');input.type='search';input.placeholder='Cari '+names[table].toLowerCase();input.value=search;let timer;input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(()=>tableView(table,input.value,status),250);});bar.append(input);
+  if(table==='Orders'){const filter=el('select');['','MENUNGGU','DIPROSES','SIAP','DIANTAR','SELESAI','BATAL'].forEach(v=>{const option=el('option',v||'Semua tahap');option.value=v;option.selected=v===status;filter.append(option);});filter.addEventListener('change',()=>tableView(table,input.value,filter.value));bar.append(filter);}
+  if(data.insertable){const add=el('button','+ Tambah '+names[table].toLowerCase(),'primary');add.addEventListener('click',()=>showEditor({},true));bar.append(add);}root.append(bar);
+  const preferred={Orders:['order_id','nama','tgl_antar','metode_kirim','total','status','created_at'],Products:['product_id','nama','harga','kategori_id','tersedia','status'],Members:['member_id','nama','no_hp','total_poin','status'],Settings:['key','value','keterangan'],Logs:['timestamp','tipe','ref_id','pesan']};const cols=preferred[table]||data.columns.filter(k=>k!=='source_row').slice(0,7);
+  const action=table==='Orders'?r=>showOrder(r.order_id):data.editable?r=>showEditor(r):r=>showReadOnly(r);const actionLabel=table==='Orders'?'Lihat & ubah tahap':data.editable?'Ubah':'Lihat rincian';root.append(rowTable(data.rows,cols,action,actionLabel),el('p',`${data.rows.length} data ditampilkan`,'count'));
+  if(!data.editable&&table!=='Orders')root.append(el('p','Catatan ini dapat dilihat di sini. Perubahan pesanan, poin, dan pemakaian promo mengikuti proses toko agar riwayatnya tetap akurat.','help-note'));}
+async function navigate(name){current=name;$('page-title').textContent=names[name];$('subtitle').textContent=hints[name]||'';document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));clear($('content')).append(el('p','Memuat data…'));try{if(name==='Dashboard')await dashboard();else await tableView(name);}catch(err){clear($('content')).append(el('p','Gagal memuat: '+friendlyError(err.message),'message'));}}
+for(const [group,pages] of Object.entries(groups)){$('nav').append(el('h2',group));pages.forEach(name=>{const b=el('button',names[name]);b.type='button';b.dataset.page=name;b.addEventListener('click',()=>navigate(name));$('nav').append(b);});}
+$('close-drawer').addEventListener('click',closeDrawer);$('drawer-backdrop').addEventListener('click',closeDrawer);document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer();});$('logout').addEventListener('click',async()=>{try{await api('logout');}catch(_){}showApp(false);closeDrawer();});$('login-form').addEventListener('submit',async e=>{e.preventDefault();message('','login-message');try{await api('login',{password:$('password').value});$('password').value='';showApp(true);navigate('Dashboard');}catch(err){message(err.message==='RATE_LIMITED'?'Terlalu banyak percobaan. Coba nanti.':'Kata sandi salah atau layanan belum siap.','login-message');}});api('session').then(()=>{showApp(true);navigate('Dashboard');}).catch(()=>showApp(false));
