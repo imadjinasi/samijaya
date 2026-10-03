@@ -98,6 +98,11 @@ const server=http.createServer(async (req,res)=>{
   let url;
   try {url=new URL(req.url,'http://localhost');} catch (_) {return send(res,400,'Bad Request','text/plain');}
   const pathname=url.pathname;
+  if (String(req.headers.host||'').toLowerCase()==='www.samijaya.online') {
+    res.writeHead(301,{'Location':'https://samijaya.online'+pathname+url.search,
+      'Cache-Control':'public, max-age=3600','Content-Length':'0'});
+    return res.end();
+  }
   if(pathname==='/_health') return json(res,200,{ok:true,service:'samijaya'});
   if(pathname==='/_ready') {
     try {
