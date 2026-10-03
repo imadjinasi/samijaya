@@ -91,6 +91,7 @@ function withTransaction(fn) {
 function tableList(table, search, statusFilter) {
   if(!Object.hasOwn(TABLES,table)) throw new Error('TABLE_NOT_ALLOWED');
   const rows=query(`SELECT * FROM ${tableName(table)} ORDER BY source_row DESC LIMIT 1000`).rows;
+  if(table==='Orders' && process.env.MIDTRANS_MODE) attachPaymentStates(rows);
   let filtered=table==='Settings'?rows.filter(r=>!SETTINGS_SECRET.test(r.key)):rows;
   if(table==='Orders' && statusFilter) filtered=filtered.filter(r=>r.status===statusFilter);
   if(table==='Logs') filtered=filtered.map(({source_row,timestamp,tipe,ref_id,pesan})=>({source_row,timestamp,tipe,ref_id,pesan}));
@@ -99,16 +100,25 @@ function tableList(table, search, statusFilter) {
   return {ok:true,data:{table,rows:filtered.slice(0,200),editable:TABLES[table]!==null,
     insertable:!!ID_FIELDS[table],write_fields:permittedFields(table),columns:columns(table)}};
 }
+function attachPaymentStates(rows) {
+  const ids=rows.filter(r=>r.metode_bayar==='MIDTRANS').map(r=>r.order_id);
+  if (!ids.length) return;
+  const states=query('SELECT order_id,state FROM samijaya.midtrans_payments WHERE order_id=ANY($1::text[])',[ids]).rows;
+  const byId=new Map(states.map(r=>[r.order_id,r.state]));
+  rows.forEach(r=>{if(r.metode_bayar==='MIDTRANS')r.payment_status=byId.get(r.order_id)||'BELUM_DIMULAI';});
+}
 function dashboard() {
   const today=nowJkt().slice(0,10);
-  const rows=query('SELECT "order_id","nama","total","status","created_at","metode_kirim" FROM samijaya."Orders" ORDER BY source_row DESC').rows;
+  const rows=query('SELECT "order_id","nama","total","status","created_at","metode_kirim","metode_bayar" FROM samijaya."Orders" ORDER BY source_row DESC').rows;
+  if(process.env.MIDTRANS_MODE) attachPaymentStates(rows);
   const valid=rows.filter(r=>['MENUNGGU','DIPROSES','SIAP','DIANTAR','SELESAI','BATAL'].includes(r.status));
   const todays=valid.filter(r=>String(r.created_at).startsWith(today));
   const revenue=todays.filter(r=>r.status==='SELESAI').reduce((sum,r)=>sum+(Number(r.total)||0),0);
-  const active=valid.filter(r=>['MENUNGGU','DIPROSES','SIAP','DIANTAR'].includes(r.status)).length;
+  const active=valid.filter(r=>['MENUNGGU','DIPROSES','SIAP','DIANTAR'].includes(r.status) && (r.metode_bayar!=='MIDTRANS'||['PAID','PARTIAL_REFUND'].includes(r.payment_status))).length;
+  const awaitingPayment=valid.filter(r=>r.metode_bayar==='MIDTRANS'&&r.status==='MENUNGGU'&&!['PAID','PARTIAL_REFUND','REFUNDED','EXPIRED'].includes(r.payment_status)).length;
   const members=Number(query('SELECT count(*)::int AS n FROM samijaya."Members"').rows[0].n);
   const products=Number(query(`SELECT count(*)::int AS n FROM samijaya."Products" WHERE lower("status")='aktif'`).rows[0].n);
-  return {ok:true,data:{today_orders:todays.length,today_revenue:revenue,active_orders:active,
+  return {ok:true,data:{today_orders:todays.length,today_revenue:revenue,active_orders:active,awaiting_payment:awaitingPayment,
     members,active_products:products,recent_orders:rows.slice(0,20)}};
 }
 function orderDetails(orderId) {
@@ -116,7 +126,10 @@ function orderDetails(orderId) {
   if(!order) return {ok:false,code:'ORDER_NOT_FOUND'};
   const items=query('SELECT * FROM samijaya."OrderItems" WHERE "order_id"=$1 ORDER BY source_row',[orderId]).rows;
   const addons=query('SELECT * FROM samijaya."OrderItemAddons" WHERE "order_id"=$1 ORDER BY source_row',[orderId]).rows;
-  return {ok:true,data:{order,items,addons}};
+  const payment=order.metode_bayar==='MIDTRANS'
+    ? query('SELECT state,amount,paid_at,expires_at,refund_reference,refund_note,refund_recorded_at,last_error FROM samijaya.midtrans_payments WHERE order_id=$1',[orderId]).rows[0]||{state:'BELUM_DIMULAI'}
+    : null;
+  return {ok:true,data:{order,items,addons,payment}};
 }
 function permittedFields(table) {
   const allowed=TABLES[table];
@@ -175,6 +188,24 @@ function status(orderId,newStatus,reason) {
     return result;
   });
 }
+function refundCancel(orderId,reference,reason) {
+  orderId=String(orderId||'').trim();
+  reference=String(reference||'').trim();
+  reason=String(reason||'').trim();
+  if(!/^[A-Za-z0-9_.~-]{1,45}$/.test(orderId)||reference.length<5||reference.length>120||reason.length<5||reason.length>300) return {ok:false,code:'REFUND_DETAILS_REQUIRED'};
+  return withTransaction(()=>{
+    const payment=query('SELECT state FROM samijaya.midtrans_payments WHERE order_id=$1 FOR UPDATE',[orderId]).rows[0];
+    const order=query('SELECT "metode_bayar","status" FROM samijaya."Orders" WHERE "order_id"=$1',[orderId]).rows[0];
+    if(!payment||!order||order.metode_bayar!=='MIDTRANS'||order.status==='SELESAI'||order.status==='BATAL'||!['PAID','PARTIAL_REFUND'].includes(payment.state)) return {ok:false,code:'REFUND_NOT_ALLOWED'};
+    query(`UPDATE samijaya.midtrans_payments SET state='REFUNDED',refund_reference=$2,refund_note=$3,
+      refund_recorded_at=now(),refund_recorded_by='web-admin',updated_at=now() WHERE order_id=$1`,[orderId,reference,reason]);
+    const ctx=context(),prior=ctx.isAdmin;
+    ctx.isAdmin=id=>id==='web-admin'||prior(id);
+    const result=ctx.orderUpdateStatus(orderId,'BATAL','web-admin',reason);
+    if(result.ok) audit('ADMIN_MANUAL_REFUND_AND_CANCEL','Orders',orderId);
+    return result;
+  });
+}
 async function readJson(req) {
   let total=0; const chunks=[];
   for await (const c of req) {total+=c.length;if(total>131072) throw new Error('BODY_TOO_LARGE');chunks.push(c);}
@@ -222,6 +253,7 @@ async function handle(req,res,url) {
     if(op==='order') return reply(res,200,orderDetails(String(request.order_id||'')));
     if(op==='save') return reply(res,200,save(String(request.table||''),request.source_row,request.values));
     if(op==='status') return reply(res,200,status(String(request.order_id||''),String(request.status||''),String(request.reason||'')));
+    if(op==='refundCancel') return reply(res,200,refundCancel(request.order_id,request.reference,request.reason));
     return error(res,400,'UNKNOWN_OPERATION');
   } catch (_) {return error(res,503,'ADMIN_OPERATION_FAILED');}
 }

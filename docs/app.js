@@ -162,7 +162,7 @@ function applyCatalogResponse(data, sequence, options) {
 async function requestCatalogRefresh(options) {
   options = options || {};
   var sequence = ++_catalogRequestSequence;
-  var result = await api('getCatalog');
+  var result = await api('getCatalog', {}, options.timeoutMs ? { timeoutMs: options.timeoutMs } : {});
   if (sequence !== _catalogRequestSequence) return { ok: false, code: 'STALE_RESPONSE', error_category: 'STALE' };
   if (result.ok && applyCatalogResponse(result.data, sequence, { render: !!options.render })) return result;
   return result.ok ? { ok: false, code: 'CATALOG_MALFORMED', error_category: 'SERVER' } : result;
@@ -601,6 +601,9 @@ function clearCartAfterCommitted(data, pending) {
   if (checkout) checkout.classList.add('hidden');
   document.body.style.overflow = '';
   showSuccessScreen(data);
+  if (data && data.metode_bayar === 'MIDTRANS' && data.payment && data.payment.status === 'PENDING') {
+    redirectToMidtrans(data.payment.redirect_url);
+  }
 }
 
 function campaignTokenFingerprint(token) {
@@ -1499,7 +1502,7 @@ function showOtpModal(no_hp, cooldownSeconds) {
   var html = '<div class="modal-handle"></div>';
   html += '<button class="modal-close" onclick="closeOtpModal()">&times;</button>';
   html += '<div class="modal-title">Verifikasi OTP</div>';
-  html += '<p class="otp-subtitle">OTP telah dikirim ke admin. Tanyakan OTP Anda.</p>';
+  html += '<p class="otp-subtitle">Periksa WhatsApp untuk kode OTP. Jika belum masuk, hubungi Samijaya.</p>';
 
   // 6 digit inputs
   html += '<div class="otp-input-wrap" id="otp-inputs">';
@@ -1816,7 +1819,13 @@ function resetCheckoutState() {
   };
 }
 
-function openCheckoutScreen() {
+async function openCheckoutScreen() {
+  showLoading();
+  try {
+    var latest = await requestCatalogRefresh({ render: false, timeoutMs: 8000 });
+    if (!latest.ok) { showToast('Katalog dan pembayaran belum dapat diperiksa. Coba lagi.'); return; }
+  } catch (_) { showToast('Katalog dan pembayaran belum dapat diperiksa. Coba lagi.'); return; }
+  finally { hideLoading(); }
   setPageTitle('checkout');
   resetCheckoutState();
   if (!_pendingPromoConsumed && _pendingPromoFromUrl) {
@@ -1846,6 +1855,7 @@ function renderCheckoutScreen() {
   var el = document.getElementById('checkout-screen');
   var member = session.member || {};
   var settings = (catalog && catalog.settings) ? catalog.settings : {};
+  if (catalog && catalog.payment_mode === 'MIDTRANS') checkoutState.metode_bayar = 'MIDTRANS';
   var poin = Number(member.total_poin || 0);
   var subtotal = getCartTotal();
   var count = getCartCount();
@@ -1957,11 +1967,15 @@ function renderCheckoutScreen() {
   // === 4. PEMBAYARAN ===
   html += '<div class="co-section" id="checkout-payment">';
   html += '<div class="co-section-title"><span class="co-step">4</span>Pembayaran</div>';
-  html += '<div class="co-pill-group" id="co-payment-pills">';
-  html += '<button class="co-pill" data-pay="COD" onclick="selectPayment(\'COD\')">💵 COD</button>';
-  html += '<button class="co-pill" data-pay="TRANSFER" onclick="selectPayment(\'TRANSFER\')">🏦 Transfer Bank</button>';
-  html += '<button class="co-pill" data-pay="QRIS" onclick="selectPayment(\'QRIS\')">📱 QRIS</button>';
-  html += '</div>';
+  if (catalog && catalog.payment_mode === 'MIDTRANS') {
+    html += '<div class="co-shipping-note" style="opacity:1">Bayar lebih dulu melalui Midtrans. Pilihan pembayaran yang tersedia akan muncul di halaman Midtrans. Toko mulai memproses setelah pembayaran terkonfirmasi.</div>';
+  } else {
+    html += '<div class="co-pill-group" id="co-payment-pills">';
+    html += '<button class="co-pill" data-pay="COD" onclick="selectPayment(\'COD\')">💵 COD</button>';
+    html += '<button class="co-pill" data-pay="TRANSFER" onclick="selectPayment(\'TRANSFER\')">🏦 Transfer Bank</button>';
+    html += '<button class="co-pill" data-pay="QRIS" onclick="selectPayment(\'QRIS\')">📱 QRIS</button>';
+    html += '</div>';
+  }
   html += '<div id="co-payment-detail"></div>';
   html += '</div>';
 
@@ -2018,7 +2032,7 @@ function renderCheckoutScreen() {
 
   html += '<div class="co-cost-row total"><span>TOTAL</span><span class="co-cost-val" id="co-cost-total">' + formatRupiah(subtotal) + '</span></div>';
   
-  html += '<button id="btn-create-order" onclick="handleCreateOrder()" disabled>Buat Pesanan</button>';
+  html += '<button id="btn-create-order" onclick="handleCreateOrder()" disabled>' + (checkoutState.metode_bayar === 'MIDTRANS' ? 'Lanjut ke pembayaran' : 'Buat Pesanan') + '</button>';
   html += '<div class="co-submit-note" id="co-submit-note">Lengkapi semua pilihan untuk melanjutkan.</div>';
   html += '<div class="co-validation-msg" id="co-validation-msg"></div>';
   html += '</div>';
@@ -3098,7 +3112,7 @@ async function handleCreateOrder(allowSafeResend) {
   _submitting = true;
   setPendingOrderStatus(pending, 'SUBMITTING');
   var btn = document.getElementById('btn-create-order');
-  var originalText = 'Buat Pesanan';
+  var originalText = checkoutState.metode_bayar === 'MIDTRANS' ? 'Lanjut ke pembayaran' : 'Buat Pesanan';
   if (btn) { btn.disabled = true; btn.textContent = 'Memproses…'; }
 
   var keepSubmitLocked = false;
@@ -3280,8 +3294,8 @@ function renderSuccessScreen(data) {
   html += '</svg>';
   html += '</div>';
 
-  html += '<h2 class="success-heading">Pesanan Diterima!</h2>';
-  html += '<p class="success-sub">Terima kasih, pesanan kamu sedang menunggu konfirmasi Samijaya.</p>';
+  html += '<h2 class="success-heading">' + (metodeBayar === 'MIDTRANS' ? 'Selesaikan Pembayaran' : 'Pesanan Diterima!') + '</h2>';
+  html += '<p class="success-sub">' + (metodeBayar === 'MIDTRANS' ? 'Pesanan mulai diproses setelah pembayaran berhasil.' : 'Terima kasih, pesanan kamu sedang menunggu konfirmasi Samijaya.') + '</p>';
 
   // Order ID
   html += '<div class="success-order-id-wrap">';
@@ -3316,10 +3330,16 @@ function renderSuccessScreen(data) {
   html += '</div>';
 
   // Status
-  html += '<div class="success-status-badge">⏳ Menunggu konfirmasi Samijaya</div>';
+  html += '<div class="success-status-badge">' + (metodeBayar === 'MIDTRANS' ? '⏳ Menunggu pembayaran' : '⏳ Menunggu konfirmasi Samijaya') + '</div>';
 
   // === PEMBAYARAN ===
-  if (metodeBayar === 'QRIS' && bayar) {
+  if (metodeBayar === 'MIDTRANS') {
+    html += '<div class="success-payment-box">';
+    html += '<div class="success-payment-title">Bayar melalui Midtrans</div>';
+    html += '<p>Setelah membayar, kembali ke sini dan periksa status pesanan.</p>';
+    html += '<button class="btn-success-primary" onclick="openMidtransPayment(\'' + escHtml(orderId) + '\')">Bayar sekarang</button>';
+    html += '</div>';
+  } else if (metodeBayar === 'QRIS' && bayar) {
     html += '<div class="success-payment-box">';
     html += '<div class="success-payment-title">Selesaikan Pembayaran</div>';
 
@@ -3395,6 +3415,34 @@ function copyRekening(nomor) {
   }).catch(function() {
     showToast(nomor);
   });
+}
+
+function redirectToMidtrans(redirectUrl) {
+  try {
+    var url = new URL(redirectUrl);
+    if (url.protocol === 'https:' && (url.hostname === 'app.midtrans.com' || url.hostname === 'app.sandbox.midtrans.com')) {
+      window.location.assign(url.href);
+      return true;
+    }
+  } catch (_) {}
+  return false;
+}
+
+async function openMidtransPayment(orderId) {
+  try {
+    var res = await api('getPayment', { order_id: orderId });
+    if (!res.ok) { showToast('Belum dapat memeriksa pembayaran. Coba lagi.'); return; }
+    var payment = res.data && res.data.payment || {};
+    if (payment.status === 'PAID' || payment.status === 'PARTIAL_REFUND') {
+      showToast('Pembayaran sudah diterima. Pesanan akan diproses.');
+      if (document.getElementById('my-orders-screen') && !document.getElementById('my-orders-screen').classList.contains('hidden')) loadMyOrders();
+      return;
+    }
+    if (payment.status === 'REFUNDED') { showToast('Dana pesanan ini telah dikembalikan.'); return; }
+    if (payment.status === 'EXPIRED' || payment.status === 'BATAL') { showToast('Waktu pembayaran telah berakhir. Hubungi toko jika memerlukan bantuan.'); return; }
+    if (payment.status === 'PENDING' && redirectToMidtrans(payment.redirect_url)) return;
+    showToast('Halaman pembayaran belum tersedia. Coba lagi sebentar.');
+  } catch (_) { showToast('Belum dapat menghubungi layanan pembayaran. Coba lagi.'); }
 }
 
 // === INIT ===
@@ -3494,6 +3542,16 @@ document.addEventListener('DOMContentLoaded', async function () {
   var searchInput = document.querySelector('#search-box input');
   if (searchInput) {
     searchInput.addEventListener('input', onSearchInput);
+  }
+  var paymentReturn = new URLSearchParams(window.location.search).get('payment');
+  if (paymentReturn && session.token) {
+    history.replaceState(null, '', window.location.pathname);
+    try {
+      var paymentCheck = await api('getPayment', { order_id: paymentReturn });
+      if (paymentCheck.ok && ['PAID','PARTIAL_REFUND'].includes(paymentCheck.data.payment.status)) showToast('Pembayaran diterima. Terima kasih!');
+      else showToast('Status pembayaran belum final. Periksa kembali di Pesanan Saya.');
+      showMyOrders();
+    } catch (_) { showToast('Status pembayaran belum dapat diperiksa. Buka Pesanan Saya.'); }
   }
 });
 
@@ -3650,6 +3708,7 @@ function renderMyOrders(orders, reviewableMap, lastSeenOrdersAt) {
     
     html += '<div class="my-order-status-wrap">';
     html += '<span class="my-order-status ' + statusClass + '">' + escHtml(order.status) + '</span>';
+    if (order.metode_bayar === 'MIDTRANS') html += '<span class="my-order-status">' + (order.payment_status === 'PAID' ? 'Pembayaran lunas' : order.payment_status === 'PARTIAL_REFUND' ? 'Pembayaran diterima' : order.payment_status === 'REFUNDED' ? 'Dana dikembalikan' : order.payment_status === 'EXPIRED' ? 'Pembayaran kedaluwarsa' : 'Menunggu pembayaran') + '</span>';
     if (hasUpdate) {
       html += '<span class="order-update-dot my-order-update-dot" title="Status pesanan diperbarui" aria-label="Status pesanan diperbarui"></span>';
     }
@@ -3673,6 +3732,9 @@ function renderMyOrders(orders, reviewableMap, lastSeenOrdersAt) {
     
     html += '<div class="my-order-actions" style="flex-wrap: wrap; gap: 8px;">';
     html += '<button class="my-order-btn-detail" onclick="toggleOrderDetail(\'' + escHtml(oid) + '\')">Detail</button>';
+    if (order.metode_bayar === 'MIDTRANS' && order.status === 'MENUNGGU' && !['PAID','PARTIAL_REFUND','REFUNDED','EXPIRED'].includes(order.payment_status)) {
+      html += '<button class="my-order-btn-detail" onclick="openMidtransPayment(\'' + escHtml(oid) + '\')">Periksa / bayar</button>';
+    }
     
     var waToko = (catalog && catalog.settings && catalog.settings.NOMOR_WA_TOKO) ? String(catalog.settings.NOMOR_WA_TOKO || '').replace(/[^0-9]/g, '') : '6285179912504';
     var waMsg = encodeURIComponent('Halo Samijaya, saya mau tanya pesanan ' + oid);

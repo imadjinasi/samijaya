@@ -147,6 +147,10 @@ function context() {
   const secretKeys = new Set(['TELEGRAM_BOT_TOKEN','TELEGRAM_SECRET','ADMIN_PASSWORD_HASH','ADMIN_CHAT_IDS']);
   ctx.getSetting = key => key === 'DEMO_OTP' ? (process.env.DEMO_OTP || readSetting(key)) :
     secretKeys.has(key) ? (process.env[key] || null) : readSetting(key);
+  ctx.paymentGateStatus = orderId => {
+    const row=query('SELECT state FROM samijaya.midtrans_payments WHERE order_id=$1',[String(orderId)]).rows[0];
+    return row ? row.state : 'UNPAID';
+  };
   return ctx;
 }
 function invalidateForAdmin(table, settingKey) {
