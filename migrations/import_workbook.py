@@ -96,8 +96,13 @@ with TARGET.open('w', encoding='utf-8', newline='\n') as out:
         out.write(f'INSERT INTO samijaya.import_manifest (sheet_name, source_rows) VALUES ({sql_text(name)}, {count});\n')
         if primary and name != 'ProductAddons':
             out.write(f'CREATE UNIQUE INDEX {sql_ident(name + "_primary_uidx")} ON samijaya.{table} ({sql_ident(primary)});\n')
-        if primary:
+        if primary and name == 'ProductAddons':
             out.write(f'CREATE INDEX {sql_ident(name + "_lookup_idx")} ON samijaya.{table} ({sql_ident(primary)});\n')
+    for name, field in [('Sessions','no_hp'),('Orders','member_id'),('OrderItems','order_id'),
+                        ('OrderItemAddons','order_id'),('PointHistory','member_id'),
+                        ('Reviews','order_id'),('PromoUsage','order_id'),
+                        ('ProductVariants','product_id'),('ProductAddons','product_id')]:
+        out.write(f'CREATE INDEX {sql_ident(name + "_" + field + "_idx")} ON samijaya.{sql_ident(name)} ({sql_ident(field)});\n')
     out.write('COMMIT;\n')
 wb.close()
 archive.close()

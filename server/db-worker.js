@@ -35,7 +35,7 @@ async function execute(message) {
       headers: { ...(options.headers || {}), ...(options.contentType ? {'Content-Type':options.contentType} : {}) },
       body: options.payload,
       signal: AbortSignal.timeout(12000),
-      redirect: 'error'
+      redirect: 'follow'
     });
     return { status: response.status, body: await response.text() };
   }
