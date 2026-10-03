@@ -48,7 +48,9 @@ while :; do
         if [ -e "$APP_PIDFILE" ]; then
             mv "$APP_PIDFILE" "$APP_PIDFILE.stale.$(date +%s)"
         fi
-        if chroot "$ROOT" /bin/bash /srv/samijaya/current/deploy/start-app.sh; then
+        if chroot "$ROOT" /usr/bin/env -i HOME=/root \
+          PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+          /bin/bash /srv/samijaya/current/deploy/start-app.sh; then
             echo "Samijaya app started $(date)"
         else
             echo "WARN: Samijaya app start failed $(date)"
