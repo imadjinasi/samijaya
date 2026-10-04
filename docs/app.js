@@ -72,7 +72,7 @@ var _selectedVariant = null;
 var _selectedAddons = [];
 
 // === CATALOG CACHE HELPER ===
-var CATALOG_CACHE_KEY = 'sj_catalog_v2';
+var CATALOG_CACHE_KEY = 'sj_catalog_native_v3';
 var CATALOG_CACHE_TTL_MS = 5 * 60 * 1000; // 5 menit
 
 function isHardRefresh() {
@@ -602,6 +602,11 @@ function clearCartAfterCommitted(data, pending) {
   }
 }
 
+function nativeImageUrl(value) {
+  var path = String(value || '').trim();
+  return /^\/media\/images\/[0-9a-f-]{36}\.(?:jpg|png|webp)$/.test(path) ? path : '';
+}
+
 function campaignTokenFingerprint(token) {
   var hash = 2166136261;
   for (var i = 0; i < token.length; i++) {
@@ -651,7 +656,7 @@ function startCampaignQueue() {
 
 function campaignImageUrl(item) {
   var fileId = String(item.gambar_file_id || '').trim();
-  return /^[0-9a-f-]{36}\.(png|jpg|webp)$/.test(fileId) ? safeHttpsUrl('/media/images/' + fileId) : '';
+  return /^[0-9a-f-]{36}\.(png|jpg|webp)$/.test(fileId) ? nativeImageUrl('/media/images/' + fileId) : '';
 }
 
 function campaignSafeLink(value) {
@@ -1012,8 +1017,8 @@ function renderProducts(products) {
 function renderOneProduct(p) {
   var isHabis = (Number(p.tersedia) === 0);
   var imgHtml = '';
-  if (p.foto_url) {
-    var fullUrl = safeHttpsUrl(p.foto_url);
+  if (nativeImageUrl(p.foto_url)) {
+    var fullUrl = nativeImageUrl(p.foto_url);
     var thumbUrl = fullUrl;
     if (thumbUrl) imgHtml = '<img src="' + escHtml(thumbUrl) + '" alt="' + escHtml(p.nama) + '" loading="lazy" style="cursor:pointer" data-open-image="' + escHtml(fullUrl || thumbUrl) + '">';
   } else {
@@ -1092,7 +1097,7 @@ function openProductModal(productId) {
   var isHabis = (Number(p.tersedia) === 0);
   var imgUrl = '';
   if (p.foto_url) {
-    imgUrl = safeHttpsUrl(p.foto_url);
+    imgUrl = nativeImageUrl(p.foto_url);
   }
 
   var modal = document.getElementById('product-modal');
@@ -1368,7 +1373,7 @@ function renderCartModal() {
     var isHabis = (p && Number(p.tersedia) === 0);
 
     if (p && p.foto_url) {
-      var fullUrl = safeHttpsUrl(p.foto_url);
+      var fullUrl = nativeImageUrl(p.foto_url);
       var imgStyle = isHabis ? 'filter: grayscale(100%) opacity(0.6); cursor: pointer;' : 'cursor: pointer;';
       if (fullUrl) imgHtml = '<div class="cart-item-thumb" style="position:relative;"><img src="' + escHtml(fullUrl) + '" alt="' + escHtml(item.nama) + '" data-open-image="' + escHtml(fullUrl) + '" style="' + imgStyle + '">' + (isHabis ? '<div style="position:absolute;bottom:0;left:0;right:0;background:#8B2E2E;color:#fff;font-size:0.55rem;text-align:center;padding:2px 0;font-weight:bold;">HABIS</div>' : '') + '</div>';
     } else {
