@@ -23,7 +23,7 @@ const success={classList:{contains:()=>false}};
 const context={Promise,Error,URL,String,Array,setTimeout:fn=>fn(),document:{getElementById:id=>id==='success-payment-status'?badge:id==='success-screen'?success:null},window:{
   snap:{pay:(token,callbacks)=>{opened={token,callbacks};}},
   location:{assign:url=>{redirected=url;}}
-},_snapOpening:false,_snapScriptPromise:null,
+},_snapOpening:false,_snapScriptPromise:null,_paymentPollRun:0,
   api:async()=>({ok:true,data:{payment:{status:serverState}}}),
   showToast:value=>{toast=value;},showMyOrders:()=>{ordersOpened++;},closeSuccessScreen:()=>{successClosed++;}};
 vm.createContext(context);

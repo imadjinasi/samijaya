@@ -27,6 +27,7 @@ var _sessionExpiryHandled = false;
 var _deliveryLocationSequence = 0;
 var _snapScriptPromise = null;
 var _snapOpening = false;
+var _paymentPollRun = 0;
 
 function createPromoState() {
   return {
@@ -3436,10 +3437,14 @@ function loadSnapScript(payment) {
 }
 
 async function checkPaymentAfterSnap(orderId, attempts) {
+  var run = ++_paymentPollRun;
   var badge = document.getElementById('success-payment-status');
   if (badge) badge.textContent = '⌛ Memeriksa pembayaran…';
   for (var attempt = 0; attempt < attempts; attempt++) {
-    if (attempt) await new Promise(function(resolve) { setTimeout(resolve, 3000); });
+    if (attempt) await new Promise(function(resolve) { setTimeout(resolve, 5000); });
+    if (run !== _paymentPollRun) return;
+    var visible = document.getElementById('success-screen');
+    if (!visible || visible.classList.contains('hidden')) return;
     try {
       var response = await api('getPayment', { order_id: orderId });
       var status = response.data && response.data.payment && response.data.payment.status;
@@ -3463,10 +3468,10 @@ async function presentPayment(payment, orderId) {
   try {
     await loadSnapScript(payment);
     window.snap.pay(payment.snap_token, {
-      onSuccess: function() { _snapOpening = false; checkPaymentAfterSnap(orderId, 6); },
-      onPending: function() { _snapOpening = false; checkPaymentAfterSnap(orderId, 20); },
+      onSuccess: function() { _snapOpening = false; checkPaymentAfterSnap(orderId, 12); },
+      onPending: function() { _snapOpening = false; checkPaymentAfterSnap(orderId, 120); },
       onError: function() { _snapOpening = false; showToast('Pembayaran belum selesai. Coba lagi dari Pesanan Saya.'); },
-      onClose: function() { _snapOpening = false; showToast('Pembayaran dapat dilanjutkan dari Pesanan Saya.'); }
+      onClose: function() { _snapOpening = false; checkPaymentAfterSnap(orderId, 120); }
     });
   } catch (_) {
     _snapOpening = false;
