@@ -914,6 +914,9 @@ function orderCreateOrder(payload, token) {
     ongkir = promoResult.ongkir_setelah_promo;
     var poinDipakai = promoResult.poin_dipakai;
     var total = promoResult.total;
+    if (String(payload.metode_bayar || '').toUpperCase() === 'MIDTRANS' && (!Number.isInteger(Number(total)) || Number(total) <= 0)) {
+      return { ok: false, code: 'PAYMENT_AMOUNT_INVALID', error: 'Total setelah promo dan poin harus lebih dari Rp0 untuk pembayaran Midtrans.' };
+    }
 
     // ----------------------------------------------------------
     // 8. Generate order_id
@@ -1122,7 +1125,7 @@ function orderCreateOrder(payload, token) {
 
   }); // end withLock
   if (lockResult && lockResult._alert) _orderSafeAdminAlert(lockResult._alert);
-  if (lockResult && lockResult.ok && lockResult._notification && lockResult._new_commit) {
+  if (lockResult && lockResult.ok && lockResult._notification && lockResult._new_commit && String(lockResult._notification.order.metode_bayar) !== 'MIDTRANS') {
     try {
       _notifyAdminNewOrder(lockResult._notification.order, lockResult._notification.items);
     } catch (notifyErr) {
@@ -1172,7 +1175,7 @@ function orderUpdateStatus(orderId, newStatus, actorChatId, cancelReason) {
   var safeReason = transactionSafeText(cancelReason || 'Dibatalkan oleh admin', 300);
   if (newStatus === 'BATAL' && safeReason === null) return { ok: false, code: 'CANCEL_REASON_INVALID', error: 'Alasan pembatalan tidak valid' };
 
-  return withLock(function () {
+  var statusResult = withLock(function () {
     if (!isAdmin(actorChatId)) return { ok: false, code: 'UNAUTHORIZED_ACTOR', error: 'Aktor tidak berwenang' };
     var allOrders = readAll('Orders');
     var order = null;
@@ -1194,6 +1197,11 @@ function orderUpdateStatus(orderId, newStatus, actorChatId, cancelReason) {
       DIANTAR: { SELESAI: true, BATAL: true }
     };
     if (!allowed[oldStatus] || !allowed[oldStatus][newStatus]) return { ok: false, code: 'TRANSISI_TIDAK_VALID', error: 'Transisi ' + oldStatus + ' ke ' + newStatus + ' tidak valid' };
+    if (String(order.metode_bayar || '').toUpperCase() === 'MIDTRANS') {
+      var paymentState = typeof paymentGateStatus === 'function' ? paymentGateStatus(orderId) : 'UNPAID';
+      if (newStatus !== 'BATAL' && paymentState !== 'PAID' && paymentState !== 'PARTIAL_REFUND') return { ok: false, code: 'PAYMENT_NOT_PAID', error: 'Pembayaran Midtrans belum lunas' };
+      if (newStatus === 'BATAL' && (paymentState === 'PAID' || paymentState === 'PARTIAL_REFUND')) return { ok: false, code: 'PAYMENT_REFUND_REQUIRED', error: 'Pembayaran sudah diterima. Catat pengembalian dana penuh lebih dahulu.' };
+    }
     var metode = String(order.metode_kirim || '').trim().toUpperCase();
     if (newStatus === 'DIANTAR' && metode !== 'DIANTAR') return { ok: false, code: 'TRANSISI_METODE_TIDAK_VALID', error: 'Status DIANTAR hanya untuk pengantaran internal' };
 
@@ -1279,6 +1287,18 @@ function orderUpdateStatus(orderId, newStatus, actorChatId, cancelReason) {
     }
     return { ok: true, data: { order: order } };
   });
+  if (statusResult && statusResult.ok && statusResult.data && !statusResult.data.unchanged &&
+      typeof queueOrderStatusNotification === 'function') {
+    try {
+      queueOrderStatusNotification(orderId, newStatus, statusResult.data.poin_ditambah || 0);
+    } catch (_) {
+      safeLog('ERROR', 'CUSTOMER_NOTIFICATION_QUEUE_FAILED', orderId, {
+        operation: 'orderUpdateStatus', stage: 'notification_queue', order_id: orderId,
+        error_code: 'CUSTOMER_NOTIFICATION_QUEUE_FAILED', retryable: true
+      });
+    }
+  }
+  return statusResult;
 }
 
 function _orderStatusRecovery(orderId, stage, code) {

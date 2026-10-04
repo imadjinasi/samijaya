@@ -135,7 +135,7 @@ async function run() {
   assert(source.includes("resContainer.classList.remove('co-hidden')") && source.includes("getElementById('co-search-results').classList.add('co-hidden')"), 'search results display regression (co-hidden)');
   for (const label of ['aria-label="Kurangi jumlah ', 'aria-label="Tambah jumlah ', ' dari keranjang"']) assert(source.includes(label), `cart accessibility label missing: ${label}`);
   assert(source.includes('checkout-layout') && source.includes('checkout-summary-column'), 'desktop checkout layout wrappers missing');
-  const styleSource = fs.readFileSync('docs/style.css', 'utf8');
+  const styleSource = fs.readFileSync('docs/style.css', 'utf8').replace(/\r\n/g, '\n');
   assert(styleSource.includes('grid-template-columns: minmax(0, 1fr) minmax(320px, 380px)'), 'desktop checkout grid missing');
   assert(styleSource.includes('#cart-modal .modal-sheet') && styleSource.includes('width: min(420px, 100%)'), 'desktop cart drawer missing');
   assert(styleSource.includes('#product-grid:not(.grid-mode) .product-card'), 'desktop list view styling missing');

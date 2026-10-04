@@ -1,5 +1,7 @@
 # Samijaya Operations Runbook
 
+Deployment Node/PostgreSQL di Mi8 menggunakan [MI8-OPERATIONS.md](MI8-OPERATIONS.md). Langkah GAS/Sheets di dokumen ini dipertahankan untuk operasi legacy dan rollback.
+
 Gunakan bersama dokumen readiness, reconciliation, dan incident. Jangan simpan secret, PII, raw payload, atau data production di repo.
 
 ## Backup

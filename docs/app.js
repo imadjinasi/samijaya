@@ -25,6 +25,14 @@ var _catalogRequestSequence = 0;
 var _catalogAppliedSequence = 0;
 var _sessionExpiryHandled = false;
 var _deliveryLocationSequence = 0;
+var _snapScriptPromise = null;
+var _snapOpening = false;
+var _paymentPollRun = 0;
+var _checkoutRendered = false;
+var _checkoutMemberId = '';
+var _checkoutCatalogReady = false;
+var _checkoutCatalogRequest = 0;
+var _checkoutTriedSubmit = false;
 
 function createPromoState() {
   return {
@@ -70,7 +78,7 @@ var _selectedVariant = null;
 var _selectedAddons = [];
 
 // === CATALOG CACHE HELPER ===
-var CATALOG_CACHE_KEY = 'sj_catalog_v2';
+var CATALOG_CACHE_KEY = 'sj_catalog_native_v3';
 var CATALOG_CACHE_TTL_MS = 5 * 60 * 1000; // 5 menit
 
 function isHardRefresh() {
@@ -162,7 +170,7 @@ function applyCatalogResponse(data, sequence, options) {
 async function requestCatalogRefresh(options) {
   options = options || {};
   var sequence = ++_catalogRequestSequence;
-  var result = await api('getCatalog');
+  var result = await api('getCatalog', {}, options.timeoutMs ? { timeoutMs: options.timeoutMs } : {});
   if (sequence !== _catalogRequestSequence) return { ok: false, code: 'STALE_RESPONSE', error_category: 'STALE' };
   if (result.ok && applyCatalogResponse(result.data, sequence, { render: !!options.render })) return result;
   return result.ok ? { ok: false, code: 'CATALOG_MALFORMED', error_category: 'SERVER' } : result;
@@ -308,12 +316,6 @@ function safeHttpsUrl(value) {
   } catch (_) {
     return '';
   }
-}
-
-function safeDriveImageUrl(fileId, width) {
-  var normalized = String(fileId || '').trim();
-  if (!/^[A-Za-z0-9_-]{10,200}$/.test(normalized)) return '';
-  return 'https://lh3.googleusercontent.com/d/' + encodeURIComponent(normalized) + '=w' + Number(width || 400);
 }
 
 document.addEventListener('click', function(event) {
@@ -596,11 +598,22 @@ function clearCartAfterCommitted(data, pending) {
   renderCartBottomBar();
   renderHeader();
   resetPromoState(false);
+  resetCheckoutState();
+  _checkoutRendered = false;
+  _checkoutTriedSubmit = false;
   if (pending) setPendingOrderStatus(pending, 'CONFIRMED');
   var checkout = document.getElementById('checkout-screen');
   if (checkout) checkout.classList.add('hidden');
   document.body.style.overflow = '';
   showSuccessScreen(data);
+  if (data && data.metode_bayar === 'MIDTRANS' && data.payment && data.payment.status === 'PENDING') {
+    presentPayment(data.payment, data.order_id);
+  }
+}
+
+function nativeImageUrl(value) {
+  var path = String(value || '').trim();
+  return /^\/media\/images\/[0-9a-f-]{36}\.(?:jpg|png|webp)$/.test(path) ? path : '';
 }
 
 function campaignTokenFingerprint(token) {
@@ -652,7 +665,7 @@ function startCampaignQueue() {
 
 function campaignImageUrl(item) {
   var fileId = String(item.gambar_file_id || '').trim();
-  return fileId ? safeDriveImageUrl(fileId, 800) : safeHttpsUrl(item.gambar_url);
+  return /^[0-9a-f-]{36}\.(png|jpg|webp)$/.test(fileId) ? nativeImageUrl('/media/images/' + fileId) : '';
 }
 
 function campaignSafeLink(value) {
@@ -1013,9 +1026,9 @@ function renderProducts(products) {
 function renderOneProduct(p) {
   var isHabis = (Number(p.tersedia) === 0);
   var imgHtml = '';
-  if (p.foto_url || p.foto_file_id) {
-    var fullUrl = p.foto_file_id ? safeDriveImageUrl(p.foto_file_id, 1200) : safeHttpsUrl(p.foto_url);
-    var thumbUrl = p.foto_file_id ? safeDriveImageUrl(p.foto_file_id, 400) : safeHttpsUrl(p.foto_url);
+  if (nativeImageUrl(p.foto_url)) {
+    var fullUrl = nativeImageUrl(p.foto_url);
+    var thumbUrl = fullUrl;
     if (thumbUrl) imgHtml = '<img src="' + escHtml(thumbUrl) + '" alt="' + escHtml(p.nama) + '" loading="lazy" style="cursor:pointer" data-open-image="' + escHtml(fullUrl || thumbUrl) + '">';
   } else {
     imgHtml = '<div class="product-img-placeholder">' + ICON.bottle + '</div>';
@@ -1093,7 +1106,7 @@ function openProductModal(productId) {
   var isHabis = (Number(p.tersedia) === 0);
   var imgUrl = '';
   if (p.foto_url) {
-    imgUrl = p.foto_file_id ? safeDriveImageUrl(p.foto_file_id, 1200) : safeHttpsUrl(p.foto_url);
+    imgUrl = nativeImageUrl(p.foto_url);
   }
 
   var modal = document.getElementById('product-modal');
@@ -1369,7 +1382,7 @@ function renderCartModal() {
     var isHabis = (p && Number(p.tersedia) === 0);
 
     if (p && p.foto_url) {
-      var fullUrl = p.foto_file_id ? safeDriveImageUrl(p.foto_file_id, 1200) : safeHttpsUrl(p.foto_url);
+      var fullUrl = nativeImageUrl(p.foto_url);
       var imgStyle = isHabis ? 'filter: grayscale(100%) opacity(0.6); cursor: pointer;' : 'cursor: pointer;';
       if (fullUrl) imgHtml = '<div class="cart-item-thumb" style="position:relative;"><img src="' + escHtml(fullUrl) + '" alt="' + escHtml(item.nama) + '" data-open-image="' + escHtml(fullUrl) + '" style="' + imgStyle + '">' + (isHabis ? '<div style="position:absolute;bottom:0;left:0;right:0;background:#8B2E2E;color:#fff;font-size:0.55rem;text-align:center;padding:2px 0;font-weight:bold;">HABIS</div>' : '') + '</div>';
     } else {
@@ -1499,7 +1512,7 @@ function showOtpModal(no_hp, cooldownSeconds) {
   var html = '<div class="modal-handle"></div>';
   html += '<button class="modal-close" onclick="closeOtpModal()">&times;</button>';
   html += '<div class="modal-title">Verifikasi OTP</div>';
-  html += '<p class="otp-subtitle">OTP telah dikirim ke admin. Tanyakan OTP Anda.</p>';
+  html += '<p class="otp-subtitle">Periksa WhatsApp untuk kode OTP. Jika belum masuk, hubungi Samijaya.</p>';
 
   // 6 digit inputs
   html += '<div class="otp-input-wrap" id="otp-inputs">';
@@ -1816,20 +1829,118 @@ function resetCheckoutState() {
   };
 }
 
-function openCheckoutScreen() {
+async function openCheckoutScreen() {
   setPageTitle('checkout');
-  resetCheckoutState();
-  if (!_pendingPromoConsumed && _pendingPromoFromUrl) {
-    promoState.pending_code = _pendingPromoFromUrl;
-    promoState.input_code = _pendingPromoFromUrl;
-    promoState.status = 'ready';
-    _pendingPromoConsumed = true;
+  var memberId = String(session.member && session.member.member_id || '');
+  if (!_checkoutRendered || _checkoutMemberId !== memberId) {
+    resetCheckoutState();
+    _checkoutMemberId = memberId;
+    _checkoutTriedSubmit = false;
+    if (!_pendingPromoConsumed && _pendingPromoFromUrl) {
+      promoState.pending_code = _pendingPromoFromUrl;
+      promoState.input_code = _pendingPromoFromUrl;
+      promoState.status = 'ready';
+      _pendingPromoConsumed = true;
+    }
+    renderCheckoutScreen();
+    _checkoutRendered = true;
+  } else {
+    updateCheckoutItems();
+    updateCheckoutSummary();
   }
-  renderCheckoutScreen();
+  refreshCheckoutDateChoice();
   document.getElementById('checkout-screen').classList.remove('hidden');
   document.getElementById('checkout-screen').scrollTop = 0;
-  // Prevent body scroll
   document.body.style.overflow = 'hidden';
+  if (checkoutState.metode_kirim === 'DIANTAR' && typeof _map !== 'undefined' && _map) {
+    setTimeout(function() { _map.invalidateSize(); }, 0);
+  }
+  refreshCheckoutCatalog();
+}
+
+async function refreshCheckoutCatalog() {
+  var requestId = ++_checkoutCatalogRequest;
+  var hadCatalog = !!catalog;
+  _checkoutCatalogReady = false;
+  setCheckoutCatalogStatus('Memeriksa menu, harga, dan jadwal terbaru…', false);
+  updateCheckoutValidation();
+  try {
+    var latest = await requestCatalogRefresh({ render: false, timeoutMs: 8000 });
+    if (requestId !== _checkoutCatalogRequest) return;
+    if (!latest.ok) throw new Error('CATALOG_UNAVAILABLE');
+    checkoutState.metode_bayar = catalog && catalog.payment_mode === 'MIDTRANS' ? 'MIDTRANS' : '';
+    if (!checkoutState.metode_bayar) throw new Error('PAYMENT_UNAVAILABLE');
+    _checkoutCatalogReady = true;
+    if (!hadCatalog || !_checkoutRendered) {
+      renderCheckoutScreen();
+      _checkoutRendered = true;
+    }
+    setCheckoutCatalogStatus('', false);
+    refreshCheckoutDateChoice();
+    if (checkoutState.metode_kirim === 'DIANTAR' && checkoutState.lat && checkoutState.lng) calculateOngkir();
+    updateCheckoutItems();
+    updateCheckoutSummary();
+  } catch (error) {
+    if (requestId !== _checkoutCatalogRequest) return;
+    setCheckoutCatalogStatus(error && error.message === 'PAYMENT_UNAVAILABLE' ?
+      'Pembayaran online sedang tidak tersedia. Coba lagi sebentar.' :
+      'Menu belum dapat diperiksa. Coba lagi sebelum membayar.', true);
+    updateCheckoutValidation();
+  }
+}
+
+function setCheckoutCatalogStatus(message, retry) {
+  var box = document.getElementById('co-catalog-status');
+  if (!box) return;
+  box.hidden = !message;
+  box.innerHTML = message ? escHtml(message) + (retry ? ' <button type="button" onclick="refreshCheckoutCatalog()">Coba lagi</button>' : '') : '';
+}
+
+function suggestedCheckoutDate() {
+  var now = new Date();
+  var jakarta = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }));
+  jakarta.setDate(jakarta.getDate() + (jakarta.getHours() >= 18 ? 2 : 1));
+  var min = '';
+  var suggested = '';
+  for (var n = 0; n < 31; n++) {
+    var date = jakarta.getFullYear() + '-' + String(jakarta.getMonth() + 1).padStart(2, '0') + '-' + String(jakarta.getDate()).padStart(2, '0');
+    if (!min) min = date;
+    if (!isDateHoliday(date)) { suggested = date; break; }
+    jakarta.setDate(jakarta.getDate() + 1);
+  }
+  return { min: min, suggested: suggested || min };
+}
+
+function refreshCheckoutDateChoice() {
+  var input = document.getElementById('co-date-input');
+  if (!input) return;
+  var choice = suggestedCheckoutDate();
+  input.min = choice.min;
+  if (!checkoutState.tgl_antar || checkoutState.tgl_antar < choice.min || isDateHoliday(checkoutState.tgl_antar)) {
+    checkoutState.tgl_antar = choice.suggested;
+    input.value = choice.suggested;
+  }
+}
+
+function checkoutItemsHtml() {
+  var html = '';
+  for (var i = 0; i < cart.length; i++) {
+    var item = cart[i];
+    var variant = item.nama_varian
+      ? '<span class="co-item-detail">' + (item.nama_axis ? escHtml(item.nama_axis) + ': ' : '') + escHtml(item.nama_varian) + '</span>' : '';
+    var addons = item.addons_snapshot && item.addons_snapshot.length
+      ? '<span class="co-item-detail">+ ' + escHtml(item.addons_snapshot.map(function(addon) { return addon.nama_addon; }).join(', ')) + '</span>' : '';
+    html += '<div class="co-summary-row"><span class="item-name">' + escHtml(item.nama) + ' × ' + item.qty + variant + addons + '</span><span class="item-sub">' + formatRupiah(item.harga * item.qty) + '</span></div>';
+  }
+  html += '<div class="co-subtotal-row"><span>Subtotal</span><span>' + formatRupiah(getCartTotal()) + '</span></div>';
+  return html;
+}
+
+function updateCheckoutItems() {
+  var toggle = document.querySelector('.co-summary-toggle span');
+  var items = document.getElementById('co-summary-items');
+  if (toggle) toggle.textContent = getCartCount() + ' item · ' + formatRupiah(getCartTotal());
+  if (items) items.innerHTML = checkoutItemsHtml();
 }
 
 function closeCheckoutScreen() {
@@ -1846,20 +1957,15 @@ function renderCheckoutScreen() {
   var el = document.getElementById('checkout-screen');
   var member = session.member || {};
   var settings = (catalog && catalog.settings) ? catalog.settings : {};
+  if (catalog && catalog.payment_mode === 'MIDTRANS') checkoutState.metode_bayar = 'MIDTRANS';
   var poin = Number(member.total_poin || 0);
   var subtotal = getCartTotal();
   var count = getCartCount();
 
-  // Hitung jam & tanggal minimum (Asia/Jakarta)
-  var now = new Date();
-  var jktTime = new Date(now.toLocaleString("en-US", {timeZone: "Asia/Jakarta"}));
-  var jktHour = jktTime.getHours();
-  var minDays = (jktHour >= 18) ? 2 : 1;
-  jktTime.setDate(jktTime.getDate() + minDays);
-  
-  var minStr = jktTime.getFullYear() + '-' +
-    String(jktTime.getMonth() + 1).padStart(2, '0') + '-' +
-    String(jktTime.getDate()).padStart(2, '0');
+  var dateChoice = suggestedCheckoutDate();
+  if (!checkoutState.tgl_antar || checkoutState.tgl_antar < dateChoice.min || isDateHoliday(checkoutState.tgl_antar)) {
+    checkoutState.tgl_antar = dateChoice.suggested;
+  }
 
   var html = '<div class="checkout-inner">';
 
@@ -1868,68 +1974,46 @@ function renderCheckoutScreen() {
   html += '<button class="checkout-back-btn" onclick="closeCheckoutScreen()" aria-label="Kembali">';
   html += '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>';
   html += '</button>';
-  html += '<div class="checkout-header-title">Checkout</div>';
+  html += '<div><div class="checkout-header-title">Selesaikan pesanan</div><div class="co-header-subtitle">Pilih cara menerima dan waktunya.</div></div>';
   html += '</div>';
+
+  html += '<div id="co-catalog-status" class="co-catalog-status" role="status" hidden></div>';
 
   html += '<div class="checkout-layout">';
   html += '<div class="checkout-form-column">';
 
   // === 1. ORDER SUMMARY ===
   html += '<div class="co-section" id="checkout-order-summary">';
-  html += '<div class="co-section-title"><span class="co-step">1</span>Ringkasan Pesanan</div>';
-  html += '<button class="co-summary-toggle open" onclick="toggleOrderSummary()">';
+  html += '<div class="co-section-title">Pesananmu</div>';
+  html += '<button class="co-summary-toggle" onclick="toggleOrderSummary()" type="button">';
   html += '<span>' + count + ' item · ' + formatRupiah(subtotal) + '</span>';
   html += '<span class="co-toggle-arrow">▼</span>';
   html += '</button>';
-  html += '<div class="co-summary-items" id="co-summary-items">';
-  for (var i = 0; i < cart.length; i++) {
-    var item = cart[i];
-    var checkoutVariantHtml = item.nama_varian
-      ? '<span style="display:block;font-size:0.8rem;color:#777;margin-top:2px;">' + (item.nama_axis ? escHtml(item.nama_axis) + ': ' : '') + escHtml(item.nama_varian) + '</span>'
-      : '';
-    var checkoutAddonsHtml = '';
-    if (item.addons_snapshot && item.addons_snapshot.length > 0) {
-      var checkoutAddonNames = item.addons_snapshot.map(function(addon) {
-        return addon.nama_addon;
-      }).join(', ');
-      checkoutAddonsHtml = '<span style="display:block;font-size:0.75rem;color:#777;margin-top:2px;">+ ' + escHtml(checkoutAddonNames) + '</span>';
-    }
-    html += '<div class="co-summary-row">';
-    html += '<span class="item-name">' + escHtml(item.nama) + ' × ' + item.qty + checkoutVariantHtml + checkoutAddonsHtml + '</span>';
-    html += '<span class="item-sub">' + formatRupiah(item.harga * item.qty) + '</span>';
-    html += '</div>';
-  }
-  html += '<div class="co-subtotal-row">';
-  html += '<span>Subtotal</span>';
-  html += '<span>' + formatRupiah(subtotal) + '</span>';
-  html += '</div>';
+  html += '<div class="co-summary-items collapsed" id="co-summary-items">';
+  html += checkoutItemsHtml();
   html += '</div>'; // co-summary-items
   html += '</div>'; // co-section
 
-  // === 2. TANGGAL PENGANTARAN ===
-  html += '<div class="co-section" id="checkout-date">';
-  html += '<div class="co-section-title"><span class="co-step">2</span>Tanggal Pengantaran</div>';
-  html += '<div class="co-date-wrap">';
-  html += '<label class="co-date-label" for="co-date-input">Tanggal Pengantaran (bukan tanggal order)</label>';
-  html += '<input type="date" id="co-date-input" class="co-date-input" min="' + minStr + '" onchange="onCheckoutDateChange(this.value)">';
-  html += '<div class="co-date-hint" style="font-size: 0.8rem; color: #666; margin-top: 5px;">Pemesanan minimal H+1. Pesanan di atas jam 18.00 WIB minimal H+2.</div>';
-  html += '<div class="co-date-error" id="co-date-error"></div>';
+  // === 1. CARA MENERIMA ===
+  html += '<div class="co-section" id="checkout-shipping">';
+  html += '<div class="co-section-title"><span class="co-step">1</span>Bagaimana pesanan diterima?</div>';
+  html += '<div class="co-method-grid" role="group" aria-label="Cara menerima pesanan">';
+  html += '<button type="button" class="co-method-card' + (checkoutState.metode_kirim === 'AMBIL' ? ' active' : '') + '" data-ship="AMBIL" aria-pressed="' + (checkoutState.metode_kirim === 'AMBIL') + '" onclick="selectShippingMethod(\'AMBIL\')"><span class="co-method-icon">◌</span><strong>Ambil sendiri</strong><small>Datang ke lokasi</small></button>';
+  html += '<button type="button" class="co-method-card' + (checkoutState.metode_kirim === 'DIANTAR' ? ' active' : '') + '" data-ship="DIANTAR" aria-pressed="' + (checkoutState.metode_kirim === 'DIANTAR') + '" onclick="selectShippingMethod(\'DIANTAR\')"><span class="co-method-icon">↗</span><strong>Diantar</strong><small>Ke alamatmu</small></button>';
+  html += '<button type="button" class="co-method-card' + (checkoutState.metode_kirim === 'OJOL' ? ' active' : '') + '" data-ship="OJOL" aria-pressed="' + (checkoutState.metode_kirim === 'OJOL') + '" onclick="selectShippingMethod(\'OJOL\')"><span class="co-method-icon">↔</span><strong>Lewat ojol</strong><small>Driver menjemput</small></button>';
   html += '</div>';
+  html += '<div id="co-shipping-detail"></div>';
   html += '</div>';
 
-  // === 3. METODE PENGIRIMAN ===
-  html += '<div class="co-section" id="checkout-shipping">';
-  html += '<div class="co-section-title"><span class="co-step">3</span>Metode Pengiriman</div>';
-  var selAmbil = checkoutState.metode_kirim === 'AMBIL' ? 'selected' : '';
-  var selDiantar = checkoutState.metode_kirim === 'DIANTAR' ? 'selected' : '';
-  var selOjol = checkoutState.metode_kirim === 'OJOL' ? 'selected' : '';
-  html += '<select id="co-shipping-select" class="co-date-input" style="margin-bottom:10px;" onchange="selectShippingMethod(this.value)">';
-  html += '<option value="">— Pilih metode —</option>';
-  html += '<option value="AMBIL" ' + selAmbil + '>📍 Ambil Sendiri</option>';
-  html += '<option value="DIANTAR" ' + selDiantar + '>🛵 Diantar</option>';
-  html += '<option value="OJOL" ' + selOjol + '>📱 Ojol</option>';
-  html += '</select>';
-  html += '<div id="co-shipping-detail"></div>';
+  // === 2. TANGGAL ===
+  html += '<div class="co-section" id="checkout-date">';
+  html += '<div class="co-section-title"><span class="co-step">2</span>Kapan ingin menerima?</div>';
+  html += '<div class="co-date-wrap">';
+  html += '<label class="co-date-label" for="co-date-input">Tanggal</label>';
+  html += '<input type="date" id="co-date-input" class="co-date-input" min="' + dateChoice.min + '" value="' + checkoutState.tgl_antar + '" onchange="onCheckoutDateChange(this.value)">';
+  html += '<div class="co-date-hint">Tanggal terdekat yang tersedia sudah dipilih. Kamu bisa mengubahnya.</div>';
+  html += '<div class="co-date-error" id="co-date-error"></div>';
+  html += '</div>';
   html += '</div>';
 
   // === 3.5 DATA PENERIMA ===
@@ -1954,22 +2038,13 @@ function renderCheckoutScreen() {
   html += '</div>';
   html += '</div>';
 
-  // === 4. PEMBAYARAN ===
-  html += '<div class="co-section" id="checkout-payment">';
-  html += '<div class="co-section-title"><span class="co-step">4</span>Pembayaran</div>';
-  html += '<div class="co-pill-group" id="co-payment-pills">';
-  html += '<button class="co-pill" data-pay="COD" onclick="selectPayment(\'COD\')">💵 COD</button>';
-  html += '<button class="co-pill" data-pay="TRANSFER" onclick="selectPayment(\'TRANSFER\')">🏦 Transfer Bank</button>';
-  html += '<button class="co-pill" data-pay="QRIS" onclick="selectPayment(\'QRIS\')">📱 QRIS</button>';
-  html += '</div>';
-  html += '<div id="co-payment-detail"></div>';
-  html += '</div>';
+  // Optional choices stay available without filling the main screen.
+  html += '<details class="co-more" id="co-more"' + (promoState.input_code ? ' open' : '') + '><summary>Promo, poin, atau catatan <span>Opsional</span></summary><div class="co-more-content">';
 
-  // === 5. GUNAKAN POIN ===
   var pointMinRedeem = Number(settings.POINT_MIN_REDEEM || 0);
   var poinDisabled = poin < pointMinRedeem || poin <= 0;
   html += '<div class="co-section" id="checkout-points">';
-  html += '<div class="co-section-title"><span class="co-step">5</span>Gunakan Poin</div>';
+  html += '<div class="co-section-title">Gunakan poin</div>';
   html += '<div class="co-points-wrap">';
   html += '<div class="co-points-check">';
   html += '<input type="checkbox" id="co-use-points" ' + (poinDisabled ? 'disabled' : '') + ' onchange="onTogglePoints(this.checked)">';
@@ -1985,9 +2060,8 @@ function renderCheckoutScreen() {
   html += '</div>';
   html += '</div>';
 
-  // === 6. KODE PROMO ===
   html += '<div class="co-section" id="checkout-promo">';
-  html += '<div class="co-section-title"><span class="co-step">6</span>Kode Promo</div>';
+  html += '<div class="co-section-title">Kode promo</div>';
   html += '<form class="co-promo-form" onsubmit="event.preventDefault(); applyPromoFromInput();">';
   html += '<label class="sr-only" for="co-promo-input">Masukkan kode promo</label>';
   html += '<input id="co-promo-input" class="co-promo-input" type="text" autocomplete="off" autocapitalize="characters" placeholder="Contoh: TEST10" value="' + escHtml(promoState.input_code) + '" oninput="onPromoInput(this.value)">';
@@ -1996,12 +2070,12 @@ function renderCheckoutScreen() {
   html += '<div id="co-promo-feedback" class="co-promo-feedback" aria-live="polite"></div>';
   html += '</div>';
 
-  // === 7. CATATAN ===
   html += '<div class="co-section" id="checkout-note">';
   html += '<div class="co-catatan-wrap" style="margin-top:0;">';
   html += '<label class="co-label" for="co-catatan">Catatan untuk Samijaya (opsional)</label>';
   html += '<textarea id="co-catatan" class="co-catatan-input" rows="2" placeholder="Contoh: jangan terlalu manis, minta plastik besar…"></textarea>';
   html += '</div>';
+  html += '</div></details>';
   html += '</div>';
 
   // === 8. RINGKASAN BIAYA ===
@@ -2018,9 +2092,10 @@ function renderCheckoutScreen() {
 
   html += '<div class="co-cost-row total"><span>TOTAL</span><span class="co-cost-val" id="co-cost-total">' + formatRupiah(subtotal) + '</span></div>';
   
-  html += '<button id="btn-create-order" onclick="handleCreateOrder()" disabled>Buat Pesanan</button>';
+  html += '<button id="btn-create-order" onclick="handleCreateOrder()" disabled>Lanjut ke pembayaran</button>';
   html += '<div class="co-submit-note" id="co-submit-note">Lengkapi semua pilihan untuk melanjutkan.</div>';
   html += '<div class="co-validation-msg" id="co-validation-msg"></div>';
+  html += '<div class="co-payment-assurance">Cara bayar dipilih pada langkah berikutnya. Toko memproses setelah pembayaran berhasil.</div>';
   html += '</div>';
 
   html += '</aside>'; // checkout-summary-column
@@ -2029,6 +2104,7 @@ function renderCheckoutScreen() {
   html += '</div>'; // checkout-inner
 
   el.innerHTML = html;
+  if (checkoutState.metode_kirim) renderShippingDetail(checkoutState.metode_kirim);
   updatePromoUI();
   updateCheckoutSummary();
 }
@@ -2094,6 +2170,7 @@ function isDateHoliday(val) {
 // === SHIPPING METHOD ===
 function selectShippingMethod(method) {
   method = method.trim();
+  if (method === checkoutState.metode_kirim) return;
   checkoutState.metode_kirim = method;
   checkoutState.lokasi_pickup_id = '';
   checkoutState.jam_pilih = '';
@@ -2104,8 +2181,11 @@ function selectShippingMethod(method) {
   checkoutState.ongkir = null;
   checkoutState.jarak_km = 0;
   promoContextChanged(false);
-
-
+  document.querySelectorAll('.co-method-card').forEach(function(card) {
+    var active = card.getAttribute('data-ship') === method;
+    card.classList.toggle('active', active);
+    card.setAttribute('aria-pressed', String(active));
+  });
 
   renderShippingDetail(method);
 
@@ -2118,14 +2198,6 @@ function selectShippingMethod(method) {
     }
   }
 
-  if (method === 'DIANTAR') {
-    setTimeout(function() {
-      if (typeof initDeliveryMap === 'function') {
-        initDeliveryMap('delivery-map-section', onPinMoved);
-      }
-    }, 120);
-  }
-
   updateCheckoutSummary();
 }
 
@@ -2136,24 +2208,24 @@ function renderShippingDetail(method) {
 
   if (method === 'AMBIL' || method === 'OJOL') {
     var locations = (catalog && catalog.pickupLocations) ? catalog.pickupLocations : [];
+    var activeLocations = locations.filter(function(loc) { return String(loc.status).toLowerCase() === 'aktif' || String(loc.status) === '1' || loc.status === true; });
+    if (activeLocations.length === 1 && !checkoutState.lokasi_pickup_id) checkoutState.lokasi_pickup_id = activeLocations[0].lokasi_id;
     html += '<div style="margin-top:10px; margin-bottom:10px;">';
     html += '<label class="co-label" style="display:block; margin-bottom:5px;">Pilih Lokasi</label>';
     html += '<select id="co-pickup-select" class="co-date-input" onchange="onPickupChange(this.value)">';
     html += '<option value="">— Pilih lokasi —</option>';
-    for (var i = 0; i < locations.length; i++) {
-      var loc = locations[i];
-      if (String(loc.status).toLowerCase() === 'aktif' || String(loc.status) === '1' || loc.status === true) {
-        var label = escHtml(loc.nama) + ' (' + escHtml(loc.jam_buka || '') + '–' + escHtml(loc.jam_tutup || '') + ')';
-        html += '<option value="' + escHtml(loc.lokasi_id) + '">' + label + '</option>';
-      }
+    for (var i = 0; i < activeLocations.length; i++) {
+      var loc = activeLocations[i];
+      var label = escHtml(loc.nama) + ' (' + escHtml(loc.jam_buka || '') + '–' + escHtml(loc.jam_tutup || '') + ')';
+      html += '<option value="' + escHtml(loc.lokasi_id) + '"' + (checkoutState.lokasi_pickup_id === loc.lokasi_id ? ' selected' : '') + '>' + label + '</option>';
     }
     html += '</select>';
     html += '</div>';
 
-    html += '<div id="co-time-container" style="display:none; margin-bottom:10px;">';
+    html += '<div id="co-time-container" style="display:' + (checkoutState.lokasi_pickup_id ? 'block' : 'none') + '; margin-bottom:10px;">';
     var timeLabel = method === 'AMBIL' ? 'Jam ambil' : 'Jam jemput driver';
     html += '<label class="co-label" style="display:block; margin-bottom:5px;">' + timeLabel + '</label>';
-    html += '<input type="time" id="co-pickup-time" onchange="onPickupTimeChange(this.value)" class="co-date-input">';
+    html += '<input type="time" id="co-pickup-time" value="' + escHtml(checkoutState.jam_pilih) + '" onchange="onPickupTimeChange(this.value)" class="co-date-input">';
     html += '<div id="co-time-error" style="color:var(--danger); font-size:0.85rem; margin-top:5px;"></div>';
     html += '</div>';
 
@@ -2217,14 +2289,14 @@ function renderShippingDetail(method) {
     html += '<select id="co-slot-select" class="co-date-input" style="margin-bottom:10px;" onchange="selectSlot(this.value)">';
     html += '<option value="">— Pilih jam pengantaran —</option>';
     var slots = (catalog && catalog.deliverySlots) ? catalog.deliverySlots : [];
-    for (var s = 0; s < slots.length; s++) {
-      var sl = slots[s];
-      if (String(sl.status).toLowerCase() === 'aktif' || String(sl.status) === '1' || sl.status === true) {
+    var activeSlots = slots.filter(function(slot) { return String(slot.status).toLowerCase() === 'aktif' || String(slot.status) === '1' || slot.status === true; });
+    if (activeSlots.length === 1 && !checkoutState.slot_id) checkoutState.slot_id = activeSlots[0].slot_id;
+    for (var s = 0; s < activeSlots.length; s++) {
+      var sl = activeSlots[s];
         var selected = checkoutState.slot_id === sl.slot_id ? 'selected' : '';
         html += '<option value="' + escHtml(sl.slot_id) + '" ' + selected + '>';
         html += escHtml(sl.jam_mulai) + ' – ' + escHtml(sl.jam_selesai);
         html += '</option>';
-      }
     }
     html += '</select>';
     html += '<div class="co-slot-note" style="font-size:0.85rem; color:#666; text-align:center; margin-top:5px;">Waktu bersifat estimasi dan dapat disesuaikan Samijaya.</div>';
@@ -2555,22 +2627,12 @@ function renderPaymentDetail(method) {
   var settings = (catalog && catalog.settings) ? catalog.settings : {};
   var html = '<div class="co-payment-detail"><div class="co-transfer-info">';
 
-  var qrisId = String(settings.QRIS_FILE_ID || '').trim();
   var bank = String(settings.REKENING_BANK || '').trim();
   var nomor = String(settings.REKENING_NOMOR || '').trim();
   var nama = String(settings.REKENING_NAMA || '').trim();
 
   if (method === 'QRIS') {
-    if (qrisId) {
-      html += '<div class="co-qris-wrap">';
-      html += '<a href="https://drive.google.com/thumbnail?id=' + escHtml(qrisId) + '&sz=w400" target="_blank" rel="noopener">';
-      html += '<img src="https://drive.google.com/thumbnail?id=' + escHtml(qrisId) + '&sz=w400" alt="QRIS" loading="lazy">';
-      html += '</a>';
-      html += '<div class="co-qris-label">Scan QRIS</div>';
-      html += '</div>';
-    } else {
-      html += '<div class="co-shipping-note" style="opacity:1">Info QRIS belum tersedia. Hubungi toko.</div>';
-    }
+    html += '<div class="co-shipping-note" style="opacity:1">Pembayaran QRIS tersedia melalui langkah pembayaran online.</div>';
   } else if (method === 'TRANSFER') {
     if (bank || nomor || nama) {
       html += '<div class="co-bank-info">';
@@ -2881,7 +2943,7 @@ function updateCheckoutSummary() {
 
 function updateCheckoutValidation() {
   var missing = [];
-  if (!checkoutState.tgl_antar) missing.push('Tanggal pengantaran');
+  if (!checkoutState.tgl_antar || checkoutState.tgl_antar < suggestedCheckoutDate().min) missing.push('Tanggal menerima pesanan');
   if (checkoutState.tgl_antar && isDateHoliday(checkoutState.tgl_antar)) missing.push('Tanggal yang dipilih adalah hari libur');
   if (!checkoutState.metode_kirim) missing.push('Metode pengiriman');
   if (checkoutState.metode_kirim === 'AMBIL' || checkoutState.metode_kirim === 'OJOL') {
@@ -2915,16 +2977,7 @@ function updateCheckoutValidation() {
 
   var msgEl = document.getElementById('co-validation-msg');
   if (msgEl) {
-    if (missing.length > 0) {
-      var ul = '<ul>';
-      for (var i = 0; i < missing.length; i++) {
-        ul += '<li>' + escHtml(missing[i]) + '</li>';
-      }
-      ul += '</ul>';
-      msgEl.innerHTML = 'Belum lengkap:' + ul;
-    } else {
-      msgEl.innerHTML = '';
-    }
+    msgEl.textContent = _checkoutTriedSubmit && missing.length ? 'Periksa: ' + missing[0] + '.' : '';
   }
 
   // Tombol TIDAK di-disable oleh validasi — hanya saat _submitting
@@ -2932,10 +2985,26 @@ function updateCheckoutValidation() {
   var noteEl = document.getElementById('co-submit-note');
   if (btn) {
     var isValid = (missing.length === 0);
-    btn.disabled = _submitting || promoState.status === 'validating';
+    btn.disabled = _submitting || promoState.status === 'validating' || !_checkoutCatalogReady;
     if (noteEl) {
-      noteEl.textContent = promoState.status === 'validating' ? 'Tunggu pemeriksaan promo selesai.' : (isValid ? '' : 'Lengkapi semua pilihan untuk melanjutkan.');
+      noteEl.textContent = !_checkoutCatalogReady ? 'Memeriksa menu dan pembayaran…' :
+        promoState.status === 'validating' ? 'Tunggu pemeriksaan promo selesai.' :
+        isValid ? '' : 'Selanjutnya: ' + missing[0] + '.';
     }
+  }
+}
+
+function focusCheckoutMissing(message) {
+  var targetId = /Tanggal/i.test(message) ? 'co-date-input' :
+    /Metode pengiriman|Cara menerima/i.test(message) ? 'checkout-shipping' :
+    /Lokasi pengambilan|Jam ambil|Jam jemput|operasional lokasi/i.test(message) ? 'co-pickup-select' :
+    /Slot pengiriman/i.test(message) ? 'co-slot-select' :
+    /lokasi pengantaran|jangkauan antar|Minimal order/i.test(message) ? 'checkout-shipping' : 'checkout-shipping';
+  var target = document.getElementById(targetId);
+  if (!target) return;
+  target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if (target.tagName === 'INPUT' || target.tagName === 'SELECT') {
+    setTimeout(function() { try { target.focus({ preventScroll: true }); } catch (_) { target.focus(); } }, 250);
   }
 }
 
@@ -3003,6 +3072,10 @@ function buildCreateOrderPayload() {
 // === HANDLE createOrder ===
 async function handleCreateOrder(allowSafeResend) {
   if (_submitting || _orderSubmissionBlocking) return;
+  if (!_checkoutCatalogReady) {
+    setCheckoutCatalogStatus('Menu belum selesai diperiksa. Coba lagi sebelum membayar.', true);
+    return;
+  }
   if (promoState.status === 'validating') {
     var promoWaitMsg = document.getElementById('co-validation-msg');
     if (promoWaitMsg) promoWaitMsg.innerHTML = '<div class="co-error-inline">Tunggu pemeriksaan promo selesai.</div>';
@@ -3019,7 +3092,7 @@ async function handleCreateOrder(allowSafeResend) {
 
   // Validasi ulang sebelum submit
   var missing = [];
-  if (!checkoutState.tgl_antar) missing.push('Tanggal pengantaran');
+  if (!checkoutState.tgl_antar || checkoutState.tgl_antar < suggestedCheckoutDate().min) missing.push('Tanggal menerima pesanan');
   if (checkoutState.tgl_antar && isDateHoliday(checkoutState.tgl_antar)) missing.push('Tanggal yang dipilih adalah hari libur');
   if (!checkoutState.metode_kirim) missing.push('Metode pengiriman');
   if (checkoutState.metode_kirim === 'AMBIL' || checkoutState.metode_kirim === 'OJOL') {
@@ -3065,13 +3138,10 @@ async function handleCreateOrder(allowSafeResend) {
   }
 
   if (missing.length > 0) {
+    _checkoutTriedSubmit = true;
     var msgEl = document.getElementById('co-validation-msg');
-    if (msgEl) {
-      var ul = '<ul>';
-      for (var k = 0; k < missing.length; k++) ul += '<li>' + escHtml(missing[k]) + '</li>';
-      ul += '</ul>';
-      msgEl.innerHTML = 'Belum lengkap:' + ul;
-    }
+    if (msgEl) msgEl.textContent = 'Periksa: ' + missing[0] + '.';
+    focusCheckoutMissing(missing[0]);
     return;
   }
 
@@ -3098,7 +3168,7 @@ async function handleCreateOrder(allowSafeResend) {
   _submitting = true;
   setPendingOrderStatus(pending, 'SUBMITTING');
   var btn = document.getElementById('btn-create-order');
-  var originalText = 'Buat Pesanan';
+  var originalText = checkoutState.metode_bayar === 'MIDTRANS' ? 'Lanjut ke pembayaran' : 'Buat Pesanan';
   if (btn) { btn.disabled = true; btn.textContent = 'Memproses…'; }
 
   var keepSubmitLocked = false;
@@ -3280,8 +3350,8 @@ function renderSuccessScreen(data) {
   html += '</svg>';
   html += '</div>';
 
-  html += '<h2 class="success-heading">Pesanan Diterima!</h2>';
-  html += '<p class="success-sub">Terima kasih, pesanan kamu sedang menunggu konfirmasi Samijaya.</p>';
+  html += '<h2 class="success-heading">' + (metodeBayar === 'MIDTRANS' ? 'Selesaikan Pembayaran' : 'Pesanan Diterima!') + '</h2>';
+  html += '<p class="success-sub">' + (metodeBayar === 'MIDTRANS' ? 'Pesanan mulai diproses setelah pembayaran berhasil.' : 'Terima kasih, pesanan kamu sedang menunggu konfirmasi Samijaya.') + '</p>';
 
   // Order ID
   html += '<div class="success-order-id-wrap">';
@@ -3316,21 +3386,20 @@ function renderSuccessScreen(data) {
   html += '</div>';
 
   // Status
-  html += '<div class="success-status-badge">⏳ Menunggu konfirmasi Samijaya</div>';
+  html += '<div class="success-status-badge" id="success-payment-status">' + (metodeBayar === 'MIDTRANS' ? '⏳ Menunggu pembayaran' : '⏳ Menunggu konfirmasi Samijaya') + '</div>';
 
   // === PEMBAYARAN ===
-  if (metodeBayar === 'QRIS' && bayar) {
+  if (metodeBayar === 'MIDTRANS') {
+    html += '<div class="success-payment-box">';
+    html += '<div class="success-payment-title">Selesaikan pembayaran</div>';
+    html += '<p>Pilih cara bayar yang paling nyaman. Pesanan diproses setelah pembayaran terkonfirmasi.</p>';
+    html += '<button class="btn-success-primary" onclick="openMidtransPayment(\'' + escHtml(orderId) + '\')">Pilih cara bayar</button>';
+    html += '</div>';
+  } else if (metodeBayar === 'QRIS' && bayar) {
     html += '<div class="success-payment-box">';
     html += '<div class="success-payment-title">Selesaikan Pembayaran</div>';
 
-    if (bayar.qris_file_id) {
-      html += '<div class="success-qris-wrap">';
-      html += '<a href="https://drive.google.com/thumbnail?id=' + escHtml(bayar.qris_file_id) + '&sz=w400" target="_blank" rel="noopener">';
-      html += '<img src="https://drive.google.com/thumbnail?id=' + escHtml(bayar.qris_file_id) + '&sz=w400" alt="QRIS Samijaya" loading="lazy" class="success-qris-img">';
-      html += '</a>';
-      html += '<div class="success-qris-label">Scan QRIS di atas</div>';
-      html += '</div>';
-    }
+    html += '<p>Jika pesanan ini dibuat sebelum pembayaran online tersedia, hubungi Samijaya untuk petunjuk pembayaran.</p>';
 
     var waPesanQris = encodeURIComponent('Halo Samijaya, saya sudah melakukan pembayaran QRIS untuk pesanan ' + orderId + '. Berikut bukti pembayarannya:');
     html += '<a class="btn-success-primary" href="https://wa.me/' + escHtml(waToko) + '?text=' + waPesanQris + '" target="_blank" rel="noopener">📲 Kirim Bukti Pembayaran</a>';
@@ -3395,6 +3464,100 @@ function copyRekening(nomor) {
   }).catch(function() {
     showToast(nomor);
   });
+}
+
+function redirectToMidtrans(redirectUrl) {
+  try {
+    var url = new URL(redirectUrl);
+    if (url.protocol === 'https:' && (url.hostname === 'app.midtrans.com' || url.hostname === 'app.sandbox.midtrans.com')) {
+      window.location.assign(url.href);
+      return true;
+    }
+  } catch (_) {}
+  return false;
+}
+
+function loadSnapScript(payment) {
+  var src = String(payment.snap_js_url || '');
+  var key = String(payment.client_key || '');
+  if (!payment.snap_token || !key ||
+      !['https://app.midtrans.com/snap/snap.js', 'https://app.sandbox.midtrans.com/snap/snap.js'].includes(src)) {
+    return Promise.reject(new Error('SNAP_CONFIG_MISSING'));
+  }
+  if (window.snap && typeof window.snap.pay === 'function') return Promise.resolve();
+  if (_snapScriptPromise) return _snapScriptPromise;
+  _snapScriptPromise = new Promise(function(resolve, reject) {
+    var script = document.createElement('script');
+    script.src = src;
+    script.setAttribute('data-client-key', key);
+    script.onload = function() {
+      if (window.snap && typeof window.snap.pay === 'function') resolve();
+      else reject(new Error('SNAP_UNAVAILABLE'));
+    };
+    script.onerror = function() { reject(new Error('SNAP_LOAD_FAILED')); };
+    document.head.appendChild(script);
+  }).catch(function(error) { _snapScriptPromise = null; throw error; });
+  return _snapScriptPromise;
+}
+
+async function checkPaymentAfterSnap(orderId, attempts) {
+  var run = ++_paymentPollRun;
+  var badge = document.getElementById('success-payment-status');
+  if (badge) badge.textContent = '⌛ Memeriksa pembayaran…';
+  for (var attempt = 0; attempt < attempts; attempt++) {
+    if (attempt) await new Promise(function(resolve) { setTimeout(resolve, 5000); });
+    if (run !== _paymentPollRun) return;
+    var visible = document.getElementById('success-screen');
+    if (!visible || visible.classList.contains('hidden')) return;
+    try {
+      var response = await api('getPayment', { order_id: orderId });
+      var status = response.data && response.data.payment && response.data.payment.status;
+      if (response.ok && ['PAID','PARTIAL_REFUND'].includes(status)) {
+        if (badge) badge.textContent = '✓ Pembayaran diterima';
+        var success = document.getElementById('success-screen');
+        if (success && !success.classList.contains('hidden')) { closeSuccessScreen(); showMyOrders(); }
+        showToast('Pembayaran diterima. Terima kasih!');
+        return;
+      }
+      if (['EXPIRED','REFUNDED','BATAL'].includes(status)) break;
+    } catch (_) { /* Coba lagi bila status server belum tersedia. */ }
+  }
+  if (badge) badge.textContent = '⏳ Pembayaran belum terkonfirmasi';
+  showToast('Status pembayaran sedang diperiksa. Lihat Pesanan Saya beberapa saat lagi.');
+}
+
+async function presentPayment(payment, orderId) {
+  if (_snapOpening) return;
+  _snapOpening = true;
+  try {
+    await loadSnapScript(payment);
+    window.snap.pay(payment.snap_token, {
+      onSuccess: function() { _snapOpening = false; checkPaymentAfterSnap(orderId, 12); },
+      onPending: function() { _snapOpening = false; checkPaymentAfterSnap(orderId, 120); },
+      onError: function() { _snapOpening = false; showToast('Pembayaran belum selesai. Coba lagi dari Pesanan Saya.'); },
+      onClose: function() { _snapOpening = false; checkPaymentAfterSnap(orderId, 120); }
+    });
+  } catch (_) {
+    _snapOpening = false;
+    if (!redirectToMidtrans(payment.redirect_url)) showToast('Halaman pembayaran belum tersedia. Coba lagi sebentar.');
+  }
+}
+
+async function openMidtransPayment(orderId) {
+  try {
+    var res = await api('getPayment', { order_id: orderId });
+    if (!res.ok) { showToast('Belum dapat memeriksa pembayaran. Coba lagi.'); return; }
+    var payment = res.data && res.data.payment || {};
+    if (payment.status === 'PAID' || payment.status === 'PARTIAL_REFUND') {
+      showToast('Pembayaran sudah diterima. Pesanan akan diproses.');
+      if (document.getElementById('my-orders-screen') && !document.getElementById('my-orders-screen').classList.contains('hidden')) loadMyOrders();
+      return;
+    }
+    if (payment.status === 'REFUNDED') { showToast('Dana pesanan ini telah dikembalikan.'); return; }
+    if (payment.status === 'EXPIRED' || payment.status === 'BATAL') { showToast('Waktu pembayaran telah berakhir. Hubungi toko jika memerlukan bantuan.'); return; }
+    if (payment.status === 'PENDING') { presentPayment(payment, orderId); return; }
+    showToast('Halaman pembayaran belum tersedia. Coba lagi sebentar.');
+  } catch (_) { showToast('Belum dapat menghubungi layanan pembayaran. Coba lagi.'); }
 }
 
 // === INIT ===
@@ -3494,6 +3657,16 @@ document.addEventListener('DOMContentLoaded', async function () {
   var searchInput = document.querySelector('#search-box input');
   if (searchInput) {
     searchInput.addEventListener('input', onSearchInput);
+  }
+  var paymentReturn = new URLSearchParams(window.location.search).get('payment');
+  if (paymentReturn && session.token) {
+    history.replaceState(null, '', window.location.pathname);
+    try {
+      var paymentCheck = await api('getPayment', { order_id: paymentReturn });
+      if (paymentCheck.ok && ['PAID','PARTIAL_REFUND'].includes(paymentCheck.data.payment.status)) showToast('Pembayaran diterima. Terima kasih!');
+      else showToast('Status pembayaran belum final. Periksa kembali di Pesanan Saya.');
+      showMyOrders();
+    } catch (_) { showToast('Status pembayaran belum dapat diperiksa. Buka Pesanan Saya.'); }
   }
 });
 
@@ -3650,6 +3823,7 @@ function renderMyOrders(orders, reviewableMap, lastSeenOrdersAt) {
     
     html += '<div class="my-order-status-wrap">';
     html += '<span class="my-order-status ' + statusClass + '">' + escHtml(order.status) + '</span>';
+    if (order.metode_bayar === 'MIDTRANS') html += '<span class="my-order-status">' + (order.payment_status === 'PAID' ? 'Pembayaran lunas' : order.payment_status === 'PARTIAL_REFUND' ? 'Pembayaran diterima' : order.payment_status === 'REFUNDED' ? 'Dana dikembalikan' : order.payment_status === 'EXPIRED' ? 'Pembayaran kedaluwarsa' : 'Menunggu pembayaran') + '</span>';
     if (hasUpdate) {
       html += '<span class="order-update-dot my-order-update-dot" title="Status pesanan diperbarui" aria-label="Status pesanan diperbarui"></span>';
     }
@@ -3673,6 +3847,9 @@ function renderMyOrders(orders, reviewableMap, lastSeenOrdersAt) {
     
     html += '<div class="my-order-actions" style="flex-wrap: wrap; gap: 8px;">';
     html += '<button class="my-order-btn-detail" onclick="toggleOrderDetail(\'' + escHtml(oid) + '\')">Detail</button>';
+    if (order.metode_bayar === 'MIDTRANS' && order.status === 'MENUNGGU' && !['PAID','PARTIAL_REFUND','REFUNDED','EXPIRED'].includes(order.payment_status)) {
+      html += '<button class="my-order-btn-detail" onclick="openMidtransPayment(\'' + escHtml(oid) + '\')">Lanjutkan pembayaran</button>';
+    }
     
     var waToko = (catalog && catalog.settings && catalog.settings.NOMOR_WA_TOKO) ? String(catalog.settings.NOMOR_WA_TOKO || '').replace(/[^0-9]/g, '') : '6285179912504';
     var waMsg = encodeURIComponent('Halo Samijaya, saya mau tanya pesanan ' + oid);
@@ -3778,7 +3955,7 @@ function renderMyOrders(orders, reviewableMap, lastSeenOrdersAt) {
     
     html += '<div class="my-order-info-group">';
     html += '<div class="my-order-info-label">Metode Pembayaran</div>';
-    html += '<div class="my-order-info-value">' + escHtml(order.metode_bayar) + '</div>';
+    html += '<div class="my-order-info-value">' + escHtml(order.metode_bayar === 'MIDTRANS' ? 'Pembayaran online' : order.metode_bayar) + '</div>';
     html += '</div>';
     
     // Rincian Biaya
