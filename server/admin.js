@@ -7,6 +7,7 @@ const media = require('./media');
 const notifications = require('./notification-queue');
 
 const loginAttempts = new Map();
+const otpRequests = new Map();
 const TABLES = {
   Orders: null, OrderItems: null, OrderItemAddons: null,
   Products: ['nama','harga','foto_file_id','kategori_id','deskripsi','badge_promo','tersedia','urutan','status'],
@@ -75,23 +76,40 @@ function adminPhones() {
   const row=query('SELECT "value" FROM samijaya."Settings" WHERE "key"=$1 LIMIT 1',['ADMIN_OTP_PHONES']).rows[0];
   return [...new Set(String(row&&row.value||'').split(',').map(notifications.normalizePhone).filter(Boolean))];
 }
+function pause(ms) {return new Promise(resolve=>setTimeout(resolve,ms));}
 async function beginOtpLogin(req) {
   const phones=adminPhones();
   if(phones.length!==2) return {ok:false,code:'ADMIN_OTP_CONFIG_INVALID'};
+  const requestId=crypto.createHash('sha256').update(requestKey(req)).digest('hex');
+  const lastRequest=otpRequests.get(requestId)||0;
+  if(Date.now()-lastRequest<60000) return {ok:false,code:'ADMIN_OTP_COOLDOWN'};
+  otpRequests.set(requestId,Date.now());
   const challengeId=crypto.randomBytes(24).toString('hex');
   const otp=String(crypto.randomInt(0,1000000)).padStart(6,'0');
-  const keyHash=crypto.createHash('sha256').update(requestKey(req)).digest('hex');
+  const keyHash=requestId;
   query(`INSERT INTO samijaya.admin_otp_challenges(challenge_id,otp_hash,request_key_hash,expires_at)
     VALUES($1,$2,$3,now()+interval '10 minutes')`,[challengeId,otpHash(challengeId,otp),keyHash]);
   const message=`Kode masuk admin Samijaya: ${otp}. Berlaku 10 menit. Abaikan jika Anda tidak meminta kode ini.`;
-  try {
-    await Promise.all(phones.map(phone=>notifications.sendMessage(phone,message)));
-  } catch (_) {
+  const failed=[];
+  let delivered=0;
+  for(let index=0;index<phones.length;index++) {
+    if(index) await pause(1400);
+    const phone=phones[index];
+    try {await notifications.sendMessage(phone,message);delivered++;}
+    catch (_) {failed.push(phone);}
+  }
+  if(!delivered) {
     query('DELETE FROM samijaya.admin_otp_challenges WHERE challenge_id=$1',[challengeId]);
+    otpRequests.delete(requestId);
     return {ok:false,code:'ADMIN_OTP_SEND_FAILED'};
   }
+  if(failed.length) {
+    const retry=async()=>{for(const phone of failed){try{await notifications.sendMessage(phone,message);}catch(_){}}};
+    const timer=setTimeout(retry,8000);if(timer.unref)timer.unref();
+  }
   query("DELETE FROM samijaya.admin_otp_challenges WHERE expires_at<now()-interval '1 day' OR used_at<now()-interval '1 day'");
-  return {ok:true,data:{challenge_id:challengeId,recipient_count:phones.length,expires_in_seconds:600}};
+  return {ok:true,data:{challenge_id:challengeId,recipient_count:phones.length,delivered_count:delivered,
+    delivery_pending:failed.length>0,expires_in_seconds:600}};
 }
 function verifyOtpLogin(req,challengeId,otp) {
   if(!/^[a-f0-9]{48}$/.test(String(challengeId||''))||!/^\d{6}$/.test(String(otp||''))) return {ok:false,code:'ADMIN_OTP_INVALID'};
@@ -324,7 +342,7 @@ async function handle(req,res,url) {
       record.count++;loginAttempts.set(key,record);return error(res,401,'LOGIN_FAILED');
     }
     const started=await beginOtpLogin(req);
-    if(!started.ok) return error(res,503,started.code);
+    if(!started.ok) return error(res,started.code==='ADMIN_OTP_COOLDOWN'?429:503,started.code);
     return reply(res,200,{ok:true,data:started.data});
   }
   if(op==='verifyLoginOtp') {
