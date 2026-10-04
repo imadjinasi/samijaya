@@ -125,7 +125,8 @@ function serveStatic(req,res,pathname) {
   const content=fs.readFileSync(target);
   res.writeHead(200,{'Content-Type':MIME[path.extname(target)]||'application/octet-stream',
     'Content-Length':content.length,'X-Content-Type-Options':'nosniff',
-    'Referrer-Policy':'strict-origin-when-cross-origin','X-Frame-Options':'DENY'});
+    'Referrer-Policy':'strict-origin-when-cross-origin','X-Frame-Options':'DENY',
+    ...(path.extname(target)==='.html'?{'Cache-Control':'no-store'}:{})});
   if(req.method==='HEAD') res.end(); else res.end(content);
 }
 const server=http.createServer(async (req,res)=>{
