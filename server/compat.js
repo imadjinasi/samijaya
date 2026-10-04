@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { query, fetchSync } = require('./sync-bridge');
+const notificationQueue = require('./notification-queue');
 
 const tableCache = new Map();
 const cache = new Map();
@@ -140,6 +141,7 @@ const Logger = { log() {} };
 function context() {
   const ctx = vm.createContext({console:{log(){}},SpreadsheetApp,Utilities,CacheService,
     PropertiesService,LockService,UrlFetchApp,ContentService,HtmlService,Logger,
+    queueOrderStatusNotification:(orderId,status,point)=>notificationQueue.enqueueStatus(query,orderId,status,point),
     Date,JSON,Math,String,Number,Boolean,Array,Object,RegExp,parseInt,parseFloat,
     isNaN,isFinite,encodeURIComponent,decodeURIComponent,Set,Map});
   vm.runInContext(source,ctx,{filename:'samijaya-gas.js',timeout:1000});

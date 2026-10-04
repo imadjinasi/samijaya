@@ -7,6 +7,7 @@ const { context, query } = require('./compat');
 const admin = require('./admin');
 const midtrans = require('./midtrans');
 const media = require('./media');
+const notificationQueue = require('./notification-queue');
 
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.PORT || 3100);
@@ -163,3 +164,5 @@ const server=http.createServer(async (req,res)=>{
 });
 server.listen(PORT,HOST,()=>console.log(`Samijaya listening on ${HOST}:${PORT}`));
 if (midtrans.available()) setInterval(()=>midtrans.reconcile().catch(()=>{}),300000).unref();
+setTimeout(()=>notificationQueue.drain(query).catch(()=>{}),5000).unref();
+setInterval(()=>notificationQueue.drain(query).catch(()=>{}),60000).unref();

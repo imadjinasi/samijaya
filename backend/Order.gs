@@ -1175,7 +1175,7 @@ function orderUpdateStatus(orderId, newStatus, actorChatId, cancelReason) {
   var safeReason = transactionSafeText(cancelReason || 'Dibatalkan oleh admin', 300);
   if (newStatus === 'BATAL' && safeReason === null) return { ok: false, code: 'CANCEL_REASON_INVALID', error: 'Alasan pembatalan tidak valid' };
 
-  return withLock(function () {
+  var statusResult = withLock(function () {
     if (!isAdmin(actorChatId)) return { ok: false, code: 'UNAUTHORIZED_ACTOR', error: 'Aktor tidak berwenang' };
     var allOrders = readAll('Orders');
     var order = null;
@@ -1287,6 +1287,18 @@ function orderUpdateStatus(orderId, newStatus, actorChatId, cancelReason) {
     }
     return { ok: true, data: { order: order } };
   });
+  if (statusResult && statusResult.ok && statusResult.data && !statusResult.data.unchanged &&
+      typeof queueOrderStatusNotification === 'function') {
+    try {
+      queueOrderStatusNotification(orderId, newStatus, statusResult.data.poin_ditambah || 0);
+    } catch (_) {
+      safeLog('ERROR', 'CUSTOMER_NOTIFICATION_QUEUE_FAILED', orderId, {
+        operation: 'orderUpdateStatus', stage: 'notification_queue', order_id: orderId,
+        error_code: 'CUSTOMER_NOTIFICATION_QUEUE_FAILED', retryable: true
+      });
+    }
+  }
+  return statusResult;
 }
 
 function _orderStatusRecovery(orderId, stage, code) {

@@ -4,6 +4,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { context, query, columns, tableName, qi, invalidateForAdmin } = require('./compat');
 const media = require('./media');
+const notifications = require('./notification-queue');
 
 const loginAttempts = new Map();
 const TABLES = {
@@ -63,6 +64,47 @@ function authenticated(req) {
     return value.exp>Date.now() && value.hash===hash;
   } catch (_) {return false;}
 }
+function requestKey(req) {
+  return String(req.headers['cf-connecting-ip']||req.socket.remoteAddress||'unknown').slice(0,80);
+}
+function otpHash(challengeId,otp) {
+  return crypto.createHmac('sha256',process.env.AUTH_HASH_PEPPER||process.env.ADMIN_SESSION_SECRET||'')
+    .update(String(challengeId)+':'+String(otp)).digest('hex');
+}
+function adminPhones() {
+  const row=query('SELECT "value" FROM samijaya."Settings" WHERE "key"=$1 LIMIT 1',['ADMIN_OTP_PHONES']).rows[0];
+  return [...new Set(String(row&&row.value||'').split(',').map(notifications.normalizePhone).filter(Boolean))];
+}
+async function beginOtpLogin(req) {
+  const phones=adminPhones();
+  if(phones.length!==2) return {ok:false,code:'ADMIN_OTP_CONFIG_INVALID'};
+  const challengeId=crypto.randomBytes(24).toString('hex');
+  const otp=String(crypto.randomInt(0,1000000)).padStart(6,'0');
+  const keyHash=crypto.createHash('sha256').update(requestKey(req)).digest('hex');
+  query(`INSERT INTO samijaya.admin_otp_challenges(challenge_id,otp_hash,request_key_hash,expires_at)
+    VALUES($1,$2,$3,now()+interval '10 minutes')`,[challengeId,otpHash(challengeId,otp),keyHash]);
+  const message=`Kode masuk admin Samijaya: ${otp}. Berlaku 10 menit. Abaikan jika Anda tidak meminta kode ini.`;
+  try {
+    await Promise.all(phones.map(phone=>notifications.sendMessage(phone,message)));
+  } catch (_) {
+    query('DELETE FROM samijaya.admin_otp_challenges WHERE challenge_id=$1',[challengeId]);
+    return {ok:false,code:'ADMIN_OTP_SEND_FAILED'};
+  }
+  query("DELETE FROM samijaya.admin_otp_challenges WHERE expires_at<now()-interval '1 day' OR used_at<now()-interval '1 day'");
+  return {ok:true,data:{challenge_id:challengeId,recipient_count:phones.length,expires_in_seconds:600}};
+}
+function verifyOtpLogin(req,challengeId,otp) {
+  if(!/^[a-f0-9]{48}$/.test(String(challengeId||''))||!/^\d{6}$/.test(String(otp||''))) return {ok:false,code:'ADMIN_OTP_INVALID'};
+  const row=query('SELECT * FROM samijaya.admin_otp_challenges WHERE challenge_id=$1 FOR UPDATE',[challengeId]).rows[0];
+  const keyHash=crypto.createHash('sha256').update(requestKey(req)).digest('hex');
+  if(!row||row.used_at||new Date(row.expires_at).getTime()<=Date.now()||row.attempts>=5||!constantEqual(row.request_key_hash,keyHash)) return {ok:false,code:'ADMIN_OTP_INVALID'};
+  if(!constantEqual(row.otp_hash,otpHash(challengeId,otp))) {
+    query('UPDATE samijaya.admin_otp_challenges SET attempts=attempts+1 WHERE challenge_id=$1',[challengeId]);
+    return {ok:false,code:'ADMIN_OTP_INVALID'};
+  }
+  query('UPDATE samijaya.admin_otp_challenges SET used_at=now() WHERE challenge_id=$1',[challengeId]);
+  return {ok:true};
+}
 function sameOrigin(req) {
   const origin=req.headers.origin;
   const host=String(req.headers.host||'').toLowerCase();
@@ -119,8 +161,20 @@ function dashboard() {
   const awaitingPayment=valid.filter(r=>r.metode_bayar==='MIDTRANS'&&r.status==='MENUNGGU'&&!['PAID','PARTIAL_REFUND','REFUNDED','EXPIRED'].includes(r.payment_status)).length;
   const members=Number(query('SELECT count(*)::int AS n FROM samijaya."Members"').rows[0].n);
   const products=Number(query(`SELECT count(*)::int AS n FROM samijaya."Products" WHERE lower("status")='aktif'`).rows[0].n);
+  const days=[];
+  for(let offset=6;offset>=0;offset--) {
+    const date=new Date(Date.now()-offset*86400000);
+    const key=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta',year:'numeric',month:'2-digit',day:'2-digit'}).format(date);
+    const dayRows=valid.filter(row=>String(row.created_at).startsWith(key));
+    days.push({date:key,orders:dayRows.length,revenue:dayRows.filter(row=>row.status==='SELESAI').reduce((sum,row)=>sum+(Number(row.total)||0),0)});
+  }
+  const statusCounts={}; valid.forEach(row=>{statusCounts[row.status]=(statusCounts[row.status]||0)+1;});
+  const methodCounts={}; valid.forEach(row=>{methodCounts[row.metode_kirim]=(methodCounts[row.metode_kirim]||0)+1;});
+  const topProducts=query(`SELECT i."nama_snapshot" AS name,sum(CASE WHEN i."qty"~'^\\d+$' THEN i."qty"::int ELSE 0 END)::int AS qty
+    FROM samijaya."OrderItems" i JOIN samijaya."Orders" o ON o."order_id"=i."order_id"
+    WHERE o."status"='SELESAI' GROUP BY i."nama_snapshot" ORDER BY qty DESC,name LIMIT 5`).rows;
   return {ok:true,data:{today_orders:todays.length,today_revenue:revenue,active_orders:active,awaiting_payment:awaitingPayment,
-    members,active_products:products,recent_orders:rows.slice(0,20)}};
+    members,active_products:products,recent_orders:rows.slice(0,20),analytics:{days,statuses:statusCounts,methods:methodCounts,top_products:topProducts}}};
 }
 function orderDetails(orderId) {
   const order=query('SELECT * FROM samijaya."Orders" WHERE "order_id"=$1',[orderId]).rows[0];
@@ -157,6 +211,11 @@ function save(table, sourceRow, input) {
       const row=query('SELECT * FROM samijaya."Settings" WHERE source_row=$1',[sourceRow]).rows[0];
       if(!row||SETTINGS_SECRET.test(row.key)) return {ok:false,code:'SETTING_PROTECTED'};
       settingKey=row.key;
+      if(row.key==='ADMIN_OTP_PHONES' && Object.hasOwn(allowed,'value')) {
+        const phones=[...new Set(String(allowed.value||'').split(',').map(notifications.normalizePhone).filter(Boolean))];
+        if(phones.length!==2) return {ok:false,code:'ADMIN_PHONES_INVALID'};
+        allowed.value=phones.join(',');
+      }
     }
     let rowNumber=Number(sourceRow);
     if(rowNumber) {
@@ -256,7 +315,7 @@ async function handle(req,res,url) {
   try {request=await readJson(req);} catch (_) {return error(res,400,'BAD_REQUEST');}
   const op=String(request.op||'');
   if(op==='login') {
-    const key=String(req.headers['cf-connecting-ip']||req.socket.remoteAddress||'unknown').slice(0,80);
+    const key=requestKey(req);
     const now=Date.now(),record=loginAttempts.get(key)||{count:0,until:now+900000};
     if(record.until<now) {record.count=0;record.until=now+900000;}
     if(record.count>=5) return error(res,429,'RATE_LIMITED');
@@ -264,8 +323,15 @@ async function handle(req,res,url) {
     if(!process.env.ADMIN_PASSWORD_HASH||!process.env.ADMIN_SESSION_SECRET||!constantEqual(hash,process.env.ADMIN_PASSWORD_HASH)) {
       record.count++;loginAttempts.set(key,record);return error(res,401,'LOGIN_FAILED');
     }
-    loginAttempts.delete(key);
-    try {withTransaction(()=>{audit('ADMIN_LOGIN','Admin','login');return {ok:true};});} catch (_) {}
+    const started=await beginOtpLogin(req);
+    if(!started.ok) return error(res,503,started.code);
+    return reply(res,200,{ok:true,data:started.data});
+  }
+  if(op==='verifyLoginOtp') {
+    const result=withTransaction(()=>verifyOtpLogin(req,String(request.challenge_id||''),String(request.otp||'')));
+    if(!result.ok) return error(res,401,result.code);
+    loginAttempts.delete(requestKey(req));
+    try {withTransaction(()=>{audit('ADMIN_LOGIN','Admin','otp');return {ok:true};});} catch (_) {}
     return reply(res,200,{ok:true},{'Set-Cookie':`samijaya_admin=${signedSession()}; HttpOnly; Secure; SameSite=Strict; Path=/admin; Max-Age=28800`});
   }
   if(!authenticated(req)) return error(res,401,'UNAUTHORIZED');

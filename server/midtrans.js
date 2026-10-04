@@ -1,4 +1,5 @@
 'use strict';
+const notificationQueue = require('./notification-queue');
 const crypto = require('node:crypto');
 const { context, query } = require('./compat');
 
@@ -108,6 +109,7 @@ function notifyPaid(orderId) {
   try { snapshot=JSON.parse(order.commit_snapshot_json||''); } catch (_) { return; }
   const ctx=context();
   const result=ctx._notifyAdminNewOrder(snapshot.order,snapshot.notification_items);
+  notificationQueue.enqueuePaid(query,orderId);
   if (result && result.ok) query('UPDATE samijaya.midtrans_payments SET notified_at=now() WHERE order_id=$1 AND notified_at IS NULL',[orderId]);
 }
 function cancelExpired(orderId) {

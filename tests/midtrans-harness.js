@@ -27,7 +27,7 @@ const sandbox={module:moduleBox,exports:moduleBox.exports,Buffer,Date,Intl,Numbe
   AbortSignal,setImmediate:fn=>queued.push(fn),
   process:{env:{MIDTRANS_MODE:'sandbox',MIDTRANS_SANDBOX_SERVER_KEY:'test-only-key',MIDTRANS_SANDBOX_CLIENT_KEY:'test-client-key'}},
   require:name=>name==='node:crypto'?crypto:name==='./compat'?{query,context:()=>({requireSession:token=>token==='valid'?{member_id:'M1'}:null,
-    _notifyAdminNewOrder:()=>{notices++;return {ok:true};}})}:null,
+    _notifyAdminNewOrder:()=>{notices++;return {ok:true};}})}:name==='./notification-queue'?{enqueuePaid:()=>1}:null,
   fetch:async(_url,options)=>{snapBody=JSON.parse(options.body);snapHeaders=options.headers;return {ok:true,json:async()=>({token:'test-token',redirect_url:'https://app.sandbox.midtrans.com/snap/v2/vtweb/test'})};}
 };
 vm.runInNewContext(fs.readFileSync(path.join(__dirname,'..','server','midtrans.js'),'utf8'),sandbox,{filename:'midtrans.js'});
