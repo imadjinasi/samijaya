@@ -6,6 +6,7 @@ This runbook applies to the Node/PostgreSQL deployment. The legacy Apps Script a
 
 - Ubuntu chroot: `/data/local/ubuntu26` on Android.
 - Application: `/srv/samijaya/current`, a symlink to a versioned release under `/srv/samijaya/releases`.
+- Product and campaign photos: `/srv/samijaya/media/images` (owned by `samijaya`, outside versioned releases). Include this directory in backups and restores together with the database; `foto_file_id` and `gambar_file_id` store the local filename.
 - Private configuration: `/srv/samijaya/prod.env` (root, mode `600`).
 - PostgreSQL: Termux PostgreSQL on `127.0.0.1:5432`; production database `samijaya`, role `samijaya_app`.
 - Node: `127.0.0.1:3100`, PID `/srv/samijaya/app.pid`, log `/srv/samijaya/logs/app.log`.
@@ -30,6 +31,8 @@ The prompt changes to `root@localhost:/#`. Do not run `chroot` again from there.
 From inside Ubuntu, use `/srv/samijaya/current/deploy/start-app.sh` and `stop-app.sh`. The scripts inspect the recorded PID and signal only this application. The Android Samijaya worker restarts the app within 30 seconds after it exits, so pause that worker first for a planned stop or manual rollback. Check `/_health` and `/_ready` on `127.0.0.1:3100`; `/_ready` verifies access to the imported 21-table manifest. A 200 response is necessary but does not replace row reconciliation or customer action tests.
 
 Never print `prod.env` or tunnel token in a command, log, issue, or chat. Use a name-only presence check for required variables. Restart Node after changing environment values.
+
+Add or replace a product photo in Admin → Produk → Tambah/Ubah. The browser resizes the selected JPG, PNG, or WebP to a WebP of at most 1200 pixels before upload; the server validates the image signature and stores it under `/srv/samijaya/media/images`. The catalog serves `/media/images/<filename>` through Node. A release switch must preserve the media directory. If a database restore refers to a missing filename, restore the matching media backup before opening the store.
 
 ## Data migration and release gate
 

@@ -69,11 +69,10 @@ function catalogGetCatalog() {
   for (var i = 0; i < allProducts.length; i++) {
     var p = allProducts[i];
     if (String(p.status) === 'aktif') {
-      // Tambahkan foto_url
+      // File gambar dikelola pada server Samijaya, di luar direktori rilis.
       var fotoFileId = String(p.foto_file_id || '').trim();
-      p.foto_url = fotoFileId
-        ? 'https://drive.google.com/thumbnail?id=' + fotoFileId + '&sz=w400'
-        : '';
+      p.foto_url = /^[0-9a-f-]{36}\.(png|jpg|webp)$/.test(fotoFileId)
+        ? '/media/images/' + fotoFileId : '';
       products.push(p);
     }
   }

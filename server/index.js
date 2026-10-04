@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const { context, query } = require('./compat');
 const admin = require('./admin');
 const midtrans = require('./midtrans');
+const media = require('./media');
 
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.PORT || 3100);
@@ -155,6 +156,8 @@ const server=http.createServer(async (req,res)=>{
   }
   if(req.method==='POST' && pathname==='/telegram/webhook') return handleApi(req,res,url.searchParams,true);
   if(pathname==='/admin'||pathname.startsWith('/admin/')) return admin.handle(req,res,url);
+  if((req.method==='GET'||req.method==='HEAD')&&pathname.startsWith('/media/images/'))
+    return media.serve(req,res,pathname.slice('/media/images/'.length));
   if(req.method==='GET'||req.method==='HEAD') return serveStatic(req,res,pathname);
   return send(res,405,'Method Not Allowed','text/plain');
 });

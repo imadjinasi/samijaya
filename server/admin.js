@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { context, query, columns, tableName, qi, invalidateForAdmin } = require('./compat');
+const media = require('./media');
 
 const loginAttempts = new Map();
 const TABLES = {
@@ -135,12 +136,17 @@ function permittedFields(table) {
   const allowed=TABLES[table];
   if(allowed==='*') {
     const id=ID_FIELDS[table];
-    return columns(table).filter(k=>k!==id && !['source_row','created_at','updated_at'].includes(k));
+    return columns(table).filter(k=>k!==id && !['source_row','created_at','updated_at'].includes(k) &&
+      !(table==='Campaigns'&&k==='gambar_url'));
   }
   return (allowed||[]).filter(k=>k!==ID_FIELDS[table]);
 }
 function save(table, sourceRow, input) {
   if(!Object.hasOwn(TABLES,table)||TABLES[table]===null||!input||typeof input!=='object'||Array.isArray(input)) return {ok:false,code:'BAD_REQUEST'};
+  if(table==='Products' && Object.hasOwn(input,'foto_file_id') && input.foto_file_id &&
+    !/^[0-9a-f-]{36}\.(?:png|jpg|webp)$/.test(String(input.foto_file_id))) return {ok:false,code:'PHOTO_INVALID'};
+  if(table==='Campaigns' && Object.hasOwn(input,'gambar_file_id') && input.gambar_file_id &&
+    !/^[0-9a-f-]{36}\.(?:png|jpg|webp)$/.test(String(input.gambar_file_id))) return {ok:false,code:'PHOTO_INVALID'};
   if(table==='Reviews' && !['aktif','hidden','dihapus'].includes(String(input.status||''))) return {ok:false,code:'STATUS_INVALID'};
   let settingKey='';
   const result=withTransaction(()=>{
@@ -211,10 +217,19 @@ async function readJson(req) {
   for await (const c of req) {total+=c.length;if(total>131072) throw new Error('BODY_TOO_LARGE');chunks.push(c);}
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
+async function readImage(req) {
+  let total=0;const chunks=[];
+  for await(const chunk of req) {
+    total+=chunk.length;
+    if(total>media.MAX_BYTES) throw new Error('IMAGE_SIZE_INVALID');
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
 async function handle(req,res,url) {
   if(req.method==='GET' && url.pathname==='/admin') {
     res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Content-Length':html.length,
-      'Cache-Control':'no-store','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; base-uri 'none'; frame-ancestors 'none'"});
+      'Cache-Control':'no-store','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'self'; img-src 'self' blob: data:; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; base-uri 'none'; frame-ancestors 'none'"});
     return res.end(html);
   }
   if(req.method==='GET' && url.pathname==='/admin/app.js') {
@@ -224,6 +239,16 @@ async function handle(req,res,url) {
   if(req.method==='GET' && url.pathname==='/admin/style.css') {
     res.writeHead(200,{'Content-Type':'text/css; charset=utf-8','Content-Length':stylesheet.length,'Cache-Control':'no-store'});
     return res.end(stylesheet);
+  }
+  if(req.method==='POST' && url.pathname==='/admin/media') {
+    if(!sameOrigin(req)) return error(res,403,'ORIGIN_REJECTED');
+    if(!authenticated(req)) return error(res,401,'UNAUTHORIZED');
+    try {return reply(res,200,{ok:true,data:{filename:media.saveImage(await readImage(req),req.headers['content-type'])}});}
+    catch(e) {
+      if(e.message==='IMAGE_SIZE_INVALID') return error(res,413,'IMAGE_SIZE_INVALID');
+      if(e.message==='IMAGE_TYPE_INVALID') return error(res,400,'IMAGE_TYPE_INVALID');
+      return error(res,503,'MEDIA_UNAVAILABLE');
+    }
   }
   if(req.method!=='POST'||url.pathname!=='/admin/api') return error(res,404,'NOT_FOUND');
   if(!sameOrigin(req)) return error(res,403,'ORIGIN_REJECTED');

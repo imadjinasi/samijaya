@@ -312,12 +312,6 @@ function safeHttpsUrl(value) {
   }
 }
 
-function safeDriveImageUrl(fileId, width) {
-  var normalized = String(fileId || '').trim();
-  if (!/^[A-Za-z0-9_-]{10,200}$/.test(normalized)) return '';
-  return 'https://lh3.googleusercontent.com/d/' + encodeURIComponent(normalized) + '=w' + Number(width || 400);
-}
-
 document.addEventListener('click', function(event) {
   var image = event.target.closest && event.target.closest('[data-open-image]');
   if (!image) return;
@@ -657,7 +651,7 @@ function startCampaignQueue() {
 
 function campaignImageUrl(item) {
   var fileId = String(item.gambar_file_id || '').trim();
-  return fileId ? safeDriveImageUrl(fileId, 800) : safeHttpsUrl(item.gambar_url);
+  return /^[0-9a-f-]{36}\.(png|jpg|webp)$/.test(fileId) ? safeHttpsUrl('/media/images/' + fileId) : '';
 }
 
 function campaignSafeLink(value) {
@@ -1018,9 +1012,9 @@ function renderProducts(products) {
 function renderOneProduct(p) {
   var isHabis = (Number(p.tersedia) === 0);
   var imgHtml = '';
-  if (p.foto_url || p.foto_file_id) {
-    var fullUrl = p.foto_file_id ? safeDriveImageUrl(p.foto_file_id, 1200) : safeHttpsUrl(p.foto_url);
-    var thumbUrl = p.foto_file_id ? safeDriveImageUrl(p.foto_file_id, 400) : safeHttpsUrl(p.foto_url);
+  if (p.foto_url) {
+    var fullUrl = safeHttpsUrl(p.foto_url);
+    var thumbUrl = fullUrl;
     if (thumbUrl) imgHtml = '<img src="' + escHtml(thumbUrl) + '" alt="' + escHtml(p.nama) + '" loading="lazy" style="cursor:pointer" data-open-image="' + escHtml(fullUrl || thumbUrl) + '">';
   } else {
     imgHtml = '<div class="product-img-placeholder">' + ICON.bottle + '</div>';
@@ -1098,7 +1092,7 @@ function openProductModal(productId) {
   var isHabis = (Number(p.tersedia) === 0);
   var imgUrl = '';
   if (p.foto_url) {
-    imgUrl = p.foto_file_id ? safeDriveImageUrl(p.foto_file_id, 1200) : safeHttpsUrl(p.foto_url);
+    imgUrl = safeHttpsUrl(p.foto_url);
   }
 
   var modal = document.getElementById('product-modal');
@@ -1374,7 +1368,7 @@ function renderCartModal() {
     var isHabis = (p && Number(p.tersedia) === 0);
 
     if (p && p.foto_url) {
-      var fullUrl = p.foto_file_id ? safeDriveImageUrl(p.foto_file_id, 1200) : safeHttpsUrl(p.foto_url);
+      var fullUrl = safeHttpsUrl(p.foto_url);
       var imgStyle = isHabis ? 'filter: grayscale(100%) opacity(0.6); cursor: pointer;' : 'cursor: pointer;';
       if (fullUrl) imgHtml = '<div class="cart-item-thumb" style="position:relative;"><img src="' + escHtml(fullUrl) + '" alt="' + escHtml(item.nama) + '" data-open-image="' + escHtml(fullUrl) + '" style="' + imgStyle + '">' + (isHabis ? '<div style="position:absolute;bottom:0;left:0;right:0;background:#8B2E2E;color:#fff;font-size:0.55rem;text-align:center;padding:2px 0;font-weight:bold;">HABIS</div>' : '') + '</div>';
     } else {
@@ -2571,22 +2565,12 @@ function renderPaymentDetail(method) {
   var settings = (catalog && catalog.settings) ? catalog.settings : {};
   var html = '<div class="co-payment-detail"><div class="co-transfer-info">';
 
-  var qrisId = String(settings.QRIS_FILE_ID || '').trim();
   var bank = String(settings.REKENING_BANK || '').trim();
   var nomor = String(settings.REKENING_NOMOR || '').trim();
   var nama = String(settings.REKENING_NAMA || '').trim();
 
   if (method === 'QRIS') {
-    if (qrisId) {
-      html += '<div class="co-qris-wrap">';
-      html += '<a href="https://drive.google.com/thumbnail?id=' + escHtml(qrisId) + '&sz=w400" target="_blank" rel="noopener">';
-      html += '<img src="https://drive.google.com/thumbnail?id=' + escHtml(qrisId) + '&sz=w400" alt="QRIS" loading="lazy">';
-      html += '</a>';
-      html += '<div class="co-qris-label">Scan QRIS</div>';
-      html += '</div>';
-    } else {
-      html += '<div class="co-shipping-note" style="opacity:1">Info QRIS belum tersedia. Hubungi toko.</div>';
-    }
+    html += '<div class="co-shipping-note" style="opacity:1">Pembayaran QRIS tersedia melalui langkah pembayaran online.</div>';
   } else if (method === 'TRANSFER') {
     if (bank || nomor || nama) {
       html += '<div class="co-bank-info">';
@@ -3332,7 +3316,7 @@ function renderSuccessScreen(data) {
   html += '</div>';
 
   // Status
-  html += '<div class="success-status-badge">' + (metodeBayar === 'MIDTRANS' ? '⏳ Menunggu pembayaran' : '⏳ Menunggu konfirmasi Samijaya') + '</div>';
+  html += '<div class="success-status-badge" id="success-payment-status">' + (metodeBayar === 'MIDTRANS' ? '⏳ Menunggu pembayaran' : '⏳ Menunggu konfirmasi Samijaya') + '</div>';
 
   // === PEMBAYARAN ===
   if (metodeBayar === 'MIDTRANS') {
@@ -3345,14 +3329,7 @@ function renderSuccessScreen(data) {
     html += '<div class="success-payment-box">';
     html += '<div class="success-payment-title">Selesaikan Pembayaran</div>';
 
-    if (bayar.qris_file_id) {
-      html += '<div class="success-qris-wrap">';
-      html += '<a href="https://drive.google.com/thumbnail?id=' + escHtml(bayar.qris_file_id) + '&sz=w400" target="_blank" rel="noopener">';
-      html += '<img src="https://drive.google.com/thumbnail?id=' + escHtml(bayar.qris_file_id) + '&sz=w400" alt="QRIS Samijaya" loading="lazy" class="success-qris-img">';
-      html += '</a>';
-      html += '<div class="success-qris-label">Scan QRIS di atas</div>';
-      html += '</div>';
-    }
+    html += '<p>Jika pesanan ini dibuat sebelum pembayaran online tersedia, hubungi Samijaya untuk petunjuk pembayaran.</p>';
 
     var waPesanQris = encodeURIComponent('Halo Samijaya, saya sudah melakukan pembayaran QRIS untuk pesanan ' + orderId + '. Berikut bukti pembayarannya:');
     html += '<a class="btn-success-primary" href="https://wa.me/' + escHtml(waToko) + '?text=' + waPesanQris + '" target="_blank" rel="noopener">📲 Kirim Bukti Pembayaran</a>';
@@ -3453,17 +3430,26 @@ function loadSnapScript(payment) {
   return _snapScriptPromise;
 }
 
-async function checkPaymentAfterSnap(orderId) {
-  try {
-    var response = await api('getPayment', { order_id: orderId });
-    var status = response.data && response.data.payment && response.data.payment.status;
-    if (response.ok && ['PAID','PARTIAL_REFUND'].includes(status)) {
-      showToast('Pembayaran diterima. Terima kasih!');
-      showMyOrders();
-      return;
-    }
-    showToast('Status pembayaran sedang diperiksa. Lihat Pesanan Saya beberapa saat lagi.');
-  } catch (_) { showToast('Status pembayaran belum dapat diperiksa. Lihat Pesanan Saya.'); }
+async function checkPaymentAfterSnap(orderId, attempts) {
+  var badge = document.getElementById('success-payment-status');
+  if (badge) badge.textContent = '⌛ Memeriksa pembayaran…';
+  for (var attempt = 0; attempt < attempts; attempt++) {
+    if (attempt) await new Promise(function(resolve) { setTimeout(resolve, 3000); });
+    try {
+      var response = await api('getPayment', { order_id: orderId });
+      var status = response.data && response.data.payment && response.data.payment.status;
+      if (response.ok && ['PAID','PARTIAL_REFUND'].includes(status)) {
+        if (badge) badge.textContent = '✓ Pembayaran diterima';
+        var success = document.getElementById('success-screen');
+        if (success && !success.classList.contains('hidden')) { closeSuccessScreen(); showMyOrders(); }
+        showToast('Pembayaran diterima. Terima kasih!');
+        return;
+      }
+      if (['EXPIRED','REFUNDED','BATAL'].includes(status)) break;
+    } catch (_) { /* Coba lagi bila status server belum tersedia. */ }
+  }
+  if (badge) badge.textContent = '⏳ Pembayaran belum terkonfirmasi';
+  showToast('Status pembayaran sedang diperiksa. Lihat Pesanan Saya beberapa saat lagi.');
 }
 
 async function presentPayment(payment, orderId) {
@@ -3472,8 +3458,8 @@ async function presentPayment(payment, orderId) {
   try {
     await loadSnapScript(payment);
     window.snap.pay(payment.snap_token, {
-      onSuccess: function() { _snapOpening = false; checkPaymentAfterSnap(orderId); },
-      onPending: function() { _snapOpening = false; checkPaymentAfterSnap(orderId); },
+      onSuccess: function() { _snapOpening = false; checkPaymentAfterSnap(orderId, 6); },
+      onPending: function() { _snapOpening = false; checkPaymentAfterSnap(orderId, 20); },
       onError: function() { _snapOpening = false; showToast('Pembayaran belum selesai. Coba lagi dari Pesanan Saya.'); },
       onClose: function() { _snapOpening = false; showToast('Pembayaran dapat dilanjutkan dari Pesanan Saya.'); }
     });
