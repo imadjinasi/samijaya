@@ -229,7 +229,7 @@ async function readImage(req) {
 async function handle(req,res,url) {
   if(req.method==='GET' && url.pathname==='/admin') {
     res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Content-Length':html.length,
-      'Cache-Control':'no-store','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'self'; img-src 'self' blob: data:; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; base-uri 'none'; frame-ancestors 'none'"});
+      'Cache-Control':'no-store','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'self'; img-src 'self' blob: data:; style-src 'self'; font-src 'self'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'"});
     return res.end(html);
   }
   if(req.method==='GET' && url.pathname==='/admin/app.js') {

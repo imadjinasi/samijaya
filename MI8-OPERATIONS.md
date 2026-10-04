@@ -7,6 +7,7 @@ This runbook applies to the Node/PostgreSQL deployment. The legacy Apps Script a
 - Ubuntu chroot: `/data/local/ubuntu26` on Android.
 - Application: `/srv/samijaya/current`, a symlink to a versioned release under `/srv/samijaya/releases`.
 - Product and campaign photos: `/srv/samijaya/media/images` (owned by `samijaya`, outside versioned releases). Include this directory in backups and restores together with the database; `foto_file_id` and `gambar_file_id` store the local filename.
+- Storefront and admin fonts are bundled under `docs/assets/fonts`; their OFL licenses are kept with the font files. Product photos and fonts no longer request Google Drive or Google Fonts at runtime.
 - Private configuration: `/srv/samijaya/prod.env` (root, mode `600`).
 - PostgreSQL: Termux PostgreSQL on `127.0.0.1:5432`; production database `samijaya`, role `samijaya_app`.
 - Node: `127.0.0.1:3100`, PID `/srv/samijaya/app.pid`, log `/srv/samijaya/logs/app.log`.

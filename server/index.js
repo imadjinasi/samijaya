@@ -15,7 +15,7 @@ const MUTATIONS = new Set(['requestOtp','verifyOtp','updateProfile','createOrder
   'addAddress','updateAddress','deleteAddress','addressSetDefault','submitReview','deleteMyReview']);
 const MIME = {'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8',
   '.js':'text/javascript; charset=utf-8','.png':'image/png','.ico':'image/x-icon',
-  '.webmanifest':'application/manifest+json'};
+  '.woff2':'font/woff2','.webmanifest':'application/manifest+json'};
 
 function send(res,status,body,type='application/json; charset=utf-8') {
   res.writeHead(status,{'Content-Type':type,'Content-Length':Buffer.byteLength(body),
