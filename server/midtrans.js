@@ -5,6 +5,7 @@ const { context, query } = require('./compat');
 const MODE = String(process.env.MIDTRANS_MODE || '').toLowerCase();
 const ENABLED = MODE === 'sandbox' || MODE === 'production';
 const SERVER_KEY = MODE === 'production' ? process.env.MIDTRANS_PRODUCTION_SERVER_KEY : process.env.MIDTRANS_SANDBOX_SERVER_KEY;
+const CLIENT_KEY = MODE === 'production' ? process.env.MIDTRANS_PRODUCTION_CLIENT_KEY : process.env.MIDTRANS_SANDBOX_CLIENT_KEY;
 const SNAP_URL = MODE === 'production' ? 'https://app.midtrans.com' : 'https://app.sandbox.midtrans.com';
 const API_URL = MODE === 'production' ? 'https://api.midtrans.com' : 'https://api.sandbox.midtrans.com';
 const PAYMENT_MINUTES = 30;
@@ -38,6 +39,9 @@ function paymentRow(orderId) {
 function publicPayment(row) {
   if (!row) return {status:'BELUM_DIMULAI'};
   return {status:row.state, redirect_url:row.state==='PENDING' ? row.redirect_url : null,
+    snap_token:row.state==='PENDING' ? row.snap_token : null,
+    snap_js_url:row.state==='PENDING' && CLIENT_KEY ? SNAP_URL+'/snap/snap.js' : null,
+    client_key:row.state==='PENDING' ? CLIENT_KEY || null : null,
     expires_at:row.expires_at, paid_at:row.paid_at};
 }
 function jakartaStart(date) {

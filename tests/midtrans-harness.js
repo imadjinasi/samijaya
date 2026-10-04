@@ -25,7 +25,7 @@ function query(sql,args=[]) {
 const moduleBox={exports:{}};
 const sandbox={module:moduleBox,exports:moduleBox.exports,Buffer,Date,Intl,Number,String,JSON,Error,
   AbortSignal,setImmediate:fn=>queued.push(fn),
-  process:{env:{MIDTRANS_MODE:'sandbox',MIDTRANS_SANDBOX_SERVER_KEY:'test-only-key'}},
+  process:{env:{MIDTRANS_MODE:'sandbox',MIDTRANS_SANDBOX_SERVER_KEY:'test-only-key',MIDTRANS_SANDBOX_CLIENT_KEY:'test-client-key'}},
   require:name=>name==='node:crypto'?crypto:name==='./compat'?{query,context:()=>({requireSession:token=>token==='valid'?{member_id:'M1'}:null,
     _notifyAdminNewOrder:()=>{notices++;return {ok:true};}})}:null,
   fetch:async(_url,options)=>{snapBody=JSON.parse(options.body);snapHeaders=options.headers;return {ok:true,json:async()=>({token:'test-token',redirect_url:'https://app.sandbox.midtrans.com/snap/v2/vtweb/test'})};}
@@ -41,6 +41,9 @@ function notification(amount='27000.00',status='settlement',code='200') {
   assert.equal((await midtrans.customerPayment('TEST_123','invalid')).code,'UNAUTHORIZED');
   const pending=await midtrans.ensurePayment('TEST_123');
   assert.equal(pending.status,'PENDING');
+  assert.equal(pending.snap_token,'test-token');
+  assert.equal(pending.client_key,'test-client-key');
+  assert.equal(pending.snap_js_url,'https://app.sandbox.midtrans.com/snap/snap.js');
   assert.equal(snapBody.transaction_details.gross_amount,27000);
   assert.equal(snapBody.expiry.duration,30);
   assert.equal(snapHeaders['X-Override-Notification'],'https://samijaya.online/midtrans/notification');

@@ -25,6 +25,8 @@ var _catalogRequestSequence = 0;
 var _catalogAppliedSequence = 0;
 var _sessionExpiryHandled = false;
 var _deliveryLocationSequence = 0;
+var _snapScriptPromise = null;
+var _snapOpening = false;
 
 function createPromoState() {
   return {
@@ -602,7 +604,7 @@ function clearCartAfterCommitted(data, pending) {
   document.body.style.overflow = '';
   showSuccessScreen(data);
   if (data && data.metode_bayar === 'MIDTRANS' && data.payment && data.payment.status === 'PENDING') {
-    redirectToMidtrans(data.payment.redirect_url);
+    presentPayment(data.payment, data.order_id);
   }
 }
 
@@ -1968,7 +1970,7 @@ function renderCheckoutScreen() {
   html += '<div class="co-section" id="checkout-payment">';
   html += '<div class="co-section-title"><span class="co-step">4</span>Pembayaran</div>';
   if (catalog && catalog.payment_mode === 'MIDTRANS') {
-    html += '<div class="co-shipping-note" style="opacity:1">Bayar lebih dulu melalui Midtrans. Pilihan pembayaran yang tersedia akan muncul di halaman Midtrans. Toko mulai memproses setelah pembayaran terkonfirmasi.</div>';
+    html += '<div class="co-shipping-note" style="opacity:1">Pilih cara bayar setelah membuat pesanan. Toko mulai memproses setelah pembayaran berhasil.</div>';
   } else {
     html += '<div class="co-pill-group" id="co-payment-pills">';
     html += '<button class="co-pill" data-pay="COD" onclick="selectPayment(\'COD\')">💵 COD</button>';
@@ -3335,9 +3337,9 @@ function renderSuccessScreen(data) {
   // === PEMBAYARAN ===
   if (metodeBayar === 'MIDTRANS') {
     html += '<div class="success-payment-box">';
-    html += '<div class="success-payment-title">Bayar melalui Midtrans</div>';
-    html += '<p>Setelah membayar, kembali ke sini dan periksa status pesanan.</p>';
-    html += '<button class="btn-success-primary" onclick="openMidtransPayment(\'' + escHtml(orderId) + '\')">Bayar sekarang</button>';
+    html += '<div class="success-payment-title">Selesaikan pembayaran</div>';
+    html += '<p>Pilih cara bayar yang paling nyaman. Pesanan diproses setelah pembayaran terkonfirmasi.</p>';
+    html += '<button class="btn-success-primary" onclick="openMidtransPayment(\'' + escHtml(orderId) + '\')">Pilih cara bayar</button>';
     html += '</div>';
   } else if (metodeBayar === 'QRIS' && bayar) {
     html += '<div class="success-payment-box">';
@@ -3428,6 +3430,59 @@ function redirectToMidtrans(redirectUrl) {
   return false;
 }
 
+function loadSnapScript(payment) {
+  var src = String(payment.snap_js_url || '');
+  var key = String(payment.client_key || '');
+  if (!payment.snap_token || !key ||
+      !['https://app.midtrans.com/snap/snap.js', 'https://app.sandbox.midtrans.com/snap/snap.js'].includes(src)) {
+    return Promise.reject(new Error('SNAP_CONFIG_MISSING'));
+  }
+  if (window.snap && typeof window.snap.pay === 'function') return Promise.resolve();
+  if (_snapScriptPromise) return _snapScriptPromise;
+  _snapScriptPromise = new Promise(function(resolve, reject) {
+    var script = document.createElement('script');
+    script.src = src;
+    script.setAttribute('data-client-key', key);
+    script.onload = function() {
+      if (window.snap && typeof window.snap.pay === 'function') resolve();
+      else reject(new Error('SNAP_UNAVAILABLE'));
+    };
+    script.onerror = function() { reject(new Error('SNAP_LOAD_FAILED')); };
+    document.head.appendChild(script);
+  }).catch(function(error) { _snapScriptPromise = null; throw error; });
+  return _snapScriptPromise;
+}
+
+async function checkPaymentAfterSnap(orderId) {
+  try {
+    var response = await api('getPayment', { order_id: orderId });
+    var status = response.data && response.data.payment && response.data.payment.status;
+    if (response.ok && ['PAID','PARTIAL_REFUND'].includes(status)) {
+      showToast('Pembayaran diterima. Terima kasih!');
+      showMyOrders();
+      return;
+    }
+    showToast('Status pembayaran sedang diperiksa. Lihat Pesanan Saya beberapa saat lagi.');
+  } catch (_) { showToast('Status pembayaran belum dapat diperiksa. Lihat Pesanan Saya.'); }
+}
+
+async function presentPayment(payment, orderId) {
+  if (_snapOpening) return;
+  _snapOpening = true;
+  try {
+    await loadSnapScript(payment);
+    window.snap.pay(payment.snap_token, {
+      onSuccess: function() { _snapOpening = false; checkPaymentAfterSnap(orderId); },
+      onPending: function() { _snapOpening = false; checkPaymentAfterSnap(orderId); },
+      onError: function() { _snapOpening = false; showToast('Pembayaran belum selesai. Coba lagi dari Pesanan Saya.'); },
+      onClose: function() { _snapOpening = false; showToast('Pembayaran dapat dilanjutkan dari Pesanan Saya.'); }
+    });
+  } catch (_) {
+    _snapOpening = false;
+    if (!redirectToMidtrans(payment.redirect_url)) showToast('Halaman pembayaran belum tersedia. Coba lagi sebentar.');
+  }
+}
+
 async function openMidtransPayment(orderId) {
   try {
     var res = await api('getPayment', { order_id: orderId });
@@ -3440,7 +3495,7 @@ async function openMidtransPayment(orderId) {
     }
     if (payment.status === 'REFUNDED') { showToast('Dana pesanan ini telah dikembalikan.'); return; }
     if (payment.status === 'EXPIRED' || payment.status === 'BATAL') { showToast('Waktu pembayaran telah berakhir. Hubungi toko jika memerlukan bantuan.'); return; }
-    if (payment.status === 'PENDING' && redirectToMidtrans(payment.redirect_url)) return;
+    if (payment.status === 'PENDING') { presentPayment(payment, orderId); return; }
     showToast('Halaman pembayaran belum tersedia. Coba lagi sebentar.');
   } catch (_) { showToast('Belum dapat menghubungi layanan pembayaran. Coba lagi.'); }
 }
@@ -3733,7 +3788,7 @@ function renderMyOrders(orders, reviewableMap, lastSeenOrdersAt) {
     html += '<div class="my-order-actions" style="flex-wrap: wrap; gap: 8px;">';
     html += '<button class="my-order-btn-detail" onclick="toggleOrderDetail(\'' + escHtml(oid) + '\')">Detail</button>';
     if (order.metode_bayar === 'MIDTRANS' && order.status === 'MENUNGGU' && !['PAID','PARTIAL_REFUND','REFUNDED','EXPIRED'].includes(order.payment_status)) {
-      html += '<button class="my-order-btn-detail" onclick="openMidtransPayment(\'' + escHtml(oid) + '\')">Periksa / bayar</button>';
+      html += '<button class="my-order-btn-detail" onclick="openMidtransPayment(\'' + escHtml(oid) + '\')">Lanjutkan pembayaran</button>';
     }
     
     var waToko = (catalog && catalog.settings && catalog.settings.NOMOR_WA_TOKO) ? String(catalog.settings.NOMOR_WA_TOKO || '').replace(/[^0-9]/g, '') : '6285179912504';
@@ -3840,7 +3895,7 @@ function renderMyOrders(orders, reviewableMap, lastSeenOrdersAt) {
     
     html += '<div class="my-order-info-group">';
     html += '<div class="my-order-info-label">Metode Pembayaran</div>';
-    html += '<div class="my-order-info-value">' + escHtml(order.metode_bayar) + '</div>';
+    html += '<div class="my-order-info-value">' + escHtml(order.metode_bayar === 'MIDTRANS' ? 'Pembayaran online' : order.metode_bayar) + '</div>';
     html += '</div>';
     
     // Rincian Biaya
