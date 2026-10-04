@@ -3431,3 +3431,57 @@ select {
   background: var(--cream);
   box-shadow: 0 0 0 1px var(--espresso);
 }
+
+/* Checkout: compact choices, clear hierarchy, and a visible payment action. */
+.checkout-inner { padding-bottom: 210px; }
+.checkout-header { margin-bottom: 12px; }
+.co-header-subtitle { color: var(--brown); font-size: .76rem; margin-top: 2px; }
+.co-catalog-status { margin: 0 0 14px; padding: 10px 14px; border-radius: 12px; background: #f5eadb; color: var(--espresso); font-size: .78rem; line-height: 1.4; }
+.co-catalog-status[hidden] { display: none; }
+.co-catalog-status button { margin-left: 6px; color: var(--espresso); font: inherit; font-weight: 700; text-decoration: underline; }
+.checkout-form-column > .co-section { border: 1px solid var(--line); box-shadow: none; padding: 18px; margin-bottom: 12px; }
+#checkout-order-summary { padding: 15px 18px; }
+#checkout-order-summary .co-section-title { margin-bottom: 6px; font-size: .86rem; }
+.co-item-detail { display: block; color: var(--brown); font-size: .75rem; font-weight: 400; margin-top: 2px; }
+.co-method-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.co-method-card { min-height: 112px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 3px; padding: 12px 10px; background: #fcfaf7; border: 1.5px solid var(--line); border-radius: 14px; color: var(--espresso); text-align: left; font-family: inherit; transition: border-color .18s ease, background .18s ease, transform .18s ease; }
+.co-method-card:hover { transform: translateY(-2px); border-color: var(--brown); }
+.co-method-card:focus-visible { outline: 3px solid var(--brown); outline-offset: 2px; }
+.co-method-card.active { border-color: var(--espresso); background: #f2e8db; box-shadow: inset 0 0 0 1px var(--espresso); }
+.co-method-icon { font-family: 'DM Serif Display', serif; font-size: 1.35rem; line-height: 1; color: var(--brown); }
+.co-method-card strong { font-size: .78rem; line-height: 1.2; }
+.co-method-card small { font-size: .67rem; color: var(--brown); line-height: 1.25; }
+.co-date-hint { color: var(--brown); font-size: .76rem; line-height: 1.45; margin-top: 7px; }
+.co-more { margin: 12px 0 16px; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--white); }
+.co-more > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 17px 18px; color: var(--espresso); font-weight: 700; font-size: .87rem; cursor: pointer; list-style: none; }
+.co-more > summary::-webkit-details-marker { display: none; }
+.co-more > summary span { color: var(--brown); font-size: .7rem; font-weight: 500; }
+.co-more[open] > summary { border-bottom: 1px solid var(--line); }
+.co-more-content { padding: 0 18px 12px; }
+.co-more-content .co-section { padding: 15px 0; margin: 0; border-radius: 0; box-shadow: none; border-bottom: 1px solid var(--line); }
+.co-more-content .co-section:last-child { border-bottom: 0; }
+.co-more-content .co-section-title { font-family: 'Plus Jakarta Sans', sans-serif; font-size: .84rem; margin-bottom: 9px; }
+.co-payment-assurance { margin-top: 8px; color: var(--brown); font-size: .69rem; line-height: 1.4; text-align: center; }
+.co-submit-note { opacity: 1; color: var(--brown); }
+.co-validation-msg:empty { display: none; }
+
+@media (max-width: 1023px) {
+  .checkout-summary-column { position: fixed; inset: auto 0 0; z-index: 8; }
+  .checkout-summary-column .co-cost-summary { max-width: 560px; margin: 0 auto; padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); border: 1px solid var(--line); border-bottom: 0; border-radius: 18px 18px 0 0; box-shadow: 0 -10px 28px rgba(52, 33, 28, .12); }
+  .co-cost-header { padding: 0 0 5px; margin-bottom: 4px; font-size: .76rem; }
+  .co-cost-row.total { margin-top: 2px; padding-top: 6px; }
+  #btn-create-order { margin-top: 8px; padding: 12px; font-size: .9rem; }
+  .co-submit-note { margin-top: 5px; }
+  .co-payment-assurance { display: none; }
+}
+
+@media (max-width: 380px) {
+  .co-method-card { min-height: 104px; padding: 10px 8px; }
+  .co-method-card strong { font-size: .72rem; }
+  .co-method-card small { font-size: .63rem; }
+}
+
+@media (min-width: 1024px) {
+  .checkout-inner { padding-bottom: 80px; }
+  .co-method-card { min-height: 104px; }
+}
