@@ -33,6 +33,26 @@ From inside Ubuntu, use `/srv/samijaya/current/deploy/start-app.sh` and `stop-ap
 
 Never print `prod.env` or tunnel token in a command, log, issue, or chat. Use a name-only presence check for required variables. Restart Node after changing environment values.
 
+### WhatsApp provider (`prod.env`, names only)
+
+`WHATSAPP_PROVIDER` selects how OTP codes and order notifications leave the app. `jalurpesan` (default) sends with the JalurPesan device key; `kirim` sends through WhatsApp lewat Kirim in SQ Hub with the Samijaya Keycloak service account, so the number is the one on the Samijaya card in Kirim and no device key is kept here. Guide for the Kirim side: SQ-Hub `docs/kirim/panduan-api-gateway-aplikasi-luar.md`.
+
+```sh
+# jalurpesan (default)
+WHATSAPP_PROVIDER=jalurpesan
+JALURPESAN_BASE_URL=https://jalurpesan.example
+JALURPESAN_DEVICE_KEY=<device key, never in the repo>
+
+# kirim (SQ Hub on the same host; /internal/* is loopback only)
+WHATSAPP_PROVIDER=kirim
+KIRIM_BASE_URL=http://127.0.0.1:3302
+KEYCLOAK_TOKEN_URL=https://login.sabilulquran.or.id/realms/sq-staff/protocol/openid-connect/token
+KIRIM_CLIENT_ID=samijaya
+KIRIM_CLIENT_SECRET=<client secret from Keycloak, never in the repo>
+```
+
+With `kirim`, OTP codes go out as `jenis: kode` (no sending hours, 10-minute expiry) and order notifications as `jenis: notifikasi` (sent 06.00–21.00 WIB; a message queued at night leaves at 06.00). Check presence with `grep -c '^KIRIM_CLIENT_SECRET=' /srv/samijaya/prod.env`, then restart Node. Rollback: set `WHATSAPP_PROVIDER=jalurpesan` and restart, while the JalurPesan device is still logged in.
+
 Add or replace a product photo in Admin → Produk → Tambah/Ubah. The browser resizes the selected JPG, PNG, or WebP to a WebP of at most 1200 pixels before upload; the server validates the image signature and stores it under `/srv/samijaya/media/images`. The catalog serves `/media/images/<filename>` through Node. A release switch must preserve the media directory. If a database restore refers to a missing filename, restore the matching media backup before opening the store.
 
 ## Data migration and release gate
