@@ -1,4 +1,5 @@
 'use strict';
+const kirim = require('./kirim-client');
 
 const STATUS_TEMPLATE = {
   DIPROSES: 'ORDER_DIPROSES',
@@ -75,7 +76,16 @@ function enqueuePaid(query,orderId) {
   return order&&enqueueOne(query,order,'ORDER_DITERIMA',{name:order.nama,phone:order.no_hp,secondary:false},0)?1:0;
 }
 
-async function sendMessage(phone,message,fetchImpl=fetch) {
+// WHATSAPP_PROVIDER memilih penyedia: 'jalurpesan' (bawaan, device key langsung) atau 'kirim'
+// (WhatsApp lewat Kirim di SQ Hub, token client credentials). options.jenis: 'kode' untuk OTP,
+// selain itu 'notifikasi'; options.idempotencyKey mencegah kiriman ganda saat diulang.
+function provider() {
+  const name=String(process.env.WHATSAPP_PROVIDER||'jalurpesan').trim().toLowerCase();
+  if(name!=='kirim'&&name!=='jalurpesan') throw new Error('WHATSAPP_PROVIDER_INVALID');
+  return name;
+}
+
+async function sendJalurPesan(phone,message,fetchImpl) {
   const base=String(process.env.JALURPESAN_BASE_URL||'').trim().replace(/\/+$/,'');
   const key=String(process.env.JALURPESAN_DEVICE_KEY||'').trim();
   if(!/^https:\/\//i.test(base)||!key) throw new Error('JALURPESAN_NOT_CONFIGURED');
@@ -84,6 +94,19 @@ async function sendMessage(phone,message,fetchImpl=fetch) {
   },body:JSON.stringify({to:normalizePhone(phone),message:String(message)}),signal:AbortSignal.timeout(12000)});
   if(!response.ok) throw new Error('JALURPESAN_HTTP_'+response.status);
   return true;
+}
+
+async function sendMessage(phone,message,options,fetchImpl) {
+  if(typeof options==='function') {fetchImpl=options;options={};}
+  options=options||{};
+  fetchImpl=fetchImpl||fetch;
+  if(provider()==='kirim') {
+    const to=normalizePhone(phone);
+    if(!to) throw new Error('KIRIM_INVALID_NUMBER');
+    await kirim.sendMessage(to,message,options,fetchImpl);
+    return true;
+  }
+  return sendJalurPesan(phone,message,fetchImpl);
 }
 
 async function drain(query,fetchImpl=fetch) {
@@ -95,7 +118,7 @@ async function drain(query,fetchImpl=fetch) {
       WHERE id=$1 AND state IN ('PENDING','FAILED') RETURNING id`,[row.id]).rowCount;
     if(!claimed) continue;
     try {
-      await sendMessage(row.recipient_phone,row.message,fetchImpl);
+      await sendMessage(row.recipient_phone,row.message,{jenis:'notifikasi',idempotencyKey:'samijaya:outbox:'+row.id,ref:'samijaya:outbox:'+row.id},fetchImpl);
       query("UPDATE samijaya.notification_outbox SET state='SENT',sent_at=now(),last_error=NULL WHERE id=$1",[row.id]);
     } catch(error) {
       const attempts=Number(row.attempts||0)+1;
@@ -107,4 +130,4 @@ async function drain(query,fetchImpl=fetch) {
   return rows.length;
 }
 
-module.exports={normalizePhone,fill,enqueueStatus,enqueuePaid,sendMessage,drain};
+module.exports={normalizePhone,fill,enqueueStatus,enqueuePaid,sendMessage,drain,provider};

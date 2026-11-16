@@ -95,7 +95,7 @@ async function beginOtpLogin(req) {
   for(let index=0;index<phones.length;index++) {
     if(index) await pause(1400);
     const phone=phones[index];
-    try {await notifications.sendMessage(phone,message);delivered++;}
+    try {await notifications.sendMessage(phone,message,{jenis:'kode',ref:'samijaya:admin-otp:'+challengeId});delivered++;}
     catch (_) {failed.push(phone);}
   }
   if(!delivered) {
@@ -104,7 +104,7 @@ async function beginOtpLogin(req) {
     return {ok:false,code:'ADMIN_OTP_SEND_FAILED'};
   }
   if(failed.length) {
-    const retry=async()=>{for(const phone of failed){try{await notifications.sendMessage(phone,message);}catch(_){}}};
+    const retry=async()=>{for(const phone of failed){try{await notifications.sendMessage(phone,message,{jenis:'kode',ref:'samijaya:admin-otp:'+challengeId});}catch(_){}}};
     const timer=setTimeout(retry,8000);if(timer.unref)timer.unref();
   }
   query("DELETE FROM samijaya.admin_otp_challenges WHERE expires_at<now()-interval '1 day' OR used_at<now()-interval '1 day'");
